@@ -8,6 +8,11 @@ const INITIAL_STATS = { hunger: 80, cleanliness: 78, happiness: 72 }
 const STAT_DECREASE_INTERVAL = 30000
 const CACHE_PREFIX = 'pq_'
 
+export const HARD_PERIOD_MS   = 7 * 24 * 60 * 60 * 1000
+export const MEDIUM_PERIOD_MS = 3 * 24 * 60 * 60 * 1000
+
+export const DIFF_POINTS = { easy: 10, medium: 25, hard: 50 }
+
 function lsGet(key, fb) {
   try { const v = localStorage.getItem(CACHE_PREFIX + key); return v !== null ? JSON.parse(v) : fb }
   catch { return fb }
@@ -17,17 +22,18 @@ function lsSet(key, val) {
 }
 
 export function GameProvider({ children }) {
-  const [session,  setSession]  = useState(null)
-  const [profile,  setProfile]  = useState(() => lsGet('profile', null))
-  const [authReady, setAuthReady] = useState(false)
-  const [petStats,            setPetStats]            = useState(() => lsGet('stats',     INITIAL_STATS))
-  const [tasks,               setTasks]               = useState(() => lsGet('tasks',     []))
-  const [points,              setPoints]              = useState(() => lsGet('points',    0))
-  const [ownedAccessories,    setOwnedAccessories]    = useState(() => lsGet('owned_acc', []))
-  const [equippedAccessories, setEquippedAccessories] = useState(() => lsGet('eq_acc',    {}))
-  const [notifications,       setNotifications]       = useState([])
+  const [session,              setSession]              = useState(null)
+  const [profile,              setProfile]              = useState(() => lsGet('profile', null))
+  const [authReady,            setAuthReady]            = useState(false)
+  const [petStats,             setPetStats]             = useState(() => lsGet('stats',         INITIAL_STATS))
+  const [tasks,                setTasks]                = useState(() => lsGet('tasks',         []))
+  const [points,               setPoints]               = useState(() => lsGet('points',        0))
+  const [ownedAccessories,     setOwnedAccessories]     = useState(() => lsGet('owned_acc',     []))
+  const [equippedAccessories,  setEquippedAccessories]  = useState(() => lsGet('eq_acc',        {}))
+  const [progressLogs,         setProgressLogs]         = useState(() => lsGet('progress_logs', {}))
+  const [notifications,        setNotifications]        = useState([])
 
-  const notifId  = useRef(0)
+  const notifId   = useRef(0)
   const pointsRef = useRef(points)
   useEffect(() => { pointsRef.current = points }, [points])
 
@@ -53,13 +59,21 @@ export function GameProvider({ children }) {
     if (error) { setAuthReady(true); return }
     setProfile(data); lsSet('profile', data)
     setPoints(data.points); lsSet('points', data.points)
-    await Promise.all([fetchPetStats(userId), fetchTasks(userId), fetchAccessories(userId)])
+    await Promise.all([
+      fetchPetStats(userId),
+      fetchTasks(userId),
+      fetchAccessories(userId),
+      fetchProgressLogs(userId),
+    ])
     setAuthReady(true)
   }
 
   async function fetchPetStats(userId) {
     const { data } = await supabase.from('pet_stats').select('*').eq('user_id', userId).single()
-    if (data) { const s = { hunger: data.hunger, cleanliness: data.cleanliness, happiness: data.happiness }; setPetStats(s); lsSet('stats', s) }
+    if (data) {
+      const s = { hunger: data.hunger, cleanliness: data.cleanliness, happiness: data.happiness }
+      setPetStats(s); lsSet('stats', s)
+    }
   }
 
   async function fetchTasks(userId) {
@@ -72,8 +86,24 @@ export function GameProvider({ children }) {
       supabase.from('owned_accessories').select('accessory_id').eq('user_id', userId),
       supabase.from('equipped_accessories').select('category, accessory_id').eq('user_id', userId),
     ])
-    if (owned) { const ids = owned.map(r => r.accessory_id); setOwnedAccessories(ids); lsSet('owned_acc', ids) }
+    if (owned)    { const ids = owned.map(r => r.accessory_id); setOwnedAccessories(ids); lsSet('owned_acc', ids) }
     if (equipped) { const map = Object.fromEntries(equipped.map(r => [r.category, r.accessory_id])); setEquippedAccessories(map); lsSet('eq_acc', map) }
+  }
+
+  async function fetchProgressLogs(userId) {
+    const { data } = await supabase
+      .from('task_progress')
+      .select('*')
+      .eq('user_id', userId)
+      .order('logged_at', { ascending: true })
+    if (data) {
+      const byTask = {}
+      data.forEach(log => {
+        if (!byTask[log.task_id]) byTask[log.task_id] = []
+        byTask[log.task_id].push(log)
+      })
+      setProgressLogs(byTask); lsSet('progress_logs', byTask)
+    }
   }
 
   /* ── stat decay ── */
@@ -81,7 +111,11 @@ export function GameProvider({ children }) {
     if (!profile?.selected_pet_id || !profile?.id) return
     const id = setInterval(async () => {
       setPetStats(prev => {
-        const next = { hunger: Math.max(0, prev.hunger - 2), cleanliness: Math.max(0, prev.cleanliness - 1.5), happiness: Math.max(0, prev.happiness - 1.5) }
+        const next = {
+          hunger:      Math.max(0, prev.hunger      - 2),
+          cleanliness: Math.max(0, prev.cleanliness - 1.5),
+          happiness:   Math.max(0, prev.happiness   - 1.5),
+        }
         lsSet('stats', next)
         supabase.from('pet_stats').upsert({ user_id: profile.id, ...next, updated_at: new Date().toISOString() }).then(() => {})
         return next
@@ -115,7 +149,8 @@ export function GameProvider({ children }) {
   const logout = useCallback(async () => {
     await supabase.auth.signOut()
     Object.keys(localStorage).filter(k => k.startsWith(CACHE_PREFIX)).forEach(k => localStorage.removeItem(k))
-    setProfile(null); setPetStats(INITIAL_STATS); setTasks([]); setPoints(0); setOwnedAccessories([]); setEquippedAccessories({})
+    setProfile(null); setPetStats(INITIAL_STATS); setTasks([]); setPoints(0)
+    setOwnedAccessories([]); setEquippedAccessories({}); setProgressLogs({})
   }, [])
 
   /* ── pet ── */
@@ -126,32 +161,115 @@ export function GameProvider({ children }) {
     await supabase.from('pet_stats').upsert({ user_id: profile.id, ...INITIAL_STATS, updated_at: new Date().toISOString() })
   }, [profile?.id])
 
-  /* ── tasks ── */
-  const addTask = useCallback(async (text) => {
-    if (!text.trim()) return false
-    const tmp = { id: 'tmp_' + Date.now(), user_id: profile?.id, text: text.trim(), completed: false, created_at: new Date().toISOString(), completed_at: null }
-    setTasks(prev => { const n = [...prev, tmp]; lsSet('tasks', n); return n })
-    const { data } = await supabase.from('tasks').insert({ user_id: profile?.id, text: text.trim() }).select().single()
-    if (data) setTasks(prev => { const n = prev.map(t => t.id === tmp.id ? data : t); lsSet('tasks', n); return n })
-    return true
+  /* ── game mode ── */
+  const setGameMode = useCallback(async (mode) => {
+    setProfile(prev => { const n = { ...prev, game_mode: mode }; lsSet('profile', n); return n })
+    await supabase.from('profiles').update({ game_mode: mode }).eq('id', profile?.id)
   }, [profile?.id])
 
+  /* ── tasks ── */
+  const addTask = useCallback(async (text, difficulty = 'easy') => {
+    if (!text.trim()) return false
+
+    const now = Date.now()
+    const hardStart  = new Date(profile?.hard_period_start  || 0).getTime()
+    const medStart   = new Date(profile?.medium_period_start || 0).getTime()
+    const hardExpired = now - hardStart  >= HARD_PERIOD_MS
+    const medExpired  = now - medStart   >= MEDIUM_PERIOD_MS
+
+    if (difficulty === 'hard') {
+      if (!hardExpired) {
+        const hardInPeriod = tasks.filter(t =>
+          t.difficulty === 'hard' &&
+          new Date(t.created_at).getTime() >= hardStart
+        )
+        if (hardInPeriod.length >= 1) {
+          addNotification('Hard quest limit reached! 1 per week. Resets automatically or ask an admin. 🔥', 'error')
+          return false
+        }
+      } else {
+        const newStart = new Date().toISOString()
+        setProfile(prev => { const n = { ...prev, hard_period_start: newStart }; lsSet('profile', n); return n })
+        await supabase.from('profiles').update({ hard_period_start: newStart }).eq('id', profile?.id)
+      }
+    }
+
+    if (difficulty === 'medium') {
+      if (!medExpired) {
+        const medInPeriod = tasks.filter(t =>
+          t.difficulty === 'medium' &&
+          new Date(t.created_at).getTime() >= medStart
+        )
+        if (medInPeriod.length >= 3) {
+          addNotification('Medium quest limit reached! 3 per 3 days. Resets automatically or ask an admin. ⚡', 'error')
+          return false
+        }
+      } else {
+        const newStart = new Date().toISOString()
+        setProfile(prev => { const n = { ...prev, medium_period_start: newStart }; lsSet('profile', n); return n })
+        await supabase.from('profiles').update({ medium_period_start: newStart }).eq('id', profile?.id)
+      }
+    }
+
+    const tmp = {
+      id: 'tmp_' + Date.now(),
+      user_id: profile?.id,
+      text: text.trim(),
+      difficulty,
+      completed: false,
+      created_at: new Date().toISOString(),
+      completed_at: null,
+    }
+    setTasks(prev => { const n = [...prev, tmp]; lsSet('tasks', n); return n })
+    const { data } = await supabase.from('tasks').insert({ user_id: profile?.id, text: text.trim(), difficulty }).select().single()
+    if (data) setTasks(prev => { const n = prev.map(t => t.id === tmp.id ? data : t); lsSet('tasks', n); return n })
+    return true
+  }, [profile, tasks, addNotification])
+
   const completeTask = useCallback(async (id) => {
-    const now = new Date().toISOString()
+    const task = tasks.find(t => t.id === id)
+    const pts  = DIFF_POINTS[task?.difficulty || 'easy']
+    const now  = new Date().toISOString()
     setTasks(prev => { const n = prev.map(t => t.id === id ? { ...t, completed: true, completed_at: now } : t); lsSet('tasks', n); return n })
-    const newPts = pointsRef.current + 10
+    const newPts = pointsRef.current + pts
     setPoints(newPts); lsSet('points', newPts)
-    addNotification('+10 Quest Points earned! ✨', 'success')
+    addNotification(`+${pts} Quest Points earned! ✨`, 'success')
     await Promise.all([
       supabase.from('tasks').update({ completed: true, completed_at: now }).eq('id', id),
       supabase.from('profiles').update({ points: newPts }).eq('id', profile?.id),
     ])
-  }, [profile?.id, addNotification])
+  }, [profile?.id, tasks, addNotification])
 
   const deleteTask = useCallback(async (id) => {
     setTasks(prev => { const n = prev.filter(t => t.id !== id); lsSet('tasks', n); return n })
     await supabase.from('tasks').delete().eq('id', id)
   }, [])
+
+  /* ── progress logs ── */
+  const addProgressLog = useCallback(async (taskId, note) => {
+    if (!note.trim()) return false
+    const tmpLog = {
+      id: 'tmp_' + Date.now(),
+      task_id: taskId,
+      user_id: profile?.id,
+      note: note.trim(),
+      logged_at: new Date().toISOString(),
+    }
+    setProgressLogs(prev => {
+      const updated = { ...prev, [taskId]: [...(prev[taskId] || []), tmpLog] }
+      lsSet('progress_logs', updated)
+      return updated
+    })
+    const { data } = await supabase.from('task_progress').insert({ task_id: taskId, user_id: profile?.id, note: note.trim() }).select().single()
+    if (data) {
+      setProgressLogs(prev => {
+        const updated = { ...prev, [taskId]: (prev[taskId] || []).map(l => l.id === tmpLog.id ? data : l) }
+        lsSet('progress_logs', updated)
+        return updated
+      })
+    }
+    return true
+  }, [profile?.id])
 
   /* ── points / care ── */
   const spendPoints = useCallback(async (amount) => {
@@ -218,10 +336,12 @@ export function GameProvider({ children }) {
       selectedPet, selectPet,
       petStats,
       tasks, addTask, completeTask, deleteTask,
+      progressLogs, addProgressLog,
       points, spendPoints,
       feedPet, showerPet, playWithPet,
       ownedAccessories, equippedAccessories,
       buyAccessory, equipAccessory,
+      setGameMode,
       notifications, addNotification, dismissNotification,
     }}>
       {children}

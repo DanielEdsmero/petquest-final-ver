@@ -48,11 +48,18 @@ function StatCard({ icon, label, value, sub, color }) {
 }
 
 /* ────── user detail row ────── */
-function UserRow({ user, index }) {
-  const [expanded, setExpanded] = useState(false)
+function UserRow({ user, index, onResetPeriod }) {
+  const [expanded,   setExpanded]   = useState(false)
+  const [resetting,  setResetting]  = useState(null)
   const pet = PETS.find(p => p.id === user.selected_pet_id)
   const effPct = Number(user.efficiency_pct) || 0
   const effColor = effPct >= 70 ? '#4ade80' : effPct >= 40 ? '#f5a31a' : '#f43f5e'
+
+  const handleReset = async (type) => {
+    setResetting(type)
+    await onResetPeriod(user.user_id, type)
+    setResetting(null)
+  }
 
   return (
     <motion.div
@@ -121,24 +128,58 @@ function UserRow({ user, index }) {
             transition={{ duration: 0.25 }}
             className="overflow-hidden"
           >
-            <div className="px-5 pb-5 pt-0 grid grid-cols-2 sm:grid-cols-4 gap-3 border-t"
-              style={{ borderColor: 'rgba(124,58,237,0.1)' }}>
-              {[
-                { label: 'Total Tasks', value: user.total_tasks, color: '#e2e2ff' },
-                { label: 'Completed',   value: user.completed_tasks, color: '#4ade80' },
-                { label: 'Pending',     value: user.pending_tasks, color: '#f5a31a' },
-                { label: 'Procrastinated', value: user.procrastinated_tasks, color: '#f43f5e' },
-                { label: 'Avg Time',    value: user.avg_completion_hours != null ? `${user.avg_completion_hours}h` : 'N/A', color: '#06b6d4' },
-                { label: 'Efficiency',  value: `${effPct}%`, color: effColor },
-                { label: 'Points',      value: user.points, color: '#f5a31a' },
-                { label: 'Joined',      value: new Date(user.created_at).toLocaleDateString(), color: '#8080aa' },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="p-3 rounded-xl"
-                  style={{ background: 'rgba(19,19,58,0.5)', border: '1px solid rgba(124,58,237,0.1)' }}>
-                  <div className="font-cinzel font-bold text-base" style={{ color }}>{value}</div>
-                  <div className="text-xs font-nunito mt-0.5" style={{ color: 'var(--text-muted)' }}>{label}</div>
+            <div className="px-5 pb-5 pt-0 border-t" style={{ borderColor: 'rgba(124,58,237,0.1)' }}>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+                {[
+                  { label: 'Total Tasks',    value: user.total_tasks,         color: '#e2e2ff' },
+                  { label: 'Completed',      value: user.completed_tasks,     color: '#4ade80' },
+                  { label: 'Pending',        value: user.pending_tasks,       color: '#f5a31a' },
+                  { label: 'Procrastinated', value: user.procrastinated_tasks, color: '#f43f5e' },
+                  { label: 'Avg Time',       value: user.avg_completion_hours != null ? `${user.avg_completion_hours}h` : 'N/A', color: '#06b6d4' },
+                  { label: 'Efficiency',     value: `${effPct}%`,             color: effColor },
+                  { label: 'Points',         value: user.points,              color: '#f5a31a' },
+                  { label: 'Joined',         value: new Date(user.created_at).toLocaleDateString(), color: '#8080aa' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="p-3 rounded-xl"
+                    style={{ background: 'rgba(19,19,58,0.5)', border: '1px solid rgba(124,58,237,0.1)' }}>
+                    <div className="font-cinzel font-bold text-base" style={{ color }}>{value}</div>
+                    <div className="text-xs font-nunito mt-0.5" style={{ color: 'var(--text-muted)' }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Quest period resets */}
+              <div className="mt-4 pt-3 border-t" style={{ borderColor: 'rgba(124,58,237,0.08)' }}>
+                <p className="text-xs font-nunito font-bold uppercase tracking-widest mb-2"
+                  style={{ color: 'var(--text-muted)' }}>
+                  Quest Period Resets
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <motion.button
+                    onClick={() => handleReset('hard')}
+                    disabled={resetting === 'hard'}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-nunito font-bold"
+                    style={{ background: 'rgba(244,63,94,0.12)', border: '1px solid rgba(244,63,94,0.3)', color: '#f43f5e' }}
+                    whileHover={{ background: 'rgba(244,63,94,0.22)' }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    {resetting === 'hard' ? '...' : '🔥 Reset Hard Period'}
+                  </motion.button>
+                  <motion.button
+                    onClick={() => handleReset('medium')}
+                    disabled={resetting === 'medium'}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-nunito font-bold"
+                    style={{ background: 'rgba(245,163,26,0.12)', border: '1px solid rgba(245,163,26,0.3)', color: '#f5a31a' }}
+                    whileHover={{ background: 'rgba(245,163,26,0.22)' }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    {resetting === 'medium' ? '...' : '⚡ Reset Medium Period'}
+                  </motion.button>
                 </div>
-              ))}
+                <p className="text-xs font-nunito mt-2" style={{ color: 'var(--text-muted)' }}>
+                  Resetting a period lets the player add new quests of that difficulty before the normal cooldown expires.
+                </p>
+              </div>
             </div>
           </motion.div>
         )}
@@ -214,6 +255,15 @@ export default function AdminPage() {
   const toggleSort = (field) => {
     if (sortBy === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortBy(field); setSortDir('desc') }
+  }
+
+  const resetPeriod = async (userId, type) => {
+    const field = type === 'hard' ? 'hard_period_start' : 'medium_period_start'
+    const { error: resetError } = await supabase
+      .from('profiles')
+      .update({ [field]: new Date().toISOString() })
+      .eq('id', userId)
+    if (resetError) setError(resetError.message)
   }
 
   if (loading) {
@@ -443,7 +493,7 @@ export default function AdminPage() {
           ) : (
             <div>
               {users.map((user, i) => (
-                <UserRow key={user.user_id} user={user} index={i} />
+                <UserRow key={user.user_id} user={user} index={i} onResetPeriod={resetPeriod} />
               ))}
             </div>
           )}

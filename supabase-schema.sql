@@ -234,3 +234,55 @@ grant select on daily_completions to authenticated;
 -- Now go to Authentication → Users → "Add user"
 -- to create your admin account (see README for details).
 -- ============================================================
+
+
+-- ============================================================
+-- PHASE 2: QUEST MODES & DIFFICULTIES
+-- Run this section in Supabase SQL Editor after the initial
+-- schema is already in place.
+-- ============================================================
+
+-- Add game mode and period tracking to profiles
+alter table profiles
+  add column if not exists game_mode text check (game_mode in ('fitness', 'academic', 'custom')),
+  add column if not exists hard_period_start   timestamptz not null default now(),
+  add column if not exists medium_period_start timestamptz not null default now();
+
+-- Add difficulty to tasks (existing rows default to 'easy')
+alter table tasks
+  add column if not exists difficulty text not null default 'easy'
+    check (difficulty in ('easy', 'medium', 'hard'));
+
+-- Progress logs for medium/hard tasks
+create table if not exists task_progress (
+  id         uuid        primary key default uuid_generate_v4(),
+  task_id    uuid        references tasks(id) on delete cascade not null,
+  user_id    uuid        references profiles(id) on delete cascade not null,
+  note       text        not null,
+  logged_at  timestamptz not null default now()
+);
+
+alter table task_progress enable row level security;
+
+create policy "task_progress: own all"
+  on task_progress for all
+  using ( auth.uid() = user_id );
+
+create policy "task_progress: admin read"
+  on task_progress for select
+  using ( is_admin() );
+
+-- Allow admins to update other users' profiles (needed for period resets)
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where tablename = 'profiles' and policyname = 'profiles: admin update'
+  ) then
+    execute $policy$
+      create policy "profiles: admin update"
+        on profiles for update
+        using ( is_admin() )
+    $policy$;
+  end if;
+end $$;

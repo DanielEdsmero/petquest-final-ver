@@ -1,8 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Sparkles, Star, ShoppingBag, Droplets, Heart, Utensils, Shield } from 'lucide-react'
+import { LogOut, Sparkles, Star, ShoppingBag, Droplets, Heart, Utensils, Shield, Settings } from 'lucide-react'
 import { useGame } from '../context/GameContext'
+
+const MODE_META = {
+  fitness:  { emoji: '💪', label: 'Fitness',  color: '#f43f5e' },
+  academic: { emoji: '📚', label: 'Academic', color: '#06b6d4' },
+  custom:   { emoji: '✨', label: 'Custom',   color: '#f5a31a' },
+}
 import StatBar from '../components/StatBar'
 import TaskList from '../components/TaskList'
 import PetAvatar from '../components/PetAvatar'
@@ -139,6 +145,24 @@ export default function DashboardPage() {
               {user?.username}
             </span>
           </div>
+
+          {/* Mode badge */}
+          {profile?.game_mode && (() => {
+            const m = MODE_META[profile.game_mode]
+            return (
+              <motion.button
+                onClick={() => navigate('/mode-select')}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-nunito font-bold"
+                style={{ background: m.color + '12', border: `1px solid ${m.color}35`, color: m.color }}
+                whileHover={{ background: m.color + '22' }}
+                whileTap={{ scale: 0.93 }}
+                title="Change mode"
+              >
+                {m.emoji} {m.label}
+                <Settings size={11} className="opacity-60" />
+              </motion.button>
+            )
+          })()}
 
           {isAdmin && (
             <motion.button
