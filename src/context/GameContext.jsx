@@ -245,6 +245,36 @@ export function GameProvider({ children }) {
     await supabase.from('tasks').delete().eq('id', id)
   }, [])
 
+  /* ── bulk preset loader ── */
+  const bulkAddPresets = useCallback(async (questsToAdd) => {
+    if (!questsToAdd.length || !profile?.id) return 0
+
+    const now       = Date.now()
+    const hardStart = new Date(profile?.hard_period_start  || 0).getTime()
+    const medStart  = new Date(profile?.medium_period_start || 0).getTime()
+    const hardExpired = now - hardStart >= HARD_PERIOD_MS
+    const medExpired  = now - medStart  >= MEDIUM_PERIOD_MS
+
+    let hardCount = hardExpired ? 0 : tasks.filter(t =>
+      t.difficulty === 'hard' && new Date(t.created_at).getTime() >= hardStart
+    ).length
+    let medCount = medExpired ? 0 : tasks.filter(t =>
+      t.difficulty === 'medium' && new Date(t.created_at).getTime() >= medStart
+    ).length
+
+    const allowed = questsToAdd.filter(q => {
+      if (q.difficulty === 'hard')   { if (hardCount >= 1) return false; hardCount++; return true }
+      if (q.difficulty === 'medium') { if (medCount  >= 3) return false; medCount++;  return true }
+      return true
+    })
+
+    if (!allowed.length) return 0
+    const rows = allowed.map(q => ({ user_id: profile.id, text: q.text, difficulty: q.difficulty }))
+    const { data } = await supabase.from('tasks').insert(rows).select()
+    if (data) { setTasks(prev => { const n = [...prev, ...data]; lsSet('tasks', n); return n }); return data.length }
+    return 0
+  }, [profile, tasks])
+
   /* ── progress logs ── */
   const addProgressLog = useCallback(async (taskId, note) => {
     if (!note.trim()) return false
@@ -336,7 +366,7 @@ export function GameProvider({ children }) {
       selectedPet, selectPet,
       petStats,
       tasks, addTask, completeTask, deleteTask,
-      progressLogs, addProgressLog,
+      progressLogs, addProgressLog, bulkAddPresets,
       points, spendPoints,
       feedPet, showerPet, playWithPet,
       ownedAccessories, equippedAccessories,
