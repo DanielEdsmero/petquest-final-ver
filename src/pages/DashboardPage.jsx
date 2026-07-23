@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Sparkles, Star, ShoppingBag, Droplets, Heart, Utensils, Shield, Settings } from 'lucide-react'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
+import { LogOut, Sparkles, Star, ShoppingBag, Droplets, Heart, Utensils, Shield, Settings, Trophy } from 'lucide-react'
 import { useGame } from '../context/GameContext'
 
 const MODE_META = {
@@ -9,9 +9,21 @@ const MODE_META = {
   academic: { emoji: '📚', label: 'Academic', color: '#06b6d4' },
   custom:   { emoji: '✨', label: 'Custom',   color: '#f5a31a' },
 }
+
+/* Per-care-action feedback: the emoji that floats up and the tint wash. */
+const CARE_META = {
+  feed:   { emoji: '🍖', tint: '#f59e0b' },
+  shower: { emoji: '🛁', tint: '#06b6d4' },
+  play:   { emoji: '✨', tint: '#a78bfa' },
+}
 import StatBar from '../components/StatBar'
 import TaskList from '../components/TaskList'
 import PetAvatar from '../components/PetAvatar'
+import FloatingText from '../components/animations/FloatingText'
+import StreakCounter from '../components/StreakCounter'
+import EvolutionBar from '../components/EvolutionBar'
+import EvolutionOverlay from '../components/animations/EvolutionOverlay'
+import ConnectionStatus from '../components/ConnectionStatus'
 
 function CareButton({ icon: Icon, label, cost, color, glowColor, onClick, disabled }) {
   return (
@@ -36,29 +48,52 @@ function CareButton({ icon: Icon, label, cost, color, glowColor, onClick, disabl
 }
 
 function PointsDisplay({ points }) {
+  const reduceMotion = useReducedMotion()
+  const prevPoints = useRef(points)
+  /* Bumped only when points go UP, so spending on care/accessories doesn't
+     trigger a reward animation. Doubles as the remount key that replays it. */
+  const [gain, setGain] = useState(0)
+
+  useEffect(() => {
+    if (points > prevPoints.current) setGain(g => g + 1)
+    prevPoints.current = points
+  }, [points])
+
+  const animated = gain > 0 && !reduceMotion
+
   return (
     <motion.div
-      className="flex items-center gap-2 px-4 py-2 rounded-xl"
+      className="flex items-center gap-2 px-4 py-2 rounded-xl relative"
       style={{
         background: 'rgba(245, 163, 26, 0.1)',
         border: '1px solid rgba(245, 163, 26, 0.3)',
       }}
-      key={points}
-      animate={{ scale: [1, 1.08, 1] }}
-      transition={{ duration: 0.4 }}
+      key={gain}
+      animate={animated ? { scale: [1, 1.2, 1] } : { scale: 1 }}
+      transition={{ duration: 0.3, ease: 'easeOut' }}
     >
+      {animated && (
+        <motion.div
+          className="points-glow"
+          initial={{ opacity: 0.85, scale: 0.7 }}
+          animate={{ opacity: 0, scale: 1.5 }}
+          transition={{ duration: 0.45, ease: 'easeOut' }}
+        />
+      )}
+
       <motion.span
-        animate={{ rotate: [0, 20, -20, 0] }}
+        animate={reduceMotion ? {} : { rotate: [0, 20, -20, 0] }}
         transition={{ duration: 0.5, delay: 0.1 }}
-        className="text-xl"
+        className="text-xl relative"
+        style={{ zIndex: 1 }}
       >
         ⭐
       </motion.span>
-      <div>
+      <div className="relative" style={{ zIndex: 1 }}>
         <div className="font-cinzel font-black text-lg leading-none gradient-text-gold">
           {points.toLocaleString()}
         </div>
-        <div className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>Points</div>
+        <div className="text-xs font-nunito" style={{ color: 'var(--text-soft)' }}>Points</div>
       </div>
     </motion.div>
   )
@@ -72,16 +107,29 @@ export default function DashboardPage() {
     feedPet, showerPet, playWithPet,
     equippedAccessories,
     tasks,
+    totalPointsEarned, currentStreak, longestStreak, petLevel,
+    evolution, clearEvolution,
+    streakBroken, clearStreakBroken,
+    connection, pendingCount,
   } = useGame()
   const isAdmin = profile?.role === 'admin'
   const navigate = useNavigate()
   const [actionAnim, setActionAnim] = useState(null)
 
+  /* A broken streak plays the pet's sad reaction once, then clears. */
+  useEffect(() => {
+    if (!streakBroken) return
+    setActionAnim('sad')
+    const id = setTimeout(() => { setActionAnim(null); clearStreakBroken() }, 1200)
+    return () => clearTimeout(id)
+  }, [streakBroken, clearStreakBroken])
+
   const triggerAction = async (actionFn, type) => {
     const success = actionFn()
     if (success !== false) {
       setActionAnim(type)
-      setTimeout(() => setActionAnim(null), 600)
+      // Long enough for the pet reaction (800ms) and the floating emoji to finish.
+      setTimeout(() => setActionAnim(null), 900)
     }
   }
 
@@ -94,6 +142,12 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen relative" style={{ background: 'var(--bg-deep)' }}>
+      <EvolutionOverlay
+        evolution={evolution}
+        petEmoji={selectedPet?.emoji}
+        onDone={clearEvolution}
+      />
+
       {/* Ambient background */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 right-0 w-96 h-96 rounded-full opacity-50"
@@ -132,7 +186,9 @@ export default function DashboardPage() {
         </AnimatePresence>
 
         {/* Right: points + user + logout */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <ConnectionStatus connection={connection} pendingCount={pendingCount} />
+          <StreakCounter streak={currentStreak} longest={longestStreak} />
           <PointsDisplay points={points} />
 
           <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl"
@@ -145,6 +201,19 @@ export default function DashboardPage() {
               {user?.username}
             </span>
           </div>
+
+          {/* Leaderboard */}
+          <motion.button
+            onClick={() => navigate('/leaderboard')}
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-nunito font-bold"
+            style={{ background: 'rgba(245,163,26,0.1)', border: '1px solid rgba(245,163,26,0.25)', color: '#f5a31a' }}
+            whileHover={{ background: 'rgba(245,163,26,0.2)' }}
+            whileTap={{ scale: 0.93 }}
+            title="Leaderboard"
+          >
+            <Trophy size={15} />
+            <span className="hidden md:inline">Leaderboard</span>
+          </motion.button>
 
           {/* Mode badge */}
           {profile?.game_mode && (() => {
@@ -191,6 +260,25 @@ export default function DashboardPage() {
         </div>
       </motion.nav>
 
+      {/* Offline / degraded banner */}
+      <AnimatePresence>
+        {connection !== 'online' && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="relative z-20 overflow-hidden"
+          >
+            <div className="flex items-center justify-center gap-2 px-4 py-2 text-xs sm:text-sm font-nunito font-semibold text-center"
+              style={{ background: 'rgba(245, 163, 26, 0.12)', borderBottom: '1px solid rgba(245, 163, 26, 0.3)', color: '#f5a31a' }}>
+              <span>⚠️</span>
+              Offline mode — completions are queued and points will be verified when your connection resumes.
+              {pendingCount > 0 && <span className="font-black">({pendingCount} pending)</span>}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Main content */}
       <div className="relative z-10 max-w-6xl mx-auto px-4 md:px-6 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 dashboard-grid">
@@ -207,36 +295,37 @@ export default function DashboardPage() {
               <div className="absolute inset-0 pointer-events-none"
                 style={{ background: `radial-gradient(ellipse at 50% 0%, ${selectedPet?.color}15 0%, transparent 70%)` }} />
 
-              {/* Action animation overlay */}
+              {/* Action tint wash */}
               <AnimatePresence>
                 {actionAnim && (
                   <motion.div
-                    className="absolute inset-0 rounded-2xl pointer-events-none z-20 flex items-center justify-center"
+                    className="absolute inset-0 rounded-2xl pointer-events-none z-20"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    style={{ background: `${selectedPet?.color}15` }}
-                  >
-                    <motion.div
-                      className="text-5xl"
-                      initial={{ scale: 0.5, y: 0 }}
-                      animate={{ scale: 1.5, y: -30, opacity: 0 }}
-                      transition={{ duration: 0.6 }}
-                    >
-                      {actionAnim === 'feed' ? '🍖' : actionAnim === 'shower' ? '💧' : '🎉'}
-                    </motion.div>
-                  </motion.div>
+                    style={{ background: `${CARE_META[actionAnim]?.tint || selectedPet?.color}15` }}
+                  />
                 )}
               </AnimatePresence>
 
-              {/* Pet avatar */}
+              {/* Pet avatar + rising care emoji */}
               <div className="relative z-10">
                 <PetAvatar
                   pet={selectedPet}
                   equippedAccessories={equippedAccessories}
                   size="lg"
                   glowing={true}
+                  careAction={actionAnim}
+                  level={petLevel}
                 />
+                <FloatingText
+                  show={!!actionAnim}
+                  color={CARE_META[actionAnim]?.tint || '#f5a31a'}
+                  fontSize="1.6rem"
+                  rise={70}
+                >
+                  +{CARE_META[actionAnim]?.emoji}
+                </FloatingText>
               </div>
 
               {/* Pet name & species */}
@@ -255,6 +344,14 @@ export default function DashboardPage() {
                 <Sparkles size={10} />
                 {selectedPet?.trait}
               </div>
+            </div>
+
+            {/* Evolution card */}
+            <div className="glass-card p-5">
+              <h3 className="font-cinzel font-bold text-sm uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
+                Evolution
+              </h3>
+              <EvolutionBar totalEarned={totalPointsEarned} petName={selectedPet?.name} />
             </div>
 
             {/* Stats card */}
@@ -376,7 +473,7 @@ export default function DashboardPage() {
                 <div className="text-2xl">💡</div>
                 <div>
                   <p className="font-nunito font-bold text-sm mb-1" style={{ color: '#a78bfa' }}>Quest Tips</p>
-                  <p className="text-xs font-nunito leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                  <p className="text-xs font-nunito leading-relaxed" style={{ color: 'var(--text-soft)' }}>
                     Complete quests to earn points. Spend points on pet care or accessories.
                     Your companion's stats decrease over time — keep them happy! 🐾
                   </p>

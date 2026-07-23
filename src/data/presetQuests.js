@@ -1,3 +1,5 @@
+import { DIFFICULTY_COLORS } from './difficulty'
+
 export const PRESET_QUESTS = {
   fitness: {
     easy: [
@@ -129,7 +131,7 @@ export const PRESET_QUESTS = {
 }
 
 export const DIFF_META = {
-  easy:   { emoji: '🌱', label: 'Easy',   pts: 10, color: '#22c55e', limitDesc: 'Unlimited · Daily quests' },
-  medium: { emoji: '⚡', label: 'Medium', pts: 25, color: '#f5a31a', limitDesc: '3 quests per 3-day period' },
-  hard:   { emoji: '🔥', label: 'Hard',   pts: 50, color: '#f43f5e', limitDesc: '1 quest per week' },
+  easy:   { emoji: '🌱', label: 'Easy',   pts: 10, color: DIFFICULTY_COLORS.easy,   limitDesc: 'Unlimited · Daily quests' },
+  medium: { emoji: '⚡', label: 'Medium', pts: 25, color: DIFFICULTY_COLORS.medium, limitDesc: '3 quests per 3-day period' },
+  hard:   { emoji: '🔥', label: 'Hard',   pts: 50, color: DIFFICULTY_COLORS.hard,   limitDesc: '1 quest per week' },
 }

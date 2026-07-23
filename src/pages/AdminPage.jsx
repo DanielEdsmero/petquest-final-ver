@@ -11,6 +11,8 @@ import { ArrowLeft, Users, CheckSquare, Clock, TrendingDown, RefreshCw, ChevronD
 import { supabase } from '../lib/supabase'
 import { useGame } from '../context/GameContext'
 import { PETS } from '../data/pets'
+import { ACCESSORIES } from '../data/accessories'
+import { PET_LEVELS, levelFromPoints } from '../data/progression'
 
 /* ────── colour palette ────── */
 const CHART_COLORS = ['#f5a31a', '#7c3aed', '#06b6d4', '#4ade80', '#f43f5e', '#fbbf24', '#a78bfa']
@@ -188,6 +190,151 @@ function UserRow({ user, index, onResetPeriod }) {
   )
 }
 
+/* ────── testing & cheats (operates on the admin's OWN account) ────── */
+function CheatButton({ children, onClick, busy, color = '#f5a31a' }) {
+  return (
+    <motion.button
+      onClick={onClick}
+      disabled={busy}
+      className="px-3 py-2 rounded-xl text-xs font-nunito font-bold text-left"
+      style={{ background: `${color}18`, border: `1px solid ${color}40`, color, opacity: busy ? 0.5 : 1 }}
+      whileHover={!busy ? { background: `${color}28` } : {}}
+      whileTap={!busy ? { scale: 0.96 } : {}}
+    >
+      {children}
+    </motion.button>
+  )
+}
+
+function CheatPanel() {
+  const { profile, refreshProfile, addNotification } = useGame()
+  const [busy, setBusy] = useState(null)
+  const [pointsAmt, setPointsAmt] = useState(500)
+  const [streakDays, setStreakDays] = useState(7)
+
+  const today = () => new Date().toISOString().slice(0, 10)
+
+  const runRpc = async (fn, label) => {
+    setBusy(label)
+    const { data, error } = await supabase.rpc(fn)
+    setBusy(null)
+    if (error)     return addNotification(`${label} failed: ${error.message}`, 'error')
+    if (!data?.ok) return addNotification(`${label}: ${data?.error || 'failed'}`, 'error')
+    await refreshProfile()
+    addNotification(`${label} ✓${data.affected != null ? ` (${data.affected})` : ''}`, 'success')
+  }
+
+  const patch = async (fields, label) => {
+    if (!profile?.id) return
+    setBusy(label)
+    const { error } = await supabase.from('profiles').update(fields).eq('id', profile.id)
+    setBusy(null)
+    if (error) return addNotification(`${label} failed: ${error.message}`, 'error')
+    await refreshProfile()
+    addNotification(`${label} ✓`, 'success')
+  }
+
+  const addPoints = (n) => {
+    const total = (profile?.total_points_earned || 0) + n
+    return patch(
+      { points: (profile?.points || 0) + n, total_points_earned: total, pet_level: levelFromPoints(total) },
+      `+${n} points`,
+    )
+  }
+  const setStreak = (d) => patch(
+    { current_streak: d, longest_streak: Math.max(d, profile?.longest_streak || 0), last_completion_date: today() },
+    `Streak → ${d}`,
+  )
+  const setLevel = (lvl) => {
+    const min = PET_LEVELS.find(l => l.level === lvl)?.min ?? 0
+    return patch({ total_points_earned: min, pet_level: lvl }, `Level → ${lvl}`)
+  }
+  const unlockBoss = () => patch({ boss_battles_unlocked: true }, 'Boss battles unlocked')
+  const resetProgression = () => patch(
+    { points: 0, total_points_earned: 0, current_streak: 0, longest_streak: 0, pet_level: 1, badges: [], boss_battles_unlocked: false },
+    'Progression reset',
+  )
+
+  const grantAllAccessories = async () => {
+    if (!profile?.id) return
+    setBusy('acc')
+    const { data: owned } = await supabase.from('owned_accessories').select('accessory_id').eq('user_id', profile.id)
+    const have = new Set((owned || []).map(r => r.accessory_id))
+    const rows = ACCESSORIES.filter(a => !have.has(a.id)).map(a => ({ user_id: profile.id, accessory_id: a.id }))
+    if (rows.length) {
+      const { error } = await supabase.from('owned_accessories').insert(rows)
+      if (error) { setBusy(null); return addNotification(`Grant accessories failed: ${error.message}`, 'error') }
+    }
+    setBusy(null)
+    await refreshProfile()
+    addNotification(`Granted ${rows.length} accessories ✓`, 'success')
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+      className="glass-card p-5"
+      style={{ border: '1px solid rgba(244,63,94,0.25)' }}>
+      <h3 className="font-cinzel font-bold text-base flex items-center gap-2 mb-1">
+        🧪 Testing &amp; Cheats
+      </h3>
+      <p className="text-xs font-nunito mb-4" style={{ color: 'var(--text-muted)' }}>
+        Instant test tools — all act on <strong style={{ color: '#f5a31a' }}>your own</strong> account
+        ({profile?.username}). Return to the dashboard to see the effect.
+      </p>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+        <CheatButton onClick={() => runRpc('admin_skip_timers', 'Skip timers')} busy={busy} color="#06b6d4">
+          ⏩ Skip all quest timers
+        </CheatButton>
+        <CheatButton onClick={() => runRpc('admin_reset_my_tasks', 'Reset quests')} busy={busy} color="#06b6d4">
+          🔄 Un-complete my quests
+        </CheatButton>
+        <CheatButton onClick={unlockBoss} busy={busy} color="#7c3aed">
+          💀 Unlock Boss Battles
+        </CheatButton>
+        <CheatButton onClick={grantAllAccessories} busy={busy} color="#a78bfa">
+          🎁 Grant all accessories
+        </CheatButton>
+      </div>
+
+      {/* Points */}
+      <div className="flex items-center gap-2 mt-3 flex-wrap">
+        <input type="number" value={pointsAmt} onChange={e => setPointsAmt(Number(e.target.value) || 0)}
+          className="input-field" style={{ width: 90 }} />
+        <CheatButton onClick={() => addPoints(pointsAmt)} busy={busy}>➕ Add points</CheatButton>
+        {[100, 500, 5000].map(n => (
+          <CheatButton key={n} onClick={() => addPoints(n)} busy={busy}>+{n}</CheatButton>
+        ))}
+      </div>
+
+      {/* Streak */}
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
+        <input type="number" value={streakDays} onChange={e => setStreakDays(Number(e.target.value) || 0)}
+          className="input-field" style={{ width: 90 }} />
+        <CheatButton onClick={() => setStreak(streakDays)} busy={busy} color="#fb923c">🔥 Set streak</CheatButton>
+        {[7, 30, 100, 365].map(d => (
+          <CheatButton key={d} onClick={() => setStreak(d)} busy={busy} color="#fb923c">{d}d</CheatButton>
+        ))}
+      </div>
+
+      {/* Evolution level */}
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
+        <span className="text-xs font-nunito font-bold" style={{ color: 'var(--text-muted)' }}>🐉 Set level:</span>
+        {[1, 2, 3, 4, 5].map(l => (
+          <CheatButton key={l} onClick={() => setLevel(l)} busy={busy} color="#22c55e">Lv {l}</CheatButton>
+        ))}
+      </div>
+
+      {/* Danger */}
+      <div className="mt-3 pt-3 border-t" style={{ borderColor: 'rgba(124,58,237,0.1)' }}>
+        <CheatButton onClick={resetProgression} busy={busy} color="#f43f5e">
+          ♻️ Reset my progression to zero
+        </CheatButton>
+      </div>
+    </motion.div>
+  )
+}
+
 /* ════════════════════════════════════════════
    MAIN ADMIN PAGE
 ════════════════════════════════════════════ */
@@ -316,6 +463,9 @@ export default function AdminPage() {
             ⚠️ {error}
           </div>
         )}
+
+        {/* ── Testing & cheats ── */}
+        <CheatPanel />
 
         {/* ── Global stat cards ── */}
         <motion.div initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.1 }}

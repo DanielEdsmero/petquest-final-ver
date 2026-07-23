@@ -64,7 +64,8 @@ export default function StatBar({ stat, value }) {
           }}
           initial={{ width: 0 }}
           animate={{ width: `${pct}%` }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
+          /* Spring with a touch of overshoot so care actions feel responsive. */
+          transition={{ type: 'spring', duration: 0.5, bounce: 0.3 }}
         />
       </div>
     </div>

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useGame } from '../context/GameContext'
+import PortalLoader from '../components/animations/PortalLoader'
+import CinematicBackground from '../components/CinematicBackground'
 
 const STARS = Array.from({ length: 60 }, (_, i) => ({
   id: i,
@@ -33,12 +35,24 @@ export default function LoginPage() {
     if (tab === 'register' && !username.trim()) { setError('Adventurer name is required'); return }
     setLoading(true)
 
+    /* Hold the portal on screen for a random 800–1500ms so the animation has
+       time to read. This is a floor, not an added delay: a slower auth call
+       simply outlasts it and nothing extra is waited. */
+    const minMs = 800 + Math.random() * 700
+    const startedAt = Date.now()
+    const settle = async () => {
+      const left = minMs - (Date.now() - startedAt)
+      if (left > 0) await new Promise(r => setTimeout(r, left))
+    }
+
     if (tab === 'login') {
       const { error } = await login(email.trim(), password)
+      await settle()
       if (error) { setError(error); setLoading(false); return }
       navigate('/select')
     } else {
       const { error, data } = await register(email.trim(), password, username.trim())
+      await settle()
       if (error) { setError(error); setLoading(false); return }
       if (data?.user && !data.session) {
         setInfo('Check your email to confirm your account, then log in.')
@@ -51,24 +65,43 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden" style={{ background: 'var(--bg-deep)' }}>
+      {/* Portal overlay while authenticating */}
+      <AnimatePresence>
+        {loading && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: 'rgba(6, 6, 26, 0.88)', backdropFilter: 'blur(6px)' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            <PortalLoader
+              text={tab === 'login' ? 'Opening the Portal...' : 'Creating your legend...'}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Cinematic video + Ken Burns + magical-dust backdrop */}
+      <CinematicBackground />
+
+      {/* Twinkling stars layered over the scene */}
       {STARS.map(s => (
-        <motion.div key={s.id} className="absolute rounded-full pointer-events-none"
+        <motion.div key={s.id} className="absolute rounded-full pointer-events-none z-[1]"
           style={{ left: `${s.x}%`, top: `${s.y}%`, width: s.size, height: s.size,
             background: s.id % 3 === 0 ? '#f5a31a' : s.id % 5 === 0 ? '#7c3aed' : '#e2e2ff' }}
           animate={{ opacity: [0.2, 1, 0.2] }}
           transition={{ duration: s.duration, delay: s.delay, repeat: Infinity, ease: 'easeInOut' }} />
       ))}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(circle, rgba(124,58,237,0.12) 0%, transparent 70%)', filter: 'blur(40px)' }} />
-      <div className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(circle, rgba(245,163,26,0.08) 0%, transparent 70%)', filter: 'blur(40px)' }} />
 
-      <motion.div initial={{ opacity: 0, y: 32, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.7 }} className="glass-card w-full max-w-md mx-4 p-8 relative z-10">
+      {/* Login card — slides up and fades in, staggered 0.5s after the video fade */}
+      <motion.div initial={{ opacity: 0, y: 48, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.7, delay: 0.5, ease: 'easeOut' }} className="glass-card glass-card--cinematic w-full max-w-md mx-4 p-8 relative z-10">
         <div className="text-center mb-6">
           <motion.div className="text-6xl mb-3 block"
             animate={{ rotate: [0,-5,5,-3,3,0] }} transition={{ duration: 3, repeat: Infinity, repeatDelay: 2 }}>🐾</motion.div>
-          <h1 className="font-cinzel font-black text-4xl tracking-wider gradient-text-gold">Pet Quest</h1>
+          <h1 className="font-cinzel font-black text-4xl tracking-wider gradient-text-gold title-shimmer">Pet Quest</h1>
           <p className="text-sm mt-1 font-nunito" style={{ color: 'var(--text-muted)' }}>Companion Chronicles</p>
         </div>
 

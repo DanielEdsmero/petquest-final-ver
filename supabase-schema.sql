@@ -286,3 +286,152 @@ begin
     $policy$;
   end if;
 end $$;
+
+-- ============================================================
+-- PHASE 3: ANTI-CHEAT TIME-GATING
+--
+-- ⚠️  ORDERING WARNING
+-- This section defines complete_task(). So does
+-- supabase-phase4-gamification.sql, which SUPERSEDES this one.
+-- `create or replace` means WHICHEVER RUNS LAST WINS — re-running
+-- this file after Phase 4 silently reverts the function to the
+-- pre-gamification version (streaks, evolution and badges stop
+-- updating, and the RPC returns only {ok, points}).
+--
+-- If you re-run this file for any reason, ALWAYS re-run
+-- supabase-phase4-gamification.sql afterwards, then verify:
+--   select prosrc like '%total_points_earned%' as is_phase4
+--     from pg_proc where proname = 'complete_task';   -- must be true
+--
+-- Run this section in Supabase SQL Editor after Phase 2.
+-- Enforces a minimum active time per difficulty before a quest
+-- can be completed, plus a burst rate-limit lock, and moves the
+-- point award server-side so the gates cannot be bypassed.
+-- ============================================================
+
+-- tasks: start anchor for the time gate
+alter table tasks add column if not exists started_at timestamptz;
+-- Backfill existing quests to their creation time so in-progress
+-- quests are not punished by the new gate.
+update tasks set started_at = created_at where started_at is null;
+-- New rows start their timer at insert time.
+alter table tasks alter column started_at set default now();
+
+-- profiles: rate-limit state
+alter table profiles
+  add column if not exists last_completions      jsonb not null default '[]'::jsonb,
+  add column if not exists completion_lock_until timestamptz;
+
+-- Server-side validated completion. Enforces the time gate and the
+-- 3-completions-in-60s -> 5-minute lock, then awards points atomically.
+-- Returns { ok, error, points, locked_until }.
+create or replace function complete_task(p_task_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_task        tasks%rowtype;
+  v_uid         uuid := auth.uid();
+  v_min_secs    int;
+  v_points      int;
+  v_new_points  int;
+  v_lock_until  timestamptz;
+  v_existing    jsonb;
+  v_recent      jsonb;
+  v_burst       int;
+begin
+  if v_uid is null then
+    return jsonb_build_object('ok', false, 'error', 'unauthenticated');
+  end if;
+
+  -- 1. Load task, require ownership and not-yet-completed.
+  select * into v_task from tasks where id = p_task_id;
+  if not found or v_task.user_id <> v_uid or v_task.completed then
+    return jsonb_build_object('ok', false, 'error', 'invalid');
+  end if;
+
+  -- 2. Time gate by difficulty.
+  v_min_secs := case v_task.difficulty
+                  when 'hard'   then 7200
+                  when 'medium' then 1800
+                  else 300
+                end;
+  v_points   := case v_task.difficulty
+                  when 'hard'   then 50
+                  when 'medium' then 25
+                  else 10
+                end;
+
+  if now() - coalesce(v_task.started_at, v_task.created_at) < make_interval(secs => v_min_secs) then
+    return jsonb_build_object('ok', false, 'error', 'too_soon');
+  end if;
+
+  -- 3. Existing lock still active?
+  select completion_lock_until, last_completions
+    into v_lock_until, v_existing
+    from profiles where id = v_uid;
+  if v_lock_until is not null and now() < v_lock_until then
+    return jsonb_build_object('ok', false, 'error', 'locked',
+                              'locked_until', v_lock_until);
+  end if;
+
+  -- 4. Rate-limit: append now(), keep the most recent 5, count the last 60s.
+  --    Timestamps are stored as jsonb strings (to_jsonb of a timestamptz),
+  --    so jsonb_array_elements_text strips the quotes back to castable ISO text.
+  select coalesce(jsonb_agg(to_jsonb(ts) order by ts desc), '[]'::jsonb)
+    into v_recent
+    from (
+      select ts from (
+        select e.val::timestamptz as ts
+          from jsonb_array_elements_text(coalesce(v_existing, '[]'::jsonb)) as e(val)
+        union all
+        select now()
+      ) u
+      order by ts desc
+      limit 5
+    ) x;
+
+  select count(*) into v_burst
+    from jsonb_array_elements_text(v_recent) as e(val)
+    where e.val::timestamptz > now() - interval '60 seconds';
+
+  if v_burst >= 3 then
+    v_lock_until := now() + interval '5 minutes';
+    update profiles
+      set last_completions = v_recent,
+          completion_lock_until = v_lock_until
+      where id = v_uid;
+    return jsonb_build_object('ok', false, 'error', 'locked',
+                              'locked_until', v_lock_until);
+  end if;
+
+  -- 5. Award: complete the task and add points atomically.
+  update tasks set completed = true, completed_at = now() where id = p_task_id;
+  update profiles
+    set points = points + v_points,
+        last_completions = v_recent
+    where id = v_uid
+    returning points into v_new_points;
+
+  return jsonb_build_object('ok', true, 'points', v_new_points);
+end;
+$$;
+
+grant execute on function complete_task(uuid) to authenticated;
+
+-- Close the direct write path the RPC exists to guard. Without this, a user
+-- could still bypass every gate with a plain
+--   supabase.from('tasks').update({ completed: true })
+-- from the browser console. complete_task() is SECURITY DEFINER so it runs as
+-- the owner and is unaffected. No client code updates these columns directly.
+revoke update (completed, completed_at, started_at) on tasks from authenticated;
+revoke update (completed, completed_at, started_at) on tasks from anon;
+
+-- NOTE: profiles.points is deliberately still client-writable because
+-- spendPoints() (accessories shop, GameContext.jsx) debits it directly. Until
+-- that is also moved into an RPC, a determined user can still award themselves
+-- points by writing profiles.points, without touching tasks. Closing that hole
+-- requires a matching spend_points() RPC plus:
+--   revoke update (points) on profiles from authenticated, anon;

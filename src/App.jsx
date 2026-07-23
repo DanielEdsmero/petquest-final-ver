@@ -1,20 +1,20 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { GameProvider, useGame } from './context/GameContext'
+import PageTransition from './components/animations/PageTransition'
+import PortalLoader from './components/animations/PortalLoader'
 import LoginPage          from './pages/LoginPage'
 import PetSelectPage      from './pages/PetSelectPage'
 import GameModeSelectPage from './pages/GameModeSelectPage'
 import DashboardPage      from './pages/DashboardPage'
 import AccessoriesPage    from './pages/AccessoriesPage'
+import LeaderboardPage    from './pages/LeaderboardPage'
 import AdminPage          from './pages/AdminPage'
 import Notifications      from './components/Notifications'
 
 function LoadingScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-deep)' }}>
-      <div className="text-center">
-        <div className="text-5xl mb-4 animate-bounce">🐾</div>
-        <p className="font-cinzel gradient-text-gold text-lg">Loading Pet Quest...</p>
-      </div>
+      <PortalLoader text="Loading Pet Quest..." />
     </div>
   )
 }
@@ -29,13 +29,17 @@ function AppRoutes() {
   const hasMode  = !!profile?.game_mode
   const isAdmin  = profile?.role === 'admin'
 
+  /* Pages animate IN on mount via PageTransition. We intentionally do NOT wrap
+     Routes in AnimatePresence "wait": with redirect routes and the motion
+     element nested inside each element, exit-complete never fires and the
+     incoming page stays unmounted (blank screen). Enter-only is robust. */
   return (
     <>
       <Notifications />
       <Routes>
         <Route path="/"
           element={
-            !loggedIn ? <LoginPage /> :
+            !loggedIn ? <PageTransition variant="fade"><LoginPage /></PageTransition> :
             !hasPet   ? <Navigate to="/select"      replace /> :
             !hasMode  ? <Navigate to="/mode-select" replace /> :
             <Navigate to="/dashboard" replace />
@@ -45,14 +49,14 @@ function AppRoutes() {
           element={
             !loggedIn ? <Navigate to="/" replace /> :
             hasPet    ? (hasMode ? <Navigate to="/dashboard" replace /> : <Navigate to="/mode-select" replace />) :
-            <PetSelectPage />
+            <PageTransition variant="scaleFade"><PetSelectPage /></PageTransition>
           }
         />
         <Route path="/mode-select"
           element={
             !loggedIn ? <Navigate to="/"       replace /> :
             !hasPet   ? <Navigate to="/select" replace /> :
-            <GameModeSelectPage />
+            <PageTransition variant="scaleFade"><GameModeSelectPage /></PageTransition>
           }
         />
         <Route path="/dashboard"
@@ -60,7 +64,7 @@ function AppRoutes() {
             !loggedIn ? <Navigate to="/"            replace /> :
             !hasPet   ? <Navigate to="/select"      replace /> :
             !hasMode  ? <Navigate to="/mode-select" replace /> :
-            <DashboardPage />
+            <PageTransition variant="fade"><DashboardPage /></PageTransition>
           }
         />
         <Route path="/accessories"
@@ -68,14 +72,21 @@ function AppRoutes() {
             !loggedIn ? <Navigate to="/"            replace /> :
             !hasPet   ? <Navigate to="/select"      replace /> :
             !hasMode  ? <Navigate to="/mode-select" replace /> :
-            <AccessoriesPage />
+            <PageTransition variant="slideLeft"><AccessoriesPage /></PageTransition>
+          }
+        />
+        {/* Leaderboard is open to every logged-in player. */}
+        <Route path="/leaderboard"
+          element={
+            !loggedIn ? <Navigate to="/" replace /> :
+            <PageTransition variant="slideLeft"><LeaderboardPage /></PageTransition>
           }
         />
         <Route path="/admin"
           element={
             !loggedIn ? <Navigate to="/"          replace /> :
             !isAdmin  ? <Navigate to="/dashboard" replace /> :
-            <AdminPage />
+            <PageTransition variant="slideLeft"><AdminPage /></PageTransition>
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />

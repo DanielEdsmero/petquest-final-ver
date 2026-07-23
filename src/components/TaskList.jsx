@@ -1,12 +1,24 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trash2, Plus, CheckCircle2, Circle, BookOpen, Clock, ChevronUp } from 'lucide-react'
-import { useGame, HARD_PERIOD_MS, MEDIUM_PERIOD_MS } from '../context/GameContext'
+import { Trash2, Plus, Circle, BookOpen, Clock, ChevronUp } from 'lucide-react'
+import { useGame, HARD_PERIOD_MS, MEDIUM_PERIOD_MS, DIFF_MIN_COMPLETE_MS } from '../context/GameContext'
+import CompletionFx from './animations/CompletionFx'
+import CheckDraw from './animations/CheckDraw'
+import EmptyStatePet from './animations/EmptyStatePet'
+import { DIFFICULTY_COLORS } from '../data/difficulty'
 
 const DIFF_CONFIG = {
-  easy:   { label: 'Easy',   emoji: '🌱', pts: 10, color: '#22c55e', limit: null, desc: 'Unlimited · Daily quests' },
-  medium: { label: 'Medium', emoji: '⚡', pts: 25, color: '#f5a31a', limit: 3,    desc: '3 quests per 3 days' },
-  hard:   { label: 'Hard',   emoji: '🔥', pts: 50, color: '#f43f5e', limit: 1,    desc: '1 quest per week' },
+  easy:   { label: 'Easy',   emoji: '🌱', pts: 10, color: DIFFICULTY_COLORS.easy,   limit: null, desc: 'Unlimited · Daily quests' },
+  medium: { label: 'Medium', emoji: '⚡', pts: 25, color: DIFFICULTY_COLORS.medium, limit: 3,    desc: '3 quests per 3 days' },
+  hard:   { label: 'Hard',   emoji: '🔥', pts: 50, color: DIFFICULTY_COLORS.hard,   limit: 1,    desc: '1 quest per week' },
+}
+
+/* M:SS countdown for the per-quest completion gate. */
+function formatCountdown(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000))
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${String(s).padStart(2, '0')}`
 }
 
 function formatTimeLeft(ms) {
@@ -79,20 +91,82 @@ function ProgressLogs({ taskId, logs = [], onAdd }) {
   )
 }
 
-function TaskItem({ task, onComplete, onDelete, onAddProgress, logs, canLog }) {
-  const [showFloat, setShowFloat] = useState(false)
-  const [expanded,  setExpanded]  = useState(false)
+/* Minimum time the spinner stays up. The RPC is real work, so we don't pad the
+   request — we just hold the spinner long enough that a fast response doesn't
+   make it flash. */
+const MIN_SPINNER_MS = 400
+const PRESS_MS = 100
+
+function TaskItem({ task, onComplete, onDelete, onAddProgress, logs, canLog, now, locked, onReward }) {
+  const [expanded, setExpanded] = useState(false)
+  /* idle -> pressing -> processing -> (success | idle) */
+  const [stage, setStage] = useState('idle')
+  const cardRef = useRef(null)
+  const btnRef  = useRef(null)
+  const alive   = useRef(true)
+  /* Set on mount, not just cleared on unmount: React StrictMode runs the
+     cleanup once immediately after mounting, and refs survive that cycle — so
+     a cleanup-only effect would leave this false forever and every completion
+     would bail out after the press stage. */
+  useEffect(() => {
+    alive.current = true
+    return () => { alive.current = false }
+  }, [])
+
   const cfg = DIFF_CONFIG[task.difficulty || 'easy']
 
-  const handleComplete = () => {
-    if (task.completed) return
-    setShowFloat(true)
-    setTimeout(() => setShowFloat(false), 1200)
-    onComplete(task.id)
+  /* Anti-cheat gate: a quest can only be completed after its difficulty's
+     minimum active time. The server re-checks this in complete_task(). */
+  const startedMs = new Date(task.started_at || task.created_at).getTime()
+  const remaining = startedMs + DIFF_MIN_COMPLETE_MS[task.difficulty || 'easy'] - now
+  /* `gated` = genuinely blocked (timer or lock) and drives the countdown pill.
+     `ready` additionally requires an idle button, so the pill doesn't reappear
+     mid-animation while a completion is being processed. */
+  const pending = !task.completed && !!task.pending  // queued offline, awaiting verify
+  const gated = !task.completed && !pending && (remaining > 0 || locked)
+  const ready = !task.completed && !pending && !gated && stage === 'idle'
+
+  const wait = (ms) => new Promise(r => setTimeout(r, ms))
+
+  /* Reward feedback only fires once the server has actually awarded the
+     points — a too_soon/locked rejection rewinds to idle with nothing shown. */
+  const handleComplete = async () => {
+    if (task.completed || !ready) return
+
+    // Stage 1 — press.
+    setStage('pressing')
+    await wait(PRESS_MS)
+    if (!alive.current) return
+
+    // Stage 2 — validating against the server.
+    setStage('processing')
+    const startedAt = Date.now()
+    const ok = await onComplete(task.id)
+    const elapsed = Date.now() - startedAt
+    if (elapsed < MIN_SPINNER_MS) await wait(MIN_SPINNER_MS - elapsed)
+    if (!alive.current) return
+
+    if (!ok) { setStage('idle'); return }
+
+    // Stage 3 — success. Measured before React re-parents the card into the
+    // Completed list, then handed to a portal so it survives the unmount.
+    setStage('success')
+    const card = cardRef.current?.getBoundingClientRect()
+    const btn  = btnRef.current?.getBoundingClientRect()
+    if (card && btn) {
+      onReward?.({
+        cardX: card.left + card.width / 2,
+        cardY: card.top + card.height / 2,
+        btnY:  btn.top + btn.height / 2,
+        color: cfg.color,
+        label: `+${cfg.pts} pts`,
+      })
+    }
   }
 
   return (
     <motion.div
+      ref={cardRef}
       layout
       initial={{ opacity: 0, x: -20, height: 0 }}
       animate={{ opacity: 1, x: 0, height: 'auto' }}
@@ -100,33 +174,44 @@ function TaskItem({ task, onComplete, onDelete, onAddProgress, logs, canLog }) {
       transition={{ duration: 0.3, ease: 'easeOut' }}
       className={`task-item relative px-4 py-3 mb-2 ${task.completed ? 'completed' : ''}`}
     >
-      <AnimatePresence>
-        {showFloat && (
-          <motion.div
-            className="float-label font-bold text-sm"
-            style={{ color: cfg.color, top: '-10px' }}
-            initial={{ y: 0, opacity: 1 }}
-            animate={{ y: -50, opacity: 0 }}
-            exit={{}}
-            transition={{ duration: 1.2, ease: 'easeOut' }}
-          >
-            +{cfg.pts} ✨
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="flex items-center gap-3">
         <motion.button
+          ref={btnRef}
           onClick={handleComplete}
-          disabled={task.completed}
-          className="flex-shrink-0"
-          whileTap={{ scale: 0.85 }}
-          aria-label={task.completed ? 'Completed' : 'Mark complete'}
-        >
-          {task.completed
-            ? <CheckCircle2 size={22} className="text-green-500" />
-            : <Circle size={22} style={{ color: cfg.color + '70' }} className="hover:opacity-100 transition-opacity" />
+          disabled={task.completed || !ready}
+          className="flex-shrink-0 relative"
+          whileTap={ready ? { scale: 0.85 } : {}}
+          animate={
+            stage === 'pressing' ? { scale: 0.95 }
+            : ready              ? { scale: [1, 1.12, 1] }
+            :                      { scale: 1 }
           }
+          transition={
+            stage === 'pressing' ? { duration: PRESS_MS / 1000 }
+            : ready              ? { duration: 1.6, repeat: Infinity, ease: 'easeInOut' }
+            :                      { duration: 0.2 }
+          }
+          style={{
+            borderRadius: '50%',
+            cursor: task.completed || !ready ? 'not-allowed' : 'pointer',
+            boxShadow: ready ? `0 0 10px ${cfg.color}66` : 'none',
+          }}
+          aria-label={task.completed ? 'Completed' : ready ? 'Mark complete' : 'Not yet available'}
+        >
+          {stage === 'processing' ? (
+            <motion.span
+              className="spinner-ring"
+              style={{ borderTopColor: cfg.color }}
+              animate={{ rotate: 360 }}
+              transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }}
+            />
+          ) : task.completed || stage === 'success' ? (
+            /* Draws itself in on mount — including when the card re-mounts
+               into the Completed list right after a successful completion. */
+            <CheckDraw size={22} />
+          ) : (
+            <Circle size={22} style={{ color: cfg.color + (ready ? 'ff' : '38') }} className="transition-opacity" />
+          )}
         </motion.button>
 
         <span
@@ -135,6 +220,38 @@ function TaskItem({ task, onComplete, onDelete, onAddProgress, logs, canLog }) {
         >
           {task.text}
         </span>
+
+        {pending && (
+          <span
+            className="flex items-center gap-1 text-xs font-nunito font-semibold flex-shrink-0 px-2 py-0.5 rounded-lg"
+            style={{
+              background: 'rgba(245,163,26,0.12)',
+              color: 'var(--gold)',
+              border: '1px solid rgba(245,163,26,0.3)',
+            }}
+            title="Completed offline — points are awarded once your connection returns"
+          >
+            <Clock size={11} />
+            Pending verification
+          </span>
+        )}
+
+        {gated && (
+          <span
+            className="flex items-center gap-1 text-xs font-nunito font-semibold flex-shrink-0 px-2 py-0.5 rounded-lg"
+            style={{
+              background: 'rgba(19,19,58,0.8)',
+              color: 'var(--text-muted)',
+              border: '1px solid rgba(124,58,237,0.15)',
+            }}
+            title={locked
+              ? 'Completions are temporarily locked'
+              : `This ${cfg.label.toLowerCase()} quest unlocks after ${DIFF_MIN_COMPLETE_MS[task.difficulty || 'easy'] / 60000} min`}
+          >
+            <Clock size={11} style={{ color: cfg.color }} />
+            {locked ? 'Locked' : `Available in ${formatCountdown(remaining)}`}
+          </span>
+        )}
 
         {canLog && !task.completed && (
           <motion.button
@@ -188,11 +305,35 @@ export default function TaskList() {
   const [activeDiff, setActiveDiff] = useState('easy')
   const [input, setInput] = useState('')
   const inputRef = useRef(null)
-  const { tasks, addTask, completeTask, deleteTask, addProgressLog, progressLogs, profile } = useGame()
+  const { tasks, addTask, completeTask, deleteTask, addProgressLog, progressLogs, profile, selectedPet } = useGame()
 
   const cfg = DIFF_CONFIG[activeDiff]
 
-  const now        = Date.now()
+  /* One shared 1s tick drives every quest's completion countdown
+     (and keeps the period "resets in" labels live too). */
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const lockedUntil = profile?.completion_lock_until
+    ? new Date(profile.completion_lock_until).getTime()
+    : 0
+  const locked = lockedUntil > now
+
+  /* Celebration effects for a just-completed quest, anchored to viewport
+     coordinates so they outlive the card being moved into the Completed list. */
+  const [reward, setReward] = useState(null)
+  const rewardTimer = useRef(null)
+  const fireReward = useCallback((payload) => {
+    setReward({ id: Date.now(), ...payload })
+    clearTimeout(rewardTimer.current)
+    // Clear once the longest effect (the 800ms float) has finished.
+    rewardTimer.current = setTimeout(() => setReward(null), 900)
+  }, [])
+  useEffect(() => () => clearTimeout(rewardTimer.current), [])
+
   const hardStart  = new Date(profile?.hard_period_start  || 0).getTime()
   const medStart   = new Date(profile?.medium_period_start || 0).getTime()
   const hardLeft   = HARD_PERIOD_MS   - (now - hardStart)
@@ -233,6 +374,8 @@ export default function TaskList() {
 
   return (
     <div className="flex flex-col h-full">
+      <CompletionFx reward={reward} onDone={() => setReward(null)} />
+
       {/* Difficulty tabs */}
       <div className="flex gap-2 mb-4">
         {Object.entries(DIFF_CONFIG).map(([diff, c]) => (
@@ -327,12 +470,14 @@ export default function TaskList() {
       {/* Task list */}
       <div className="flex-1 overflow-y-auto max-h-60 pr-1 custom-scroll">
         {filteredTasks.length === 0 && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-8">
-            <div className="text-3xl mb-2">{cfg.emoji}</div>
-            <p className="text-sm font-nunito" style={{ color: 'var(--text-muted)' }}>
-              No {cfg.label.toLowerCase()} quests yet.
-            </p>
-            <p className="text-xs font-nunito mt-1" style={{ color: 'var(--text-muted)' }}>
+          <motion.div
+            key={activeDiff}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-6"
+          >
+            <EmptyStatePet difficulty={activeDiff} emoji={selectedPet?.emoji || cfg.emoji} />
+            <p className="text-xs font-nunito mt-2" style={{ color: 'var(--text-soft)' }}>
               {cfg.desc} · +{cfg.pts} pts each
             </p>
           </motion.div>
@@ -348,6 +493,9 @@ export default function TaskList() {
                 onAddProgress={addProgressLog}
                 logs={progressLogs[task.id] || []}
                 canLog={canLog}
+                now={now}
+                locked={locked}
+                onReward={fireReward}
               />
             </div>
           ))}
@@ -367,6 +515,8 @@ export default function TaskList() {
                     onAddProgress={addProgressLog}
                     logs={progressLogs[task.id] || []}
                     canLog={false}
+                    now={now}
+                    locked={locked}
                   />
                 </div>
               ))}

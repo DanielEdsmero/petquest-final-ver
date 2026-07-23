@@ -14,3 +14,5 @@ export const supabase = createClient(
   supabaseUrl  || 'https://placeholder.supabase.co',
   supabaseKey  || 'placeholder',
 )
+
+if (import.meta.env.DEV) window.sb = supabase

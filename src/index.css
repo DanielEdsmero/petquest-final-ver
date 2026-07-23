@@ -14,6 +14,23 @@
   --teal: #06b6d4;
   --text-primary: #e2e2ff;
   --text-muted: #8080aa;
+
+  /* Accessible text tiers (contrast measured against --bg-card #0e0e2e) */
+  --text-soft: #b8b8cc;        /* 9.6:1  — body copy that was previously too dim */
+  --text-placeholder: #8f8fb8; /* 5.7:1  — placeholders, clears WCAG AA 4.5:1 */
+
+  /* Shared gold pulse system. --gold-rgb lets every effect below compose
+     its own alpha from one source of truth. */
+  --gold-rgb: 245, 163, 26;
+  --gold-pulse-soft:   rgba(var(--gold-rgb), 0.15);
+  --gold-pulse:        rgba(var(--gold-rgb), 0.4);
+  --gold-pulse-strong: rgba(var(--gold-rgb), 0.7);
+  --focus-ring: 0 0 0 2px rgba(var(--gold-rgb), 0.4);
+
+  /* Themed per difficulty at the call site; gold is the default. */
+  --burst-color: rgba(var(--gold-rgb), 0.4);
+
+  --muted-border: #4a4a6a;
 }
 
 * {
@@ -75,6 +92,16 @@ body::before {
   border: 1px solid rgba(124, 58, 237, 0.18);
   border-radius: 16px;
   box-shadow: 0 4px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Cinematic variant — scoped to the login card so the busy video background
+   doesn't bleed through. Kept as a modifier rather than editing .glass-card
+   directly, which is shared by every card across the app. */
+.glass-card--cinematic {
+  background: rgba(10, 10, 46, 0.85);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  box-shadow: 0 0 30px rgba(245, 163, 26, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 /* Gradient text */
@@ -149,10 +176,20 @@ body::before {
   padding: 10px 14px;
 }
 .input-field:focus {
-  border-color: rgba(245, 163, 26, 0.6);
-  box-shadow: 0 0 0 3px rgba(245, 163, 26, 0.1);
+  border-color: rgba(var(--gold-rgb), 0.6);
+  box-shadow: var(--focus-ring);
 }
-.input-field::placeholder { color: #5050aa; }
+.input-field::placeholder { color: var(--text-placeholder); }
+
+/* Gold focus ring on every interactive element. :focus-visible keeps it to
+   keyboard navigation so mouse users don't see rings on click. */
+:focus-visible {
+  outline: 2px solid rgba(var(--gold-rgb), 0.9);
+  outline-offset: 2px;
+}
+.input-field:focus-visible {
+  outline: none; /* the box-shadow ring above already marks focus */
+}
 
 /* Stat bar */
 .stat-bar-bg {
@@ -196,8 +233,19 @@ body::before {
 }
 .task-item.completed {
   opacity: 0.5;
-  background: rgba(34, 197, 94, 0.05);
-  border-color: rgba(34, 197, 94, 0.15);
+  filter: grayscale(60%);
+  background: rgba(19, 19, 58, 0.35);
+  border-color: var(--muted-border);
+  transition:
+    opacity      0.4s ease-out,
+    filter       0.4s ease-out,
+    background   0.4s ease-out,
+    border-color 0.4s ease-out;
+}
+/* Don't re-brighten a finished quest on hover. */
+.task-item.completed:hover {
+  background: rgba(19, 19, 58, 0.35);
+  border-color: var(--muted-border);
 }
 
 /* Notification */
@@ -279,9 +327,263 @@ body::before {
   white-space: nowrap;
 }
 
+/* Quest-completion radial burst.
+   Portalled to <body> so no transformed ancestor can trap the fixed position.
+   --burst-x/y are the origin (the completed card's centre); --burst-color is
+   themed per difficulty by the caller. */
+.completion-burst {
+  position: fixed;
+  left: var(--burst-x, 50vw);
+  top: var(--burst-y, 50vh);
+  width: 100vmax;
+  height: 100vmax;
+  margin-left: -50vmax;
+  margin-top: -50vmax;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  will-change: transform, opacity;
+  background: radial-gradient(
+    circle,
+    var(--burst-color) 0%,
+    rgba(var(--gold-rgb), 0.12) 35%,
+    transparent 70%
+  );
+}
+
+/* Golden glow behind the points counter when points increase. */
+.points-glow {
+  position: absolute;
+  inset: -8px;
+  border-radius: 16px;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    ellipse at center,
+    var(--gold-pulse-strong) 0%,
+    var(--gold-pulse-soft) 45%,
+    transparent 75%
+  );
+}
+
+/* ── Animation primitives (src/components/animations) ── */
+
+/* Particle burst: origin sits at the centre of its relative parent. */
+.particle-origin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 40;
+}
+.particle-star {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 11px;
+  line-height: 1;
+  text-shadow: 0 0 6px currentColor;
+  pointer-events: none;
+}
+
+/* Rising reward text. */
+.floating-text {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 60;
+  text-shadow: 0 0 10px currentColor;
+}
+
+/* Portal loader. */
+.portal-core {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.portal-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(var(--gold-rgb), 0.7);
+  box-shadow: 0 0 18px rgba(var(--gold-rgb), 0.45), inset 0 0 18px rgba(var(--gold-rgb), 0.25);
+  pointer-events: none;
+}
+.portal-eye {
+  position: absolute;
+  width: 38%;
+  height: 38%;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--gold-light) 0%, var(--gold) 55%, transparent 75%);
+  box-shadow: 0 0 26px rgba(var(--gold-rgb), 0.8);
+}
+
+/* Viewport-anchored origin for portalled reward effects. */
+.fx-anchor {
+  position: fixed;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Processing spinner on the complete button. */
+.spinner-ring {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(124, 58, 237, 0.25);
+  border-top-color: var(--gold);
+  box-sizing: border-box;
+}
+
+/* Streak milestone halo. */
+.streak-halo {
+  position: absolute;
+  inset: -4px;
+  border-radius: 14px;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(ellipse at center, rgba(249, 115, 22, 0.55) 0%, transparent 70%);
+}
+
+/* Evolution sequence. */
+.evolution-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 6, 26, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+.evolution-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, #fff 0%, var(--gold-light) 45%, transparent 75%);
+  pointer-events: none;
+  z-index: 1;
+}
+.evolution-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid rgba(var(--gold-rgb), 0.8);
+  box-shadow: 0 0 30px rgba(var(--gold-rgb), 0.6), inset 0 0 30px rgba(var(--gold-rgb), 0.3);
+  pointer-events: none;
+}
+
+/* Elder / Legendary aura behind the pet. */
+.pet-aura {
+  position: absolute;
+  inset: -12%;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  background: conic-gradient(
+    from 0deg,
+    rgba(var(--gold-rgb), 0.35),
+    rgba(124, 58, 237, 0.3),
+    rgba(6, 182, 212, 0.3),
+    rgba(var(--gold-rgb), 0.35)
+  );
+  filter: blur(14px);
+}
+
+/* Empty-state companion. */
+.empty-pet {
+  font-size: 2.75rem;
+  line-height: 1;
+  display: inline-block;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
+}
+
+/* ── Cinematic login background ── */
+.cinematic-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;   /* never intercepts clicks meant for the form */
+  background: var(--bg-deep);
+}
+.cinematic-bg > * {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Ken Burns fallback scene — a moody fantasy horizon built from gradients so
+   it needs no external asset. Slowly pans and zooms. Overscaled so the motion
+   never reveals an edge. */
+.cinematic-kenburns {
+  background:
+    radial-gradient(ellipse 60% 45% at 50% 78%, rgba(245, 163, 26, 0.28) 0%, transparent 60%),
+    radial-gradient(ellipse 90% 60% at 50% 100%, rgba(124, 58, 237, 0.35) 0%, transparent 65%),
+    radial-gradient(circle at 22% 28%, rgba(6, 182, 212, 0.14) 0%, transparent 45%),
+    radial-gradient(circle at 82% 20%, rgba(124, 58, 237, 0.18) 0%, transparent 45%),
+    linear-gradient(180deg, #05061c 0%, #0a0a2e 45%, #140a2b 100%);
+  transform-origin: center 70%;
+  animation: kenburns 28s ease-in-out infinite alternate;
+  will-change: transform;
+}
+.cinematic-kenburns.is-static { animation: none; transform: scale(1.05); }
+
+@keyframes kenburns {
+  0%   { transform: scale(1.08) translate3d(-1.5%, 1.5%, 0); }
+  100% { transform: scale(1.22) translate3d(1.5%, -1.5%, 0); }
+}
+
+.cinematic-video {
+  object-fit: cover;
+}
+
+.cinematic-canvas { inset: 0; }
+
+/* Vignette + floor darkening for form contrast. */
+.cinematic-veil {
+  background:
+    radial-gradient(ellipse 80% 70% at 50% 45%, transparent 40%, rgba(4, 4, 16, 0.55) 100%),
+    linear-gradient(180deg, rgba(4, 4, 16, 0.35) 0%, transparent 30%, transparent 60%, rgba(4, 4, 16, 0.55) 100%);
+}
+
+/* Gently shimmering title text-shadow. */
+.title-shimmer {
+  animation: titleShimmer 3.2s ease-in-out infinite;
+}
+@keyframes titleShimmer {
+  0%, 100% { text-shadow: 0 0 8px rgba(245, 163, 26, 0.25), 0 0 18px rgba(245, 163, 26, 0.15); }
+  50%      { text-shadow: 0 0 16px rgba(245, 163, 26, 0.6), 0 0 34px rgba(245, 163, 26, 0.4), 0 0 54px rgba(255, 209, 102, 0.25); }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .dashboard-grid {
     grid-template-columns: 1fr !important;
   }
+}
+
+/* Accessibility: honour reduced-motion for CSS-driven animation. Framer-motion
+   animations are handled separately via its useReducedMotion() hook. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .completion-burst { display: none; }
 }
