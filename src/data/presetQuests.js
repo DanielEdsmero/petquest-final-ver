@@ -1,6 +1,61 @@
 import { DIFFICULTY_COLORS } from './difficulty'
 
 export const PRESET_QUESTS = {
+  /* ── Saitama Mode — a themed sub-mode of Fitness ──
+     Built around the One Punch Man training routine Saitama credits for his
+     strength: 100 push-ups, 100 sit-ups, 100 squats, and a 10km run, EVERY
+     SINGLE DAY, plus the "no AC/heater" mental-toughness twist. Easy quests
+     scale the routine down for beginners; hard quests are the real thing. */
+  saitama: {
+    easy: [
+      // Core routine — beginner-scaled portions
+      'Do 100 push-ups — Saitama\'s daily count (split into sets if you must)',
+      'Do 100 sit-ups like the Caped Baldy',
+      'Do 100 squats — no excuses, hero training',
+      'Run 10km — Saitama\'s legendary daily run',
+      'Do the mini hero set: 25 push-ups, 25 sit-ups, 25 squats',
+      'Do 50 push-ups and 50 squats back-to-back',
+      'Run 5km at a steady pace — half of Saitama\'s run',
+      'Do 3 sets of 20 push-ups (60 total)',
+      'Do 100 sit-ups split into 5 sets of 20',
+      'Do 40 squats and hold the last rep for 30 seconds',
+      // Lore / mindset
+      'Train today with NO air conditioning — strengthen your mind, Saitama-style',
+      'Train today with NO heater on — forge mental toughness',
+      'Eat 3 solid meals today (a banana in the morning, like Saitama)',
+      'Take the stairs everywhere today — every step builds a hero',
+      'Warm up, then run for 30 minutes without stopping',
+      'Hold a plank for 2 minutes — build the core of a hero',
+      'Do 100 jumping jacks to warm up for hero training',
+      'Stretch for 10 minutes before your daily routine',
+      'Do a full 15-minute bodyweight circuit — become the hero for fun',
+      'Wake up early and knock out your workout before breakfast',
+    ],
+    medium: [
+      'Complete Saitama\'s FULL routine once this period: 100 push-ups, 100 sit-ups, 100 squats, 10km run',
+      'Do 100 push-ups every single day for all 3 days',
+      'Do 100 sit-ups every single day for all 3 days',
+      'Do 100 squats every single day for all 3 days',
+      'Run 10km each day — 30km total across the period',
+      'Train with no AC/heater every day this period (strengthen the spirit)',
+      'Do 300 push-ups split across the 3 days',
+      'Eat 3 clean meals a day, every day — the hero diet, no junk',
+      'Complete the full 100-100-100 bodyweight set on two of the three days',
+      'Run a combined 20km and do 200 squats across the period',
+    ],
+    hard: [
+      'THE ONE PUNCH MAN CHALLENGE: 100 push-ups, 100 sit-ups, 100 squats, and a 10km run EVERY SINGLE DAY for 7 days',
+      'Do 700 push-ups this week — 100 a day, log every session',
+      'Do 700 sit-ups this week — 100 a day, log every session',
+      'Do 700 squats this week — 100 a day, log every session',
+      'Run 70km total this week — 10km a day like Saitama',
+      'Complete the full daily routine on at least 5 of the 7 days',
+      'Train with no air conditioning or heater all 7 days — forge an unbreakable mind',
+      'Eat 3 clean meals a day for the entire week — no shortcuts',
+      'Complete Saitama\'s ENTIRE routine in one session, no breaks between exercises',
+      'One full week of hero training: 100-100-100 + 10km, every day — become the Caped Baldy',
+    ],
+  },
   fitness: {
     easy: [
       // Home bodyweight

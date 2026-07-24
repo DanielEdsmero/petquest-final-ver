@@ -6,6 +6,7 @@ import { useGame } from '../context/GameContext'
 
 const MODE_META = {
   fitness:  { emoji: '💪', label: 'Fitness',  color: '#f43f5e' },
+  saitama:  { emoji: '👊', label: 'Saitama',  color: '#facc15' },
   academic: { emoji: '📚', label: 'Academic', color: '#06b6d4' },
   custom:   { emoji: '✨', label: 'Custom',   color: '#f5a31a' },
 }
@@ -25,6 +26,7 @@ import EvolutionBar from '../components/EvolutionBar'
 import EvolutionOverlay from '../components/animations/EvolutionOverlay'
 import ConnectionStatus from '../components/ConnectionStatus'
 import StreakMilestoneOverlay from '../components/animations/StreakMilestoneOverlay'
+import PlanningStats from '../components/PlanningStats'
 import CountUp from '../components/reactbits/CountUp'
 import SpotlightCard from '../components/reactbits/SpotlightCard'
 import Aurora from '../components/reactbits/Aurora'
@@ -381,6 +383,10 @@ export default function DashboardPage() {
               </h3>
               <EvolutionBar totalEarned={totalPointsEarned} petName={selectedPet?.name} />
             </SpotlightCard>
+
+            {/* Planning accuracy feedback — hides itself until the player has
+                completed at least one quest that had a planned date. */}
+            <PlanningStats />
 
             {/* Stats card */}
             <SpotlightCard baseClassName="glass-card p-5 space-y-4" spotlightColor="rgba(6, 182, 212, 0.2)">

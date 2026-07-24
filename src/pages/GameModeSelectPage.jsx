@@ -19,6 +19,15 @@ const MODES = [
     glow: 'rgba(244,63,94,0.15)',
   },
   {
+    id: 'saitama',
+    emoji: '👊',
+    name: 'Saitama Mode',
+    tagline: 'Become the Caped Baldy',
+    description: '100 push-ups, 100 sit-ups, 100 squats & a 10km run — every single day. Train like One Punch Man. A hardcore twist on Fitness Mode.',
+    color: '#facc15',
+    glow: 'rgba(250,204,21,0.15)',
+  },
+  {
     id: 'academic',
     emoji: '📚',
     name: 'Academic Mode',
@@ -391,7 +400,7 @@ export default function GameModeSelectPage() {
           style={{ color: 'var(--text-muted)' }}>
           Step 1 — Choose Mode
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {MODES.map((mode, i) => (
             <motion.div
               key={mode.id}

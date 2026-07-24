@@ -229,7 +229,7 @@ export function GameProvider({ children }) {
   }, [profile?.id])
 
   /* ── tasks ── */
-  const addTask = useCallback(async (text, difficulty = 'easy') => {
+  const addTask = useCallback(async (text, difficulty = 'easy', plannedCompletionDate = null) => {
     if (!text.trim()) return false
 
     const now = Date.now()
@@ -272,6 +272,13 @@ export function GameProvider({ children }) {
       }
     }
 
+    /* Research planning input — the user's intended finish time, or null if
+       they skipped the picker. Normalised to ISO for both the optimistic row
+       and the insert. */
+    const plannedISO = plannedCompletionDate
+      ? new Date(plannedCompletionDate).toISOString()
+      : null
+
     const tmp = {
       id: 'tmp_' + Date.now(),
       user_id: profile?.id,
@@ -281,9 +288,14 @@ export function GameProvider({ children }) {
       created_at: new Date().toISOString(),
       started_at: new Date().toISOString(),
       completed_at: null,
+      planned_completion_date: plannedISO,
+      completion_duration_minutes: null,
+      is_procrastinated: false,
     }
     setTasks(prev => { const n = [...prev, tmp]; lsSet('tasks', n); return n })
-    const { data } = await supabase.from('tasks').insert({ user_id: profile?.id, text: text.trim(), difficulty }).select().single()
+    const { data } = await supabase.from('tasks')
+      .insert({ user_id: profile?.id, text: text.trim(), difficulty, planned_completion_date: plannedISO })
+      .select().single()
     if (data) setTasks(prev => { const n = prev.map(t => t.id === tmp.id ? data : t); lsSet('tasks', n); return n })
     return true
   }, [profile, tasks, addNotification])
@@ -296,7 +308,11 @@ export function GameProvider({ children }) {
     const now = new Date().toISOString()
     setTasks(prev => {
       const n = prev.map(t => t.id === id
-        ? { ...t, completed: true, completed_at: now, pending: false }
+        ? { ...t, completed: true, completed_at: now, pending: false,
+            /* Mirror the server-computed research metrics so the Planning Stats
+               widget reflects this completion without a refetch. */
+            completion_duration_minutes: data.duration_minutes ?? t.completion_duration_minutes,
+            is_procrastinated: data.procrastinated ?? t.is_procrastinated }
         : t)
       lsSet('tasks', n); return n
     })

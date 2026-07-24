@@ -211,46 +211,76 @@ function CheatButton({ children, onClick, busy, color = '#f5a31a' }) {
   )
 }
 
-function CheatPanel() {
+function CheatPanel({ users = [], onChanged }) {
   const { profile, refreshProfile, addNotification, triggerEvolution, triggerStreakMilestone } = useGame()
   const navigate = useNavigate()
   const [busy, setBusy] = useState(null)
   const [pointsAmt, setPointsAmt] = useState(500)
   const [streakDays, setStreakDays] = useState(7)
+  /* Which player the cheats affect. Defaults to the admin's own account. */
+  const [targetId, setTargetId] = useState(profile?.id || '')
+
+  /* Keep the default target pinned to self once the profile loads. */
+  useEffect(() => { if (profile?.id && !targetId) setTargetId(profile.id) }, [profile?.id])
+
+  const isSelf     = targetId === profile?.id
+  const targetUser = users.find(u => u.user_id === targetId)
+  const targetName = isSelf ? (profile?.username || 'you') : (targetUser?.username || 'player')
 
   const today = () => new Date().toISOString().slice(0, 10)
 
-  const runRpc = async (fn, label) => {
+  /* After a cheat lands: refresh the admin's own mirrored state when acting on
+     self, and refresh the analytics table when acting on someone else. */
+  const afterChange = async () => {
+    if (isSelf) await refreshProfile()
+    else onChanged?.()
+  }
+
+  /* Read the current row of whichever player is targeted. Admins can read any
+     profile (RLS: "profiles: admin read"), so this works for other users too. */
+  const fetchTarget = async () => {
+    if (isSelf) return profile
+    const { data } = await supabase.from('profiles').select('*').eq('id', targetId).single()
+    return data
+  }
+
+  const runRpc = async (fn, label, params = {}) => {
     setBusy(label)
-    const { data, error } = await supabase.rpc(fn)
+    const { data, error } = await supabase.rpc(fn, params)
     setBusy(null)
     if (error)     return addNotification(`${label} failed: ${error.message}`, 'error')
     if (!data?.ok) return addNotification(`${label}: ${data?.error || 'failed'}`, 'error')
-    await refreshProfile()
-    addNotification(`${label} ✓${data.affected != null ? ` (${data.affected})` : ''}`, 'success')
+    await afterChange()
+    addNotification(`${label} → ${targetName} ✓${data.affected != null ? ` (${data.affected})` : ''}`, 'success')
   }
 
   const patch = async (fields, label) => {
-    if (!profile?.id) return
+    if (!targetId) return
     setBusy(label)
-    const { error } = await supabase.from('profiles').update(fields).eq('id', profile.id)
+    const { error } = await supabase.from('profiles').update(fields).eq('id', targetId)
     setBusy(null)
     if (error) return addNotification(`${label} failed: ${error.message}`, 'error')
-    await refreshProfile()
-    addNotification(`${label} ✓`, 'success')
+    await afterChange()
+    addNotification(`${label} → ${targetName} ✓`, 'success')
   }
 
-  const addPoints = (n) => {
-    const total = (profile?.total_points_earned || 0) + n
+  const addPoints = async (n) => {
+    const t = await fetchTarget()
+    if (!t) return addNotification('Could not load target player', 'error')
+    const total = (t.total_points_earned || 0) + n
     return patch(
-      { points: (profile?.points || 0) + n, total_points_earned: total, pet_level: levelFromPoints(total) },
+      { points: (t.points || 0) + n, total_points_earned: total, pet_level: levelFromPoints(total) },
       `+${n} points`,
     )
   }
-  const setStreak = (d) => patch(
-    { current_streak: d, longest_streak: Math.max(d, profile?.longest_streak || 0), last_completion_date: today() },
-    `Streak → ${d}`,
-  )
+  const setStreak = async (d) => {
+    const t = await fetchTarget()
+    if (!t) return addNotification('Could not load target player', 'error')
+    return patch(
+      { current_streak: d, longest_streak: Math.max(d, t.longest_streak || 0), last_completion_date: today() },
+      `Streak → ${d}`,
+    )
+  }
   const setLevel = (lvl) => {
     const min = PET_LEVELS.find(l => l.level === lvl)?.min ?? 0
     return patch({ total_points_earned: min, pet_level: lvl }, `Level → ${lvl}`)
@@ -261,20 +291,28 @@ function CheatPanel() {
     'Progression reset',
   )
 
+  /* Runs through a SECURITY DEFINER RPC so it works on any player — direct
+     inserts into another user's owned_accessories are blocked by RLS. */
   const grantAllAccessories = async () => {
-    if (!profile?.id) return
+    if (!targetId) return
     setBusy('acc')
-    const { data: owned } = await supabase.from('owned_accessories').select('accessory_id').eq('user_id', profile.id)
-    const have = new Set((owned || []).map(r => r.accessory_id))
-    const rows = ACCESSORIES.filter(a => !have.has(a.id)).map(a => ({ user_id: profile.id, accessory_id: a.id }))
-    if (rows.length) {
-      const { error } = await supabase.from('owned_accessories').insert(rows)
-      if (error) { setBusy(null); return addNotification(`Grant accessories failed: ${error.message}`, 'error') }
-    }
+    const ids = ACCESSORIES.map(a => a.id)
+    const { data, error } = await supabase.rpc('admin_grant_accessories', { p_user_id: targetId, p_accessory_ids: ids })
     setBusy(null)
-    await refreshProfile()
-    addNotification(`Granted ${rows.length} accessories ✓`, 'success')
+    if (error)     return addNotification(`Grant accessories failed: ${error.message}`, 'error')
+    if (!data?.ok) return addNotification(`Grant accessories: ${data?.error || 'failed'}`, 'error')
+    await afterChange()
+    addNotification(`Granted ${data.affected ?? 0} accessories → ${targetName} ✓`, 'success')
   }
+
+  /* Self first, then everyone else alphabetically. */
+  const options = [
+    ...(profile ? [{ id: profile.id, name: `${profile.username} (you)` }] : []),
+    ...users
+      .filter(u => u.user_id !== profile?.id)
+      .map(u => ({ id: u.user_id, name: u.username }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  ]
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
@@ -283,17 +321,39 @@ function CheatPanel() {
       <h3 className="font-cinzel font-bold text-base flex items-center gap-2 mb-1">
         🧪 Testing &amp; Cheats
       </h3>
-      <p className="text-xs font-nunito mb-4" style={{ color: 'var(--text-muted)' }}>
-        Instant test tools — all act on <strong style={{ color: '#f5a31a' }}>your own</strong> account
-        ({profile?.username}). Return to the dashboard to see the effect.
+      <p className="text-xs font-nunito mb-3" style={{ color: 'var(--text-muted)' }}>
+        Instant test tools. Pick who they affect below — yourself or any player.
+        {isSelf && ' Return to the dashboard to see effects on your own account.'}
       </p>
 
+      {/* Target player selector */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap p-3 rounded-xl"
+        style={{ background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.2)' }}>
+        <span className="text-xs font-nunito font-bold" style={{ color: '#fb7185' }}>🎯 Affect player:</span>
+        <select
+          value={targetId}
+          onChange={e => setTargetId(e.target.value)}
+          className="input-field text-xs py-1.5 flex-1 min-w-[160px]"
+          style={{ cursor: 'pointer' }}
+        >
+          {options.map(o => (
+            <option key={o.id} value={o.id}>{o.name}</option>
+          ))}
+        </select>
+        {!isSelf && (
+          <span className="text-xs font-nunito font-bold px-2 py-1 rounded-lg"
+            style={{ background: 'rgba(245,163,26,0.15)', color: '#f5a31a', border: '1px solid rgba(245,163,26,0.3)' }}>
+            Editing {targetName}'s account
+          </span>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-        <CheatButton onClick={() => runRpc('admin_skip_timers', 'Skip timers')} busy={busy} color="#06b6d4">
+        <CheatButton onClick={() => runRpc('admin_skip_timers_for', 'Skip timers', { p_user_id: targetId })} busy={busy} color="#06b6d4">
           ⏩ Skip all quest timers
         </CheatButton>
-        <CheatButton onClick={() => runRpc('admin_reset_my_tasks', 'Reset quests')} busy={busy} color="#06b6d4">
-          🔄 Un-complete my quests
+        <CheatButton onClick={() => runRpc('admin_reset_tasks_for', 'Reset quests', { p_user_id: targetId })} busy={busy} color="#06b6d4">
+          🔄 Un-complete quests
         </CheatButton>
         <CheatButton onClick={unlockBoss} busy={busy} color="#7c3aed">
           💀 Unlock Boss Battles
@@ -334,7 +394,7 @@ function CheatPanel() {
       {/* Celebration overlays. These set the one-shot event and jump to the
           dashboard, which is where the overlays are mounted. */}
       <div className="flex items-center gap-2 mt-2 flex-wrap">
-        <span className="text-xs font-nunito font-bold" style={{ color: 'var(--text-muted)' }}>🎉 Play celebration:</span>
+        <span className="text-xs font-nunito font-bold" style={{ color: 'var(--text-muted)' }}>🎉 Play celebration <span className="font-normal">(previews on your own screen)</span>:</span>
         <CheatButton
           onClick={() => { triggerEvolution((profile?.pet_level || 1) + 1); navigate('/dashboard') }}
           busy={busy}
@@ -360,6 +420,141 @@ function CheatPanel() {
           ♻️ Reset my progression to zero
         </CheatButton>
       </div>
+    </motion.div>
+  )
+}
+
+/* ────── research analytics (behavioural study metrics) ────── */
+const DIFF_META = {
+  easy:   { label: 'Easy',   emoji: '🌱', color: '#4ade80' },
+  medium: { label: 'Medium', emoji: '⚡', color: '#f5a31a' },
+  hard:   { label: 'Hard',   emoji: '🔥', color: '#f43f5e' },
+  boss:   { label: 'Boss',   emoji: '💀', color: '#7c3aed' },
+}
+
+/* Minutes → a compact "2h 15m" / "45m" label. */
+function fmtDuration(min) {
+  if (min == null) return '—'
+  const m = Math.round(min)
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  const r = m % 60
+  return r ? `${h}h ${r}m` : `${h}h`
+}
+
+function ResearchAnalytics() {
+  const [data,    setData]    = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState('')
+
+  const load = async () => {
+    setLoading(true); setError('')
+    const { data: res, error } = await supabase.rpc('get_research_analytics')
+    if (error)        { setError(error.message); setLoading(false); return }
+    if (!res?.ok)     { setError(res?.error || 'Could not load research analytics'); setLoading(false); return }
+    setData(res); setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const byDiff = data?.duration_by_difficulty || {}
+  const diffKeys = ['easy', 'medium', 'hard', 'boss'].filter(k => byDiff[k])
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+      className="glass-card p-5" style={{ border: '1px solid rgba(6,182,212,0.25)' }}>
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="font-cinzel font-bold text-base flex items-center gap-2">
+          🔬 Research Analytics
+        </h3>
+        <motion.button onClick={load} disabled={loading}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-nunito font-semibold"
+          style={{ background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.25)', color: '#06b6d4' }}
+          whileTap={{ scale: 0.95 }}>
+          <RefreshCw size={12} /> Refresh
+        </motion.button>
+      </div>
+      <p className="text-xs font-nunito mb-4" style={{ color: 'var(--text-muted)' }}>
+        Behavioural metrics across all participants — planning, execution time, and procrastination.
+      </p>
+
+      {error && (
+        <div className="p-3 rounded-xl text-xs font-nunito mb-3"
+          style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.3)', color: '#fb7185' }}>
+          ⚠️ {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-10">
+          <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+            className="text-2xl">🔬</motion.div>
+        </div>
+      ) : data && (
+        <div className="space-y-5">
+          {/* Headline rates */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-4 rounded-xl" style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)' }}>
+              <div className="font-cinzel font-black text-2xl" style={{ color: '#f43f5e' }}>
+                <CountUp to={Number(data.procrastination_rate) || 0} suffix="%" duration={1.4} />
+              </div>
+              <div className="font-nunito font-semibold text-sm mt-0.5" style={{ color: '#c0c0e0' }}>
+                Procrastination Rate
+              </div>
+              <div className="text-xs mt-1 font-nunito" style={{ color: 'var(--text-muted)' }}>
+                {data.procrastinated_count} of {data.total_completed} completed quests flagged
+              </div>
+            </div>
+            <div className="p-4 rounded-xl" style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
+              <div className="font-cinzel font-black text-2xl" style={{ color: '#4ade80' }}>
+                {data.planning_accuracy == null
+                  ? <span className="text-lg" style={{ color: 'var(--text-muted)' }}>No data</span>
+                  : <CountUp to={Number(data.planning_accuracy)} suffix="%" duration={1.4} />}
+              </div>
+              <div className="font-nunito font-semibold text-sm mt-0.5" style={{ color: '#c0c0e0' }}>
+                Planning Accuracy
+              </div>
+              <div className="text-xs mt-1 font-nunito" style={{ color: 'var(--text-muted)' }}>
+                {data.planning_accuracy == null
+                  ? 'No quests with a planned date yet'
+                  : `${data.on_time_count} of ${data.planned_completed} planned quests on time`}
+              </div>
+            </div>
+          </div>
+
+          {/* Average duration by difficulty */}
+          <div>
+            <p className="text-xs font-nunito font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>
+              Avg Completion Duration by Difficulty
+            </p>
+            {diffKeys.length === 0 ? (
+              <p className="text-xs font-nunito py-2" style={{ color: 'var(--text-muted)' }}>
+                No completed quests yet.
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {diffKeys.map(k => {
+                  const meta = DIFF_META[k]
+                  const s = byDiff[k]
+                  return (
+                    <div key={k} className="p-3 rounded-xl"
+                      style={{ background: 'rgba(19,19,58,0.5)', border: `1px solid ${meta.color}25` }}>
+                      <div className="text-xs font-nunito font-bold mb-1" style={{ color: meta.color }}>
+                        {meta.emoji} {meta.label}
+                      </div>
+                      <div className="font-cinzel font-black text-lg" style={{ color: '#e2e2ff' }}>
+                        {fmtDuration(s.avg_duration_minutes)}
+                      </div>
+                      <div className="text-xs font-nunito mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                        {s.completed_count} completed
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </motion.div>
   )
 }
@@ -494,7 +689,7 @@ export default function AdminPage() {
         )}
 
         {/* ── Testing & cheats ── */}
-        <CheatPanel />
+        <CheatPanel users={users} onChanged={loadData} />
 
         {/* ── Global stat cards ── */}
         <motion.div initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.1 }}
@@ -507,6 +702,9 @@ export default function AdminPage() {
           <StatCard icon="😴" label="Procrastinated"    value={totalProcrast}  color="#f43f5e"
             sub="Tasks completed after 24h" />
         </motion.div>
+
+        {/* ── Research analytics (behavioural study) ── */}
+        <ResearchAnalytics />
 
         {/* ── Charts row ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
