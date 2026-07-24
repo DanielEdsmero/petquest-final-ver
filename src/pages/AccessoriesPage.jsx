@@ -5,6 +5,8 @@ import { ArrowLeft, ShoppingCart, CheckCircle, Sparkles } from 'lucide-react'
 import { useGame } from '../context/GameContext'
 import { ACCESSORIES, RARITY_COLORS, CATEGORIES } from '../data/accessories'
 import PetAvatar from '../components/PetAvatar'
+import GlareHover from '../components/reactbits/GlareHover'
+import CountUp from '../components/reactbits/CountUp'
 
 function AccessoryCard({ accessory, owned, equipped, onBuy, onEquip, points }) {
   const rarity = RARITY_COLORS[accessory.rarity]
@@ -16,15 +18,29 @@ function AccessoryCard({ accessory, owned, equipped, onBuy, onEquip, points }) {
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
-      className={`acc-card p-4 flex flex-col gap-3 ${owned ? 'owned' : ''} ${equipped ? 'equipped' : ''}`}
-      style={{
-        background: equipped
+    >
+      {/* The layout/enter/exit animation stays on the wrapper above; GlareHover
+          owns the card surface so a highlight rakes across the item on hover.
+          Equipped items catch gold, everything else plain white. */}
+      <GlareHover
+        baseClassName={`acc-card p-4 flex flex-col gap-3 ${owned ? 'owned' : ''} ${equipped ? 'equipped' : ''}`}
+        background={equipped
           ? 'rgba(245, 163, 26, 0.07)'
           : owned
           ? 'rgba(34, 197, 94, 0.04)'
-          : 'rgba(14, 14, 46, 0.7)',
-      }}
-    >
+          : 'rgba(14, 14, 46, 0.7)'}
+        borderRadius="14px"
+        borderColor={equipped
+          ? 'rgba(245, 163, 26, 0.7)'
+          : owned
+          ? 'rgba(34, 197, 94, 0.3)'
+          : 'rgba(124, 58, 237, 0.15)'}
+        glareColor={equipped ? '#f5a31a' : '#ffffff'}
+        glareOpacity={0.22}
+        glareAngle={-35}
+        glareSize={200}
+        transitionDuration={700}
+      >
       {/* Top: emoji + rarity badge */}
       <div className="flex items-start justify-between">
         <div
@@ -95,6 +111,7 @@ function AccessoryCard({ accessory, owned, equipped, onBuy, onEquip, points }) {
           {!canAfford && <span className="ml-1 opacity-70">(Need more)</span>}
         </motion.button>
       )}
+      </GlareHover>
     </motion.div>
   )
 }
@@ -177,7 +194,10 @@ export default function AccessoriesPage() {
           <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
             style={{ background: 'rgba(245, 163, 26, 0.1)', border: '1px solid rgba(245, 163, 26, 0.3)' }}>
             <span className="text-lg">⭐</span>
-            <span className="font-cinzel font-black gradient-text-gold">{points.toLocaleString()}</span>
+            {/* Ticks down as you spend, so the cost of a purchase is felt. */}
+            <span className="font-cinzel font-black gradient-text-gold">
+              <CountUp to={points} separator="," duration={0.9} />
+            </span>
             <span className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>pts</span>
           </div>
         </div>

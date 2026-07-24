@@ -24,6 +24,10 @@ import StreakCounter from '../components/StreakCounter'
 import EvolutionBar from '../components/EvolutionBar'
 import EvolutionOverlay from '../components/animations/EvolutionOverlay'
 import ConnectionStatus from '../components/ConnectionStatus'
+import StreakMilestoneOverlay from '../components/animations/StreakMilestoneOverlay'
+import CountUp from '../components/reactbits/CountUp'
+import SpotlightCard from '../components/reactbits/SpotlightCard'
+import Aurora from '../components/reactbits/Aurora'
 
 function CareButton({ icon: Icon, label, cost, color, glowColor, onClick, disabled }) {
   return (
@@ -90,8 +94,11 @@ function PointsDisplay({ points }) {
         ⭐
       </motion.span>
       <div className="relative" style={{ zIndex: 1 }}>
+        {/* The counter springs to each new total rather than snapping, so
+            earning points reads as a climb. CountUp re-targets whenever
+            `to` changes, which is exactly the spend/earn cycle here. */}
         <div className="font-cinzel font-black text-lg leading-none gradient-text-gold">
-          {points.toLocaleString()}
+          <CountUp to={points} separator="," duration={1.1} />
         </div>
         <div className="text-xs font-nunito" style={{ color: 'var(--text-soft)' }}>Points</div>
       </div>
@@ -109,6 +116,7 @@ export default function DashboardPage() {
     tasks,
     totalPointsEarned, currentStreak, longestStreak, petLevel,
     evolution, clearEvolution,
+    streakMilestone, clearStreakMilestone,
     streakBroken, clearStreakBroken,
     connection, pendingCount,
   } = useGame()
@@ -147,6 +155,23 @@ export default function DashboardPage() {
         petEmoji={selectedPet?.emoji}
         onDone={clearEvolution}
       />
+
+      <StreakMilestoneOverlay
+        milestone={streakMilestone}
+        onDone={clearStreakMilestone}
+      />
+
+      {/* Slow aurora, in the app's own gold / arcane / teal. Amplitude and
+          blend are kept low so it reads as atmosphere behind the cards rather
+          than something competing with them for attention. */}
+      <div className="dashboard-aurora">
+        <Aurora
+          colorStops={['#f5a31a', '#7c3aed', '#06b6d4']}
+          amplitude={0.7}
+          blend={0.6}
+          speed={0.4}
+        />
+      </div>
 
       {/* Ambient background */}
       <div className="fixed inset-0 pointer-events-none">
@@ -290,7 +315,10 @@ export default function DashboardPage() {
             transition={{ duration: 0.5, delay: 0.1 }}
           >
             {/* Pet display card */}
-            <div className="glass-card p-6 text-center relative overflow-hidden">
+            <SpotlightCard
+              baseClassName="glass-card p-6 text-center"
+              spotlightColor={`${selectedPet?.color || '#7c3aed'}33`}
+            >
               {/* Background shimmer based on pet color */}
               <div className="absolute inset-0 pointer-events-none"
                 style={{ background: `radial-gradient(ellipse at 50% 0%, ${selectedPet?.color}15 0%, transparent 70%)` }} />
@@ -344,28 +372,28 @@ export default function DashboardPage() {
                 <Sparkles size={10} />
                 {selectedPet?.trait}
               </div>
-            </div>
+            </SpotlightCard>
 
             {/* Evolution card */}
-            <div className="glass-card p-5">
+            <SpotlightCard baseClassName="glass-card p-5" spotlightColor="rgba(245, 163, 26, 0.2)">
               <h3 className="font-cinzel font-bold text-sm uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
                 Evolution
               </h3>
               <EvolutionBar totalEarned={totalPointsEarned} petName={selectedPet?.name} />
-            </div>
+            </SpotlightCard>
 
             {/* Stats card */}
-            <div className="glass-card p-5 space-y-4">
+            <SpotlightCard baseClassName="glass-card p-5 space-y-4" spotlightColor="rgba(6, 182, 212, 0.2)">
               <h3 className="font-cinzel font-bold text-sm uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                 Companion Stats
               </h3>
               <StatBar stat="hunger" value={petStats.hunger} />
               <StatBar stat="cleanliness" value={petStats.cleanliness} />
               <StatBar stat="happiness" value={petStats.happiness} />
-            </div>
+            </SpotlightCard>
 
             {/* Care actions */}
-            <div className="glass-card p-5">
+            <SpotlightCard baseClassName="glass-card p-5" spotlightColor="rgba(167, 139, 250, 0.2)">
               <h3 className="font-cinzel font-bold text-sm uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>
                 Care Actions <span className="normal-case font-nunito font-normal" style={{ color: 'var(--text-muted)' }}>(10 pts each)</span>
               </h3>
@@ -404,7 +432,7 @@ export default function DashboardPage() {
                   ⚠️ Complete quests to earn points!
                 </p>
               )}
-            </div>
+            </SpotlightCard>
 
             {/* Accessories shortcut */}
             <motion.button
@@ -438,22 +466,26 @@ export default function DashboardPage() {
             {/* Stats summary row */}
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: 'Active Quests', value: tasks.filter(t => !t.completed).length, icon: '📜', color: '#7c3aed' },
-                { label: 'Completed', value: tasks.filter(t => t.completed).length, icon: '✅', color: '#22c55e' },
-                { label: 'Earned Today', value: `${tasks.filter(t => t.completed).length * 10}`, icon: '⭐', color: '#f5a31a', suffix: ' pts' },
-              ].map(({ label, value, icon, color, suffix }) => (
-                <div key={label} className="glass-card p-4 text-center">
+                { label: 'Active Quests', value: tasks.filter(t => !t.completed).length, icon: '📜', color: '#7c3aed', spotlight: 'rgba(124, 58, 237, 0.25)' },
+                { label: 'Completed',     value: completedToday,                          icon: '✅', color: '#22c55e', spotlight: 'rgba(34, 197, 94, 0.22)' },
+                { label: 'Earned Today',  value: completedToday * 10,                     icon: '⭐', color: '#f5a31a', spotlight: 'rgba(245, 163, 26, 0.25)', suffix: ' pts' },
+              ].map(({ label, value, icon, color, suffix, spotlight }) => (
+                <SpotlightCard
+                  key={label}
+                  baseClassName="glass-card p-4 text-center"
+                  spotlightColor={spotlight}
+                >
                   <div className="text-2xl mb-1">{icon}</div>
                   <div className="font-cinzel font-black text-xl" style={{ color }}>
-                    {value}{suffix || ''}
+                    <CountUp to={value} suffix={suffix || ''} duration={1.4} />
                   </div>
                   <div className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>{label}</div>
-                </div>
+                </SpotlightCard>
               ))}
             </div>
 
             {/* Quest log */}
-            <div className="glass-card p-5 flex-1">
+            <SpotlightCard baseClassName="glass-card p-5 flex-1" spotlightColor="rgba(245, 163, 26, 0.18)">
               <div className="flex items-center justify-between mb-5">
                 <h3 className="font-cinzel font-bold text-base flex items-center gap-2">
                   <Star size={16} style={{ color: '#f5a31a' }} />
@@ -465,10 +497,10 @@ export default function DashboardPage() {
                 </div>
               </div>
               <TaskList />
-            </div>
+            </SpotlightCard>
 
             {/* Tips card */}
-            <div className="glass-card p-4">
+            <SpotlightCard baseClassName="glass-card p-4" spotlightColor="rgba(124, 58, 237, 0.2)">
               <div className="flex items-start gap-3">
                 <div className="text-2xl">💡</div>
                 <div>
@@ -479,7 +511,7 @@ export default function DashboardPage() {
                   </p>
                 </div>
               </div>
-            </div>
+            </SpotlightCard>
           </motion.div>
         </div>
       </div>

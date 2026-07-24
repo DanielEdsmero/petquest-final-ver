@@ -13,6 +13,8 @@ import { useGame } from '../context/GameContext'
 import { PETS } from '../data/pets'
 import { ACCESSORIES } from '../data/accessories'
 import { PET_LEVELS, levelFromPoints } from '../data/progression'
+import CountUp from '../components/reactbits/CountUp'
+import SpotlightCard from '../components/reactbits/SpotlightCard'
 
 /* ────── colour palette ────── */
 const CHART_COLORS = ['#f5a31a', '#7c3aed', '#06b6d4', '#4ade80', '#f43f5e', '#fbbf24', '#a78bfa']
@@ -35,17 +37,20 @@ function CustomTooltip({ active, payload, label }) {
 }
 
 /* ────── stat card ────── */
-function StatCard({ icon, label, value, sub, color }) {
+/* `value` is a number so it can count up; `suffix` carries any unit. */
+function StatCard({ icon, label, value, suffix, sub, color }) {
   return (
-    <div className="glass-card p-5">
+    <SpotlightCard baseClassName="glass-card p-5" spotlightColor={`${color}33`}>
       <div className="flex items-start justify-between mb-3">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
           style={{ background: `${color}18` }}>{icon}</div>
       </div>
-      <div className="font-cinzel font-black text-2xl" style={{ color }}>{value}</div>
+      <div className="font-cinzel font-black text-2xl" style={{ color }}>
+        <CountUp to={value} suffix={suffix || ''} separator="," duration={1.5} />
+      </div>
       <div className="font-nunito font-semibold text-sm mt-0.5" style={{ color: '#c0c0e0' }}>{label}</div>
       {sub && <div className="text-xs mt-1 font-nunito" style={{ color: 'var(--text-muted)' }}>{sub}</div>}
-    </div>
+    </SpotlightCard>
   )
 }
 
@@ -207,7 +212,8 @@ function CheatButton({ children, onClick, busy, color = '#f5a31a' }) {
 }
 
 function CheatPanel() {
-  const { profile, refreshProfile, addNotification } = useGame()
+  const { profile, refreshProfile, addNotification, triggerEvolution, triggerStreakMilestone } = useGame()
+  const navigate = useNavigate()
   const [busy, setBusy] = useState(null)
   const [pointsAmt, setPointsAmt] = useState(500)
   const [streakDays, setStreakDays] = useState(7)
@@ -322,6 +328,29 @@ function CheatPanel() {
         <span className="text-xs font-nunito font-bold" style={{ color: 'var(--text-muted)' }}>🐉 Set level:</span>
         {[1, 2, 3, 4, 5].map(l => (
           <CheatButton key={l} onClick={() => setLevel(l)} busy={busy} color="#22c55e">Lv {l}</CheatButton>
+        ))}
+      </div>
+
+      {/* Celebration overlays. These set the one-shot event and jump to the
+          dashboard, which is where the overlays are mounted. */}
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
+        <span className="text-xs font-nunito font-bold" style={{ color: 'var(--text-muted)' }}>🎉 Play celebration:</span>
+        <CheatButton
+          onClick={() => { triggerEvolution((profile?.pet_level || 1) + 1); navigate('/dashboard') }}
+          busy={busy}
+          color="#f5a31a"
+        >
+          ✨ Evolution
+        </CheatButton>
+        {[7, 30, 100, 365].map(d => (
+          <CheatButton
+            key={d}
+            onClick={() => { triggerStreakMilestone(d); navigate('/dashboard') }}
+            busy={busy}
+            color="#fb923c"
+          >
+            🔥 {d}d streak
+          </CheatButton>
         ))}
       </div>
 
@@ -474,7 +503,7 @@ export default function AdminPage() {
           <StatCard icon="📜" label="Total Quests"      value={totalTasks}     color="#06b6d4" />
           <StatCard icon="✅" label="Completed"          value={totalCompleted} color="#4ade80"
             sub={totalTasks > 0 ? `${Math.round(totalCompleted/totalTasks*100)}% of all tasks` : ''} />
-          <StatCard icon="⚡" label="Avg Efficiency"    value={`${avgEfficiency}%`} color="#f5a31a" />
+          <StatCard icon="⚡" label="Avg Efficiency"    value={avgEfficiency} suffix="%" color="#f5a31a" />
           <StatCard icon="😴" label="Procrastinated"    value={totalProcrast}  color="#f43f5e"
             sub="Tasks completed after 24h" />
         </motion.div>

@@ -50,6 +50,7 @@ export function GameProvider({ children }) {
   /* One-shot celebration events consumed by the dashboard. */
   const [evolution,            setEvolution]            = useState(null)
   const [badgeUnlock,          setBadgeUnlock]          = useState(null)
+  const [streakMilestone,      setStreakMilestone]      = useState(null)
   const [streakBroken,         setStreakBroken]         = useState(false)
   /* Connectivity + offline completion queue. */
   const [connection,           setConnection]           = useState(() =>
@@ -332,7 +333,10 @@ export function GameProvider({ children }) {
       addNotification(`✅ Queued quest verified — +${data.awarded} points awarded.`, 'success')
     } else {
       addNotification(`+${data.awarded} Quest Points earned! ✨`, 'success')
-      if (data.milestone) addNotification(`🔥 ${data.milestone}-day streak! Earned ${MILESTONE_REWARDS[data.milestone]}.`, 'success')
+      if (data.milestone) {
+        addNotification(`🔥 ${data.milestone}-day streak! Earned ${MILESTONE_REWARDS[data.milestone]}.`, 'success')
+        setStreakMilestone({ id: Date.now(), days: data.milestone })
+      }
       if (data.title) addNotification(`👑 Title earned: ${data.title}`, 'success')
       if (data.boss_unlocked) addNotification('💀 Boss Battles unlocked!', 'success')
       if (data.level_up) setEvolution({ id: Date.now(), level: data.level })
@@ -585,12 +589,18 @@ export function GameProvider({ children }) {
       badges:            profile?.badges ?? [],
       bossUnlocked:      profile?.boss_battles_unlocked ?? false,
       evolution,   clearEvolution:   () => setEvolution(null),
+      streakMilestone, clearStreakMilestone: () => setStreakMilestone(null),
       badgeUnlock, clearBadgeUnlock: () => setBadgeUnlock(null),
       streakBroken, clearStreakBroken: () => setStreakBroken(false),
       /* Connectivity */
       connection, pendingCount: pendingIds.length,
       /* Admin/testing */
       refreshProfile,
+      /* Fire a celebration overlay directly. The real events come from
+         complete_task's response, which an admin can't conjure on demand —
+         the streak cheat patches the profile row and so never produces one. */
+      triggerEvolution:       (level) => setEvolution({ id: Date.now(), level }),
+      triggerStreakMilestone: (days)  => setStreakMilestone({ id: Date.now(), days }),
     }}>
       {children}
     </GameContext.Provider>

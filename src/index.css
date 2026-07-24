@@ -485,6 +485,50 @@ body::before {
   pointer-events: none;
 }
 
+/* The gold dot that stands in for the system cursor. Fixed, inert, and above
+   everything except the click sparks. No transition — any easing here would
+   reintroduce exactly the lag this replaced. */
+.dot-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 10000;
+  opacity: 0;
+  will-change: transform;
+}
+
+/* Suppress the system cursor while the dot is mounted. Has to reach every
+   descendant: `cursor: none` on body alone loses to `.btn-gold`, `.acc-card`,
+   `.custom-check` and the UA's I-beam on inputs, so the native cursor would
+   reappear over precisely the interactive elements. Added and removed by the
+   component, so the cursor comes straight back if it unmounts or bails out. */
+body.has-dot-cursor,
+body.has-dot-cursor * {
+  cursor: none !important;
+}
+
+/* Magic-ring backdrop inside a celebration overlay. Sits under the overlay's
+   own content (which is z-index 2) and never eats pointer events — MagicRings
+   binds its own mouse handlers, and this is decoration, not a control. */
+.celebration-rings {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* WebGL aurora behind the dashboard. Parked at the bottom of the stacking
+   order, below the ambient blur blobs and every card. */
+.dashboard-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.45;
+}
+
 /* Elder / Legendary aura behind the pet. */
 .pet-aura {
   position: absolute;

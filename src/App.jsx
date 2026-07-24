@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { GameProvider, useGame } from './context/GameContext'
 import PageTransition from './components/animations/PageTransition'
 import PortalLoader from './components/animations/PortalLoader'
+import ClickSpark from './components/reactbits/ClickSpark'
+import DotCursor from './components/animations/DotCursor'
 import LoginPage          from './pages/LoginPage'
 import PetSelectPage      from './pages/PetSelectPage'
 import GameModeSelectPage from './pages/GameModeSelectPage'
@@ -99,7 +101,22 @@ export default function App() {
   return (
     <BrowserRouter>
       <GameProvider>
-        <AppRoutes />
+        {/* Gold sparks on every click, app-wide. The canvas is viewport-fixed
+            and pointer-events:none, so it never intercepts a click meant for
+            the UI underneath. */}
+        <ClickSpark
+          sparkColor="#f5a31a"
+          sparkSize={9}
+          sparkRadius={18}
+          sparkCount={8}
+          duration={420}
+          className="min-h-screen"
+        >
+          <AppRoutes />
+        </ClickSpark>
+
+        {/* A gold dot in place of the system cursor. Nothing else. */}
+        <DotCursor color="#f5a31a" size={7} />
       </GameProvider>
     </BrowserRouter>
   )

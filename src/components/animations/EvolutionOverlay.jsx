@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { getLevelMeta } from '../../data/progression'
 import useReducedMotion from '../../hooks/useReducedMotion'
+import CelebrationRings from './CelebrationRings'
 
 /*
  * Full-screen transformation sequence when the pet evolves:
@@ -34,6 +35,9 @@ export default function EvolutionOverlay({ evolution, petEmoji = '🐾', onDone 
           exit={{ opacity: 0 }}
           transition={{ duration: 0.3 }}
         >
+          {/* Magic rings bloom behind the whole sequence. */}
+          <CelebrationRings color="#f5a31a" colorTwo="#7c3aed" opacity={0.6} />
+
           {/* Screen flash */}
           {!reduceMotion && (
             <motion.div
