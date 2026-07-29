@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useGame } from '../context/GameContext'
 import PortalLoader from '../components/animations/PortalLoader'
 import CinematicBackground from '../components/CinematicBackground'
+import Magnet from '../components/reactbits/Magnet'
 
 const STARS = Array.from({ length: 60 }, (_, i) => ({
   id: i,
@@ -162,6 +163,16 @@ export default function LoginPage() {
             </motion.p>
           )}
 
+          {/* Gentle magnetic pull toward the cursor. `display:block` overrides
+              Magnet's inline-block wrapper so the button keeps its full width;
+              the pull is weak (strength 6) because a login form shouldn't feel
+              slippery. */}
+          <Magnet
+            padding={70}
+            magnetStrength={6}
+            disabled={loading}
+            style={{ position: 'relative', display: 'block', width: '100%' }}
+          >
           <motion.button type="submit" className="btn-gold w-full py-3 text-base font-nunito font-bold"
             disabled={loading} whileTap={{ scale: 0.97 }}>
             {loading
@@ -172,6 +183,7 @@ export default function LoginPage() {
               : tab === 'login' ? '⚔️  Begin Adventure' : '🌟  Create Account'
             }
           </motion.button>
+          </Magnet>
         </form>
       </motion.div>
     </div>

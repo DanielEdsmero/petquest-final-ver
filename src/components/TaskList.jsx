@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trash2, Plus, Circle, BookOpen, Clock, ChevronUp } from 'lucide-react'
+import { Trash2, Plus, Circle, BookOpen, Clock, ChevronUp, CalendarClock } from 'lucide-react'
 import { useGame, HARD_PERIOD_MS, MEDIUM_PERIOD_MS, DIFF_MIN_COMPLETE_MS } from '../context/GameContext'
 import CompletionFx from './animations/CompletionFx'
 import CheckDraw from './animations/CheckDraw'
@@ -304,6 +304,7 @@ function TaskItem({ task, onComplete, onDelete, onAddProgress, logs, canLog, now
 export default function TaskList() {
   const [activeDiff, setActiveDiff] = useState('easy')
   const [input, setInput] = useState('')
+  const [plannedDate, setPlannedDate] = useState('')  // research: intended finish, '' = skipped
   const inputRef = useRef(null)
   const { tasks, addTask, completeTask, deleteTask, addProgressLog, progressLogs, profile, selectedPet } = useGame()
 
@@ -361,9 +362,10 @@ export default function TaskList() {
 
   const handleAdd = async () => {
     if (!input.trim()) return
-    const ok = await addTask(input, activeDiff)
+    const ok = await addTask(input, activeDiff, plannedDate || null)
     if (ok) {
       setInput('')
+      setPlannedDate('')
       inputRef.current?.focus()
     }
   }
@@ -456,6 +458,36 @@ export default function TaskList() {
           <Plus size={16} />
           Add
         </motion.button>
+      </div>
+
+      {/* Planned finish — research: measures planning/scheduling behaviour.
+          Optional; left blank it saves null. min=now discourages back-dating a
+          plan, though the server does not reject it. */}
+      <div className="flex items-center gap-2 mb-4 -mt-1 px-1">
+        <CalendarClock size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+        <label htmlFor="planned-date" className="text-xs font-nunito flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
+          Plan to finish?
+        </label>
+        <input
+          id="planned-date"
+          type="datetime-local"
+          className="input-field text-xs py-1.5 flex-1"
+          value={plannedDate}
+          min={new Date().toISOString().slice(0, 16)}
+          onChange={e => setPlannedDate(e.target.value)}
+          disabled={atLimit}
+          title="Optional — when do you plan to finish this quest?"
+        />
+        {plannedDate && (
+          <button
+            onClick={() => setPlannedDate('')}
+            className="text-xs font-nunito px-2 py-1 rounded-lg flex-shrink-0"
+            style={{ color: 'var(--text-muted)', background: 'rgba(19,19,58,0.6)' }}
+            title="Clear planned date"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       {activeDiff === 'easy' && (

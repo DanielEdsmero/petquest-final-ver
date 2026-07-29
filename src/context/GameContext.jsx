@@ -50,6 +50,7 @@ export function GameProvider({ children }) {
   /* One-shot celebration events consumed by the dashboard. */
   const [evolution,            setEvolution]            = useState(null)
   const [badgeUnlock,          setBadgeUnlock]          = useState(null)
+  const [streakMilestone,      setStreakMilestone]      = useState(null)
   const [streakBroken,         setStreakBroken]         = useState(false)
   /* Connectivity + offline completion queue. */
   const [connection,           setConnection]           = useState(() =>
@@ -228,7 +229,7 @@ export function GameProvider({ children }) {
   }, [profile?.id])
 
   /* ── tasks ── */
-  const addTask = useCallback(async (text, difficulty = 'easy') => {
+  const addTask = useCallback(async (text, difficulty = 'easy', plannedCompletionDate = null) => {
     if (!text.trim()) return false
 
     const now = Date.now()
@@ -271,6 +272,13 @@ export function GameProvider({ children }) {
       }
     }
 
+    /* Research planning input — the user's intended finish time, or null if
+       they skipped the picker. Normalised to ISO for both the optimistic row
+       and the insert. */
+    const plannedISO = plannedCompletionDate
+      ? new Date(plannedCompletionDate).toISOString()
+      : null
+
     const tmp = {
       id: 'tmp_' + Date.now(),
       user_id: profile?.id,
@@ -280,9 +288,14 @@ export function GameProvider({ children }) {
       created_at: new Date().toISOString(),
       started_at: new Date().toISOString(),
       completed_at: null,
+      planned_completion_date: plannedISO,
+      completion_duration_minutes: null,
+      is_procrastinated: false,
     }
     setTasks(prev => { const n = [...prev, tmp]; lsSet('tasks', n); return n })
-    const { data } = await supabase.from('tasks').insert({ user_id: profile?.id, text: text.trim(), difficulty }).select().single()
+    const { data } = await supabase.from('tasks')
+      .insert({ user_id: profile?.id, text: text.trim(), difficulty, planned_completion_date: plannedISO })
+      .select().single()
     if (data) setTasks(prev => { const n = prev.map(t => t.id === tmp.id ? data : t); lsSet('tasks', n); return n })
     return true
   }, [profile, tasks, addNotification])
@@ -295,7 +308,11 @@ export function GameProvider({ children }) {
     const now = new Date().toISOString()
     setTasks(prev => {
       const n = prev.map(t => t.id === id
-        ? { ...t, completed: true, completed_at: now, pending: false }
+        ? { ...t, completed: true, completed_at: now, pending: false,
+            /* Mirror the server-computed research metrics so the Planning Stats
+               widget reflects this completion without a refetch. */
+            completion_duration_minutes: data.duration_minutes ?? t.completion_duration_minutes,
+            is_procrastinated: data.procrastinated ?? t.is_procrastinated }
         : t)
       lsSet('tasks', n); return n
     })
@@ -332,7 +349,10 @@ export function GameProvider({ children }) {
       addNotification(`✅ Queued quest verified — +${data.awarded} points awarded.`, 'success')
     } else {
       addNotification(`+${data.awarded} Quest Points earned! ✨`, 'success')
-      if (data.milestone) addNotification(`🔥 ${data.milestone}-day streak! Earned ${MILESTONE_REWARDS[data.milestone]}.`, 'success')
+      if (data.milestone) {
+        addNotification(`🔥 ${data.milestone}-day streak! Earned ${MILESTONE_REWARDS[data.milestone]}.`, 'success')
+        setStreakMilestone({ id: Date.now(), days: data.milestone })
+      }
       if (data.title) addNotification(`👑 Title earned: ${data.title}`, 'success')
       if (data.boss_unlocked) addNotification('💀 Boss Battles unlocked!', 'success')
       if (data.level_up) setEvolution({ id: Date.now(), level: data.level })
@@ -585,12 +605,18 @@ export function GameProvider({ children }) {
       badges:            profile?.badges ?? [],
       bossUnlocked:      profile?.boss_battles_unlocked ?? false,
       evolution,   clearEvolution:   () => setEvolution(null),
+      streakMilestone, clearStreakMilestone: () => setStreakMilestone(null),
       badgeUnlock, clearBadgeUnlock: () => setBadgeUnlock(null),
       streakBroken, clearStreakBroken: () => setStreakBroken(false),
       /* Connectivity */
       connection, pendingCount: pendingIds.length,
       /* Admin/testing */
       refreshProfile,
+      /* Fire a celebration overlay directly. The real events come from
+         complete_task's response, which an admin can't conjure on demand —
+         the streak cheat patches the profile row and so never produces one. */
+      triggerEvolution:       (level) => setEvolution({ id: Date.now(), level }),
+      triggerStreakMilestone: (days)  => setStreakMilestone({ id: Date.now(), days }),
     }}>
       {children}
     </GameContext.Provider>

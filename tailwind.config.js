@@ -28,6 +28,9 @@ export default {
         'slide-in': 'slideIn 0.4s ease-out',
         'fade-up': 'fadeUp 0.6s ease-out',
         sparkle: 'sparkle 1.5s ease-in-out infinite',
+        /* React Bits StarBorder — see src/components/reactbits/StarBorder.jsx */
+        'star-movement-bottom': 'star-movement-bottom linear infinite alternate',
+        'star-movement-top': 'star-movement-top linear infinite alternate',
       },
       keyframes: {
         float: {
@@ -49,7 +52,15 @@ export default {
         sparkle: {
           '0%, 100%': { transform: 'scale(1) rotate(0deg)', opacity: '1' },
           '50%': { transform: 'scale(1.2) rotate(180deg)', opacity: '0.7' },
-        }
+        },
+        'star-movement-bottom': {
+          '0%': { transform: 'translate(0%, 0%)', opacity: '1' },
+          '100%': { transform: 'translate(-100%, 0%)', opacity: '0' },
+        },
+        'star-movement-top': {
+          '0%': { transform: 'translate(0%, 0%)', opacity: '1' },
+          '100%': { transform: 'translate(100%, 0%)', opacity: '0' },
+        },
       },
       boxShadow: {
         'glow-gold': '0 0 20px rgba(245, 163, 26, 0.4), 0 0 40px rgba(245, 163, 26, 0.2)',

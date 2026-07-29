@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useGame } from '../context/GameContext'
 import { PETS } from '../data/pets'
+import GlareHover from '../components/reactbits/GlareHover'
+import Magnet from '../components/reactbits/Magnet'
+import BlurText from '../components/reactbits/BlurText'
 
 const RARITY_BADGE = {
   Legendary: { color: '#f5a31a', bg: 'rgba(245, 163, 26, 0.15)' },
@@ -15,20 +18,34 @@ function PetCard({ pet, selected, onSelect }) {
 
   return (
     <motion.div
-      className="relative cursor-pointer rounded-2xl p-6 flex flex-col items-center text-center"
-      style={{
-        background: selected
-          ? `linear-gradient(135deg, ${pet.color}22 0%, rgba(14, 14, 46, 0.95) 100%)`
-          : 'rgba(14, 14, 46, 0.7)',
-        border: `2px solid ${selected ? pet.color : 'rgba(124, 58, 237, 0.2)'}`,
-        boxShadow: selected ? `0 0 30px ${pet.glowColor}, 0 8px 32px rgba(0,0,0,0.5)` : '0 4px 24px rgba(0,0,0,0.4)',
-        backdropFilter: 'blur(20px)',
-        transition: 'all 0.3s ease',
-      }}
+      className="relative"
       whileHover={{ y: -6, scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       onClick={() => onSelect(pet.id)}
     >
+      {/* The card surface is a GlareHover, so a specular highlight sweeps
+          across the companion as you consider it. Motion transforms stay on
+          the wrapper above — GlareHover only owns the finish. */}
+      <GlareHover
+        baseClassName="flex flex-col items-center text-center"
+        className="p-6"
+        background={selected
+          ? `linear-gradient(135deg, ${pet.color}22 0%, rgba(14, 14, 46, 0.95) 100%)`
+          : 'rgba(14, 14, 46, 0.7)'}
+        borderRadius="16px"
+        borderColor={selected ? pet.color : 'rgba(124, 58, 237, 0.2)'}
+        glareColor="#ffd166"
+        glareOpacity={0.28}
+        glareAngle={-40}
+        glareSize={220}
+        transitionDuration={800}
+        style={{
+          borderWidth: 2,
+          boxShadow: selected ? `0 0 30px ${pet.glowColor}, 0 8px 32px rgba(0,0,0,0.5)` : '0 4px 24px rgba(0,0,0,0.4)',
+          backdropFilter: 'blur(20px)',
+          transition: 'background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease',
+        }}
+      >
       {/* Rarity badge */}
       <div className="absolute top-3 right-3 text-xs font-bold font-nunito px-2 py-0.5 rounded-full"
         style={{ color: badge.color, background: badge.bg, border: `1px solid ${badge.color}40` }}>
@@ -85,6 +102,7 @@ function PetCard({ pet, selected, onSelect }) {
         style={{ background: `${pet.color}20`, color: pet.color }}>
         ✓ Selected
       </div>
+      </GlareHover>
     </motion.div>
   )
 }
@@ -126,9 +144,16 @@ export default function PetSelectPage() {
           <p className="text-xs font-nunito uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>
             Welcome, {user?.username}
           </p>
-          <h1 className="font-cinzel font-black text-4xl md:text-5xl gradient-text-gold mb-3">
-            Choose Your Companion
-          </h1>
+          {/* Resolves out of a blur, one word at a time. `justify-center`
+              because BlurText lays its words out with flex. */}
+          <BlurText
+            as="h1"
+            text="Choose Your Companion"
+            animateBy="words"
+            direction="top"
+            delay={140}
+            className="font-cinzel font-black text-4xl md:text-5xl gradient-text-gold mb-3 justify-center"
+          />
           <p className="font-nunito text-base" style={{ color: '#8080aa' }}>
             Your chosen companion will join you on every quest. Choose wisely.
           </p>
@@ -161,6 +186,10 @@ export default function PetSelectPage() {
               exit={{ opacity: 0, y: 20 }}
               className="flex justify-center"
             >
+              {/* The CTA leans toward the cursor as it approaches — it makes
+                  the final commit step feel eager. Disabled while bonding so
+                  it settles instead of chasing. */}
+              <Magnet padding={120} magnetStrength={4} disabled={confirming}>
               <motion.button
                 className="btn-gold px-10 py-4 text-lg font-cinzel font-bold tracking-wide"
                 onClick={handleConfirm}
@@ -179,6 +208,7 @@ export default function PetSelectPage() {
                   `✦  Embark with ${selectedPet?.name}`
                 )}
               </motion.button>
+              </Magnet>
             </motion.div>
           )}
         </AnimatePresence>

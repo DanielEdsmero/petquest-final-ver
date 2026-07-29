@@ -7,6 +7,9 @@ import { useGame } from '../context/GameContext'
 import { PETS } from '../data/pets'
 import { getLevelMeta } from '../data/progression'
 import { DIFFICULTY_COLORS } from '../data/difficulty'
+import CountUp from '../components/reactbits/CountUp'
+import ShinyText from '../components/reactbits/ShinyText'
+import StarBorder from '../components/reactbits/StarBorder'
 
 /* The two ranking modes. "Quests" additionally lets you rank by a single
    difficulty — the "most quests done per difficulty" board. */
@@ -143,49 +146,82 @@ export default function LeaderboardPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {ranked.map((r, i) => (
-              <motion.div
-                key={r.username + i}
-                layout
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(i * 0.03, 0.4) }}
-                className="flex items-center gap-3 px-4 py-3 rounded-2xl"
-                style={{
-                  background: isMe(r) ? 'rgba(245,163,26,0.1)' : 'rgba(14,14,46,0.7)',
-                  border: `1px solid ${isMe(r) ? 'rgba(245,163,26,0.4)' : i < 3 ? 'rgba(245,163,26,0.2)' : 'rgba(124,58,237,0.15)'}`,
-                }}
-              >
-                {/* Rank */}
-                <div className="w-8 text-center font-cinzel font-black flex-shrink-0"
-                  style={{ color: i < 3 ? '#f5a31a' : '#8080aa', fontSize: i < 3 ? 20 : 14 }}>
-                  {i < 3 ? MEDALS[i] : i + 1}
-                </div>
+            {ranked.map((r, i) => {
+              const champion = i === 0
 
-                {/* Pet + name */}
-                <div className="text-2xl flex-shrink-0">{petEmoji(r.pet_id)}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-nunito font-bold text-sm truncate" style={{ color: '#e2e2ff' }}>
-                    {r.username}
-                    {isMe(r) && <span className="ml-2 text-xs px-1.5 py-0.5 rounded"
-                      style={{ background: 'rgba(245,163,26,0.15)', color: '#f5a31a' }}>You</span>}
-                  </p>
-                  <p className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
-                    Lv {r.pet_level} {getLevelMeta(r.pet_level).name}
-                    {board === 'streak' && <> · best {r.longest_streak}🔥</>}
-                    {board === 'quests' && <> · {r.total_completed} total</>}
-                  </p>
-                </div>
+              /* Row layout, shared by the plain rows and the champion's
+                 StarBorder-framed one. */
+              const rowClass = 'flex items-center gap-3 px-4 py-3 rounded-2xl'
+              const rowStyle = {
+                background: isMe(r) ? 'rgba(245,163,26,0.1)' : 'rgba(14,14,46,0.7)',
+                border: `1px solid ${isMe(r) ? 'rgba(245,163,26,0.4)' : i < 3 ? 'rgba(245,163,26,0.2)' : 'rgba(124,58,237,0.15)'}`,
+              }
 
-                {/* Metric value */}
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {board === 'streak' && <Flame size={16} style={{ color: metricColor }} />}
-                  <span className="font-cinzel font-black text-xl tabular-nums" style={{ color: metricColor }}>
-                    {metricValue(r)}
-                  </span>
-                </div>
-              </motion.div>
-            ))}
+              const body = (
+                <>
+                  {/* Rank */}
+                  <div className="w-8 text-center font-cinzel font-black flex-shrink-0"
+                    style={{ color: i < 3 ? '#f5a31a' : '#8080aa', fontSize: i < 3 ? 20 : 14 }}>
+                    {i < 3 ? MEDALS[i] : i + 1}
+                  </div>
+
+                  {/* Pet + name */}
+                  <div className="text-2xl flex-shrink-0">{petEmoji(r.pet_id)}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-nunito font-bold text-sm truncate" style={{ color: '#e2e2ff' }}>
+                      {/* Podium names catch the light; everyone else stays flat,
+                          so the sheen reads as rank and not decoration. */}
+                      {i < 3
+                        ? <ShinyText text={r.username} speed={3} color="#e2e2ff" shineColor="#f5a31a" />
+                        : r.username}
+                      {isMe(r) && <span className="ml-2 text-xs px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(245,163,26,0.15)', color: '#f5a31a' }}>You</span>}
+                    </p>
+                    <p className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
+                      Lv {r.pet_level} {getLevelMeta(r.pet_level).name}
+                      {board === 'streak' && <> · best {r.longest_streak}🔥</>}
+                      {board === 'quests' && <> · {r.total_completed} total</>}
+                    </p>
+                  </div>
+
+                  {/* Metric value */}
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {board === 'streak' && <Flame size={16} style={{ color: metricColor }} />}
+                    <span className="font-cinzel font-black text-xl tabular-nums" style={{ color: metricColor }}>
+                      {/* Keyed on the active board so switching boards replays
+                          the count instead of holding the previous total. */}
+                      <CountUp key={metric} to={metricValue(r)} duration={1.2} />
+                    </span>
+                  </div>
+                </>
+              )
+
+              return (
+                <motion.div
+                  key={r.username + i}
+                  layout
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(i * 0.03, 0.4) }}
+                >
+                  {champion ? (
+                    <StarBorder
+                      as="div"
+                      color="#f5a31a"
+                      speed="5s"
+                      thickness={2}
+                      style={{ display: 'block', width: '100%', borderRadius: 18 }}
+                      innerClassName={rowClass}
+                      innerStyle={rowStyle}
+                    >
+                      {body}
+                    </StarBorder>
+                  ) : (
+                    <div className={rowClass} style={rowStyle}>{body}</div>
+                  )}
+                </motion.div>
+              )
+            })}
           </div>
         )}
       </div>
