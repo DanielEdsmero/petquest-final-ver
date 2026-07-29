@@ -41,9 +41,9 @@ export default function Notifications() {
               transition={{ type: 'spring', stiffness: 300, damping: 25 }}
               className="notification pointer-events-auto px-4 py-3 flex items-center gap-3"
               style={{
-                background: style.bg,
-                border: `1px solid ${style.border}`,
-                backdropFilter: 'blur(20px)',
+                background: 'var(--card-bg-2)',
+                border: '1px solid var(--card-border)',
+                borderLeft: `3px solid ${style.color}`,
               }}
             >
               {/* Icon */}

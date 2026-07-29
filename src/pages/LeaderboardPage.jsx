@@ -67,15 +67,10 @@ export default function LeaderboardPage() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-deep)' }}>
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/3 w-96 h-96 rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(245,163,26,0.1) 0%, transparent 70%)', filter: 'blur(80px)' }} />
-      </div>
-
       {/* Nav */}
       <motion.nav initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
         className="relative z-20 flex items-center justify-between px-4 md:px-8 py-4"
-        style={{ borderBottom: '1px solid rgba(124,58,237,0.12)', background: 'rgba(6,6,26,0.85)', backdropFilter: 'blur(20px)' }}>
+        style={{ borderBottom: '1px solid var(--card-border)', background: '#0d1120' }}>
         <div className="flex items-center gap-3">
           <motion.button onClick={() => navigate('/dashboard')}
             className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
@@ -83,7 +78,8 @@ export default function LeaderboardPage() {
             whileHover={{ background: 'rgba(124,58,237,0.2)' }} whileTap={{ scale: 0.95 }}>
             <ArrowLeft size={15} /> Dashboard
           </motion.button>
-          <h1 className="font-cinzel font-black text-lg gradient-text-gold flex items-center gap-2">
+          <h1 className="font-cinzel font-black text-lg flex items-center gap-2"
+            style={{ color: '#ffd166', textShadow: '0 0 16px rgba(245,163,26,0.3)' }}>
             <Trophy size={18} style={{ color: '#f5a31a' }} /> Leaderboard
           </h1>
         </div>

@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { GameProvider, useGame } from './context/GameContext'
 import PageTransition from './components/animations/PageTransition'
 import PortalLoader from './components/animations/PortalLoader'
+import ErrorBoundary from './components/ErrorBoundary'
 import LoginPage          from './pages/LoginPage'
 import PetSelectPage      from './pages/PetSelectPage'
 import GameModeSelectPage from './pages/GameModeSelectPage'
@@ -97,10 +98,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <GameProvider>
-        <AppRoutes />
-      </GameProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <GameProvider>
+          <AppRoutes />
+        </GameProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }

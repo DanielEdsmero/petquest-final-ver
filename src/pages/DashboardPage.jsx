@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
-import { LogOut, Sparkles, Star, ShoppingBag, Droplets, Heart, Utensils, Shield, Settings, Trophy } from 'lucide-react'
+import { LogOut, Sparkles, Star, ShoppingBag, Droplets, Heart, Utensils, Shield, Settings, Trophy, Scroll, CheckCircle2, Lightbulb } from 'lucide-react'
 import { useGame } from '../context/GameContext'
 
 const MODE_META = {
@@ -84,13 +84,14 @@ function PointsDisplay({ points }) {
       <motion.span
         animate={reduceMotion ? {} : { rotate: [0, 20, -20, 0] }}
         transition={{ duration: 0.5, delay: 0.1 }}
-        className="text-xl relative"
+        className="relative flex"
         style={{ zIndex: 1 }}
       >
-        ⭐
+        <Star size={20} style={{ color: '#ffd166', fill: '#ffd166' }} />
       </motion.span>
       <div className="relative" style={{ zIndex: 1 }}>
-        <div className="font-cinzel font-black text-lg leading-none gradient-text-gold">
+        <div className="font-cinzel font-black text-lg leading-none"
+          style={{ color: '#ffd166', textShadow: '0 0 16px rgba(245,163,26,0.35)' }}>
           {points.toLocaleString()}
         </div>
         <div className="text-xs font-nunito" style={{ color: 'var(--text-soft)' }}>Points</div>
@@ -148,26 +149,19 @@ export default function DashboardPage() {
         onDone={clearEvolution}
       />
 
-      {/* Ambient background */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 right-0 w-96 h-96 rounded-full opacity-50"
-          style={{ background: `radial-gradient(circle, ${selectedPet?.glowColor || 'rgba(124,58,237,0.1)'} 0%, transparent 70%)`, filter: 'blur(80px)' }} />
-        <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full opacity-30"
-          style={{ background: 'radial-gradient(circle, rgba(6,182,212,0.12) 0%, transparent 70%)', filter: 'blur(60px)' }} />
-      </div>
-
       {/* Top navigation */}
       <motion.nav
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.5 }}
         className="relative z-20 flex items-center justify-between px-4 md:px-8 py-4"
-        style={{ borderBottom: '1px solid rgba(124, 58, 237, 0.12)', background: 'rgba(6, 6, 26, 0.7)', backdropFilter: 'blur(20px)' }}
+        style={{ borderBottom: '1px solid var(--card-border)', background: '#0d1120' }}
       >
         {/* Logo */}
         <div className="flex items-center gap-2">
           <span className="text-2xl">🐾</span>
-          <span className="font-cinzel font-black text-xl gradient-text-gold hidden sm:block">Pet Quest</span>
+          <span className="font-cinzel font-black text-xl hidden sm:block"
+            style={{ color: '#ffd166', textShadow: '0 0 16px rgba(245,163,26,0.3)' }}>Pet Quest</span>
         </div>
 
         {/* Warnings */}
@@ -215,8 +209,9 @@ export default function DashboardPage() {
             <span className="hidden md:inline">Leaderboard</span>
           </motion.button>
 
-          {/* Mode badge */}
-          {profile?.game_mode && (() => {
+          {/* Mode badge — guard against a game_mode not in MODE_META so an
+              unexpected value can never crash the whole dashboard. */}
+          {profile?.game_mode && MODE_META[profile.game_mode] && (() => {
             const m = MODE_META[profile.game_mode]
             return (
               <motion.button
@@ -409,15 +404,14 @@ export default function DashboardPage() {
             {/* Accessories shortcut */}
             <motion.button
               className="w-full glass-card p-4 flex items-center justify-between group cursor-pointer"
-              style={{ border: '1px solid rgba(245, 163, 26, 0.2)' }}
               onClick={() => navigate('/accessories')}
-              whileHover={{ borderColor: 'rgba(245, 163, 26, 0.5)', boxShadow: '0 0 20px rgba(245, 163, 26, 0.1)' }}
+              whileHover={{ borderColor: 'var(--card-border-hi)' }}
               whileTap={{ scale: 0.98 }}
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
-                  style={{ background: 'rgba(245, 163, 26, 0.15)' }}>
-                  🎁
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center"
+                  style={{ background: 'rgba(245, 163, 26, 0.12)' }}>
+                  <ShoppingBag size={18} style={{ color: '#f5a31a' }} />
                 </div>
                 <div className="text-left">
                   <p className="font-nunito font-bold text-sm" style={{ color: '#f5a31a' }}>Accessories Shop</p>
@@ -435,18 +429,35 @@ export default function DashboardPage() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
           >
-            {/* Stats summary row */}
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: 'Active Quests', value: tasks.filter(t => !t.completed).length, icon: '📜', color: '#7c3aed' },
-                { label: 'Completed', value: tasks.filter(t => t.completed).length, icon: '✅', color: '#22c55e' },
-                { label: 'Earned Today', value: `${tasks.filter(t => t.completed).length * 10}`, icon: '⭐', color: '#f5a31a', suffix: ' pts' },
-              ].map(({ label, value, icon, color, suffix }) => (
-                <div key={label} className="glass-card p-4 text-center">
-                  <div className="text-2xl mb-1">{icon}</div>
-                  <div className="font-cinzel font-black text-xl" style={{ color }}>
-                    {value}{suffix || ''}
+            {/* Stats summary — asymmetric: earned points carry the weight,
+                active/completed sit compact beside them. */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {/* Earned today — the prominent metric (spans two columns) */}
+              <div className="glass-card p-4 sm:col-span-2 flex items-center gap-4"
+                style={{ borderLeft: '3px solid #f5a31a' }}>
+                <div className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'rgba(245,163,26,0.12)' }}>
+                  <Star size={22} style={{ color: '#f5a31a', fill: '#f5a31a' }} />
+                </div>
+                <div>
+                  <div className="font-cinzel font-black text-2xl leading-none" style={{ color: '#ffd166' }}>
+                    {tasks.filter(t => t.completed).length * 10}
+                    <span className="text-base font-nunito font-bold" style={{ color: 'var(--text-muted)' }}> pts</span>
                   </div>
+                  <div className="text-xs font-nunito mt-1 uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                    Earned Today
+                  </div>
+                </div>
+              </div>
+
+              {/* Active + completed — compact */}
+              {[
+                { label: 'Active', value: tasks.filter(t => !t.completed).length, Icon: Scroll, color: '#a78bfa' },
+                { label: 'Completed', value: tasks.filter(t => t.completed).length, Icon: CheckCircle2, color: '#22c55e' },
+              ].map(({ label, value, Icon, color }) => (
+                <div key={label} className="glass-card p-4 flex flex-col justify-center gap-1">
+                  <Icon size={16} style={{ color }} />
+                  <div className="font-cinzel font-black text-xl" style={{ color }}>{value}</div>
                   <div className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>{label}</div>
                 </div>
               ))}
@@ -470,12 +481,12 @@ export default function DashboardPage() {
             {/* Tips card */}
             <div className="glass-card p-4">
               <div className="flex items-start gap-3">
-                <div className="text-2xl">💡</div>
+                <Lightbulb size={20} style={{ color: '#a78bfa', flexShrink: 0, marginTop: 2 }} />
                 <div>
                   <p className="font-nunito font-bold text-sm mb-1" style={{ color: '#a78bfa' }}>Quest Tips</p>
                   <p className="text-xs font-nunito leading-relaxed" style={{ color: 'var(--text-soft)' }}>
                     Complete quests to earn points. Spend points on pet care or accessories.
-                    Your companion's stats decrease over time — keep them happy! 🐾
+                    Your companion's stats decrease over time — keep them happy.
                   </p>
                 </div>
               </div>

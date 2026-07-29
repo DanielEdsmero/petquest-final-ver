@@ -206,45 +206,70 @@ function CheatButton({ children, onClick, busy, color = '#f5a31a' }) {
   )
 }
 
-function CheatPanel() {
+function CheatPanel({ players = [], onChanged }) {
   const { profile, refreshProfile, addNotification } = useGame()
   const [busy, setBusy] = useState(null)
   const [pointsAmt, setPointsAmt] = useState(500)
   const [streakDays, setStreakDays] = useState(7)
+  const [targetId, setTargetId] = useState(profile?.id || '')
+
+  // Default the target to the admin's own account once the profile loads.
+  useEffect(() => { if (profile?.id && !targetId) setTargetId(profile.id) }, [profile?.id, targetId])
+
+  const isSelf = targetId === profile?.id
+  const targetName = players.find(p => p.user_id === targetId)?.username || profile?.username
 
   const today = () => new Date().toISOString().slice(0, 10)
 
+  // After any change: refresh my own state if I targeted myself, and reload the
+  // admin analytics table so another player's new numbers show.
+  const afterChange = async () => {
+    if (isSelf) await refreshProfile()
+    onChanged?.()
+  }
+
   const runRpc = async (fn, label) => {
+    if (!targetId) return
     setBusy(label)
-    const { data, error } = await supabase.rpc(fn)
+    const { data, error } = await supabase.rpc(fn, { p_target: targetId })
     setBusy(null)
     if (error)     return addNotification(`${label} failed: ${error.message}`, 'error')
     if (!data?.ok) return addNotification(`${label}: ${data?.error || 'failed'}`, 'error')
-    await refreshProfile()
-    addNotification(`${label} ✓${data.affected != null ? ` (${data.affected})` : ''}`, 'success')
+    await afterChange()
+    addNotification(`${label} → ${targetName} ✓${data.affected != null ? ` (${data.affected})` : ''}`, 'success')
   }
 
   const patch = async (fields, label) => {
-    if (!profile?.id) return
+    if (!targetId) return
     setBusy(label)
-    const { error } = await supabase.from('profiles').update(fields).eq('id', profile.id)
+    const { error } = await supabase.from('profiles').update(fields).eq('id', targetId)
     setBusy(null)
     if (error) return addNotification(`${label} failed: ${error.message}`, 'error')
-    await refreshProfile()
-    addNotification(`${label} ✓`, 'success')
+    await afterChange()
+    addNotification(`${label} → ${targetName} ✓`, 'success')
   }
 
-  const addPoints = (n) => {
-    const total = (profile?.total_points_earned || 0) + n
+  // Reads that need the TARGET's current values (not the logged-in admin's).
+  const fetchTarget = async (cols) => {
+    const { data } = await supabase.from('profiles').select(cols).eq('id', targetId).single()
+    return data || {}
+  }
+
+  const addPoints = async (n) => {
+    const t = await fetchTarget('points, total_points_earned')
+    const total = (t.total_points_earned || 0) + n
     return patch(
-      { points: (profile?.points || 0) + n, total_points_earned: total, pet_level: levelFromPoints(total) },
+      { points: (t.points || 0) + n, total_points_earned: total, pet_level: levelFromPoints(total) },
       `+${n} points`,
     )
   }
-  const setStreak = (d) => patch(
-    { current_streak: d, longest_streak: Math.max(d, profile?.longest_streak || 0), last_completion_date: today() },
-    `Streak → ${d}`,
-  )
+  const setStreak = async (d) => {
+    const t = await fetchTarget('longest_streak')
+    return patch(
+      { current_streak: d, longest_streak: Math.max(d, t.longest_streak || 0), last_completion_date: today() },
+      `Streak → ${d}`,
+    )
+  }
   const setLevel = (lvl) => {
     const min = PET_LEVELS.find(l => l.level === lvl)?.min ?? 0
     return patch({ total_points_earned: min, pet_level: lvl }, `Level → ${lvl}`)
@@ -256,18 +281,18 @@ function CheatPanel() {
   )
 
   const grantAllAccessories = async () => {
-    if (!profile?.id) return
+    if (!targetId) return
     setBusy('acc')
-    const { data: owned } = await supabase.from('owned_accessories').select('accessory_id').eq('user_id', profile.id)
+    const { data: owned } = await supabase.from('owned_accessories').select('accessory_id').eq('user_id', targetId)
     const have = new Set((owned || []).map(r => r.accessory_id))
-    const rows = ACCESSORIES.filter(a => !have.has(a.id)).map(a => ({ user_id: profile.id, accessory_id: a.id }))
+    const rows = ACCESSORIES.filter(a => !have.has(a.id)).map(a => ({ user_id: targetId, accessory_id: a.id }))
     if (rows.length) {
       const { error } = await supabase.from('owned_accessories').insert(rows)
       if (error) { setBusy(null); return addNotification(`Grant accessories failed: ${error.message}`, 'error') }
     }
     setBusy(null)
-    await refreshProfile()
-    addNotification(`Granted ${rows.length} accessories ✓`, 'success')
+    await afterChange()
+    addNotification(`Granted ${rows.length} accessories → ${targetName} ✓`, 'success')
   }
 
   return (
@@ -277,17 +302,36 @@ function CheatPanel() {
       <h3 className="font-cinzel font-bold text-base flex items-center gap-2 mb-1">
         🧪 Testing &amp; Cheats
       </h3>
-      <p className="text-xs font-nunito mb-4" style={{ color: 'var(--text-muted)' }}>
-        Instant test tools — all act on <strong style={{ color: '#f5a31a' }}>your own</strong> account
-        ({profile?.username}). Return to the dashboard to see the effect.
+      <p className="text-xs font-nunito mb-3" style={{ color: 'var(--text-muted)' }}>
+        Instant test tools. Pick a target player below — actions apply to them
+        {isSelf && ' (that’s you)'}. If you target yourself, the dashboard updates live.
       </p>
+
+      {/* Target player selector */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <span className="text-xs font-nunito font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+          Target
+        </span>
+        <select
+          value={targetId}
+          onChange={e => setTargetId(e.target.value)}
+          className="input-field"
+          style={{ width: 'auto', minWidth: 200, paddingTop: 6, paddingBottom: 6 }}
+        >
+          {players.map(p => (
+            <option key={p.user_id} value={p.user_id}>
+              {p.username}{p.user_id === profile?.id ? ' (you)' : ''}{p.role === 'admin' ? ' · admin' : ''}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
         <CheatButton onClick={() => runRpc('admin_skip_timers', 'Skip timers')} busy={busy} color="#06b6d4">
           ⏩ Skip all quest timers
         </CheatButton>
         <CheatButton onClick={() => runRpc('admin_reset_my_tasks', 'Reset quests')} busy={busy} color="#06b6d4">
-          🔄 Un-complete my quests
+          🔄 Un-complete quests
         </CheatButton>
         <CheatButton onClick={unlockBoss} busy={busy} color="#7c3aed">
           💀 Unlock Boss Battles
@@ -328,7 +372,7 @@ function CheatPanel() {
       {/* Danger */}
       <div className="mt-3 pt-3 border-t" style={{ borderColor: 'rgba(124,58,237,0.1)' }}>
         <CheatButton onClick={resetProgression} busy={busy} color="#f43f5e">
-          ♻️ Reset my progression to zero
+          ♻️ Reset progression to zero
         </CheatButton>
       </div>
     </motion.div>
@@ -424,16 +468,10 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-deep)' }}>
-      {/* Ambient */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/3 w-96 h-96 rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(124,58,237,0.1) 0%, transparent 70%)', filter: 'blur(80px)' }} />
-      </div>
-
       {/* Nav */}
       <motion.nav initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
         className="relative z-20 flex items-center justify-between px-4 md:px-8 py-4"
-        style={{ borderBottom: '1px solid rgba(124,58,237,0.12)', background: 'rgba(6,6,26,0.85)', backdropFilter: 'blur(20px)' }}>
+        style={{ borderBottom: '1px solid var(--card-border)', background: '#0d1120' }}>
         <div className="flex items-center gap-3">
           <motion.button onClick={() => navigate('/dashboard')}
             className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
@@ -442,7 +480,7 @@ export default function AdminPage() {
             <ArrowLeft size={15} /> Dashboard
           </motion.button>
           <div>
-            <h1 className="font-cinzel font-black text-lg gradient-text-gold">Admin Control Room</h1>
+            <h1 className="font-cinzel font-black text-lg" style={{ color: '#ffd166', textShadow: '0 0 16px rgba(245,163,26,0.3)' }}>Admin Control Room</h1>
             <p className="text-xs font-nunito hidden sm:block" style={{ color: 'var(--text-muted)' }}>
               Logged in as {profile?.username}
             </p>
@@ -465,7 +503,7 @@ export default function AdminPage() {
         )}
 
         {/* ── Testing & cheats ── */}
-        <CheatPanel />
+        <CheatPanel players={users} onChanged={loadData} />
 
         {/* ── Global stat cards ── */}
         <motion.div initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.1 }}
