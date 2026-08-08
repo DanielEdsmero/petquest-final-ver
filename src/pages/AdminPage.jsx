@@ -300,7 +300,7 @@ function CheatPanel({ players = [], onChanged }) {
       className="glass-card p-5"
       style={{ border: '1px solid rgba(244,63,94,0.25)' }}>
       <h3 className="font-cinzel font-bold text-base flex items-center gap-2 mb-1">
-        🧪 Testing &amp; Cheats
+        🧪 Admin Test
       </h3>
       <p className="text-xs font-nunito mb-3" style={{ color: 'var(--text-muted)' }}>
         Instant test tools. Pick a target player below — actions apply to them
