@@ -382,10 +382,114 @@ function CheatPanel({ players = [], onChanged }) {
 /* ════════════════════════════════════════════
    MAIN ADMIN PAGE
 ════════════════════════════════════════════ */
+/* ────── verification queue (pending quest completions) ────── */
+function VerificationQueue() {
+  const { addNotification } = useGame()
+  const [rows, setRows]     = useState([])
+  const [signed, setSigned] = useState({})   // completion id -> signed photo url
+  const [loading, setLoad]  = useState(true)
+  const [busy, setBusy]     = useState(null)
+
+  const load = async () => {
+    setLoad(true)
+    const { data, error } = await supabase
+      .from('quest_completions')
+      .select('*, tasks(text), profiles(username, selected_pet_id)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+    if (error) { addNotification(`Queue load failed: ${error.message}`, 'error'); setLoad(false); return }
+    setRows(data || [])
+    setLoad(false)
+    // Sign the private proof photos (5-min URLs).
+    const map = {}
+    await Promise.all((data || []).map(async r => {
+      if (!r.proof_photo_url) return
+      const { data: s } = await supabase.storage.from('quest-proofs').createSignedUrl(r.proof_photo_url, 300)
+      if (s?.signedUrl) map[r.id] = s.signedUrl
+    }))
+    setSigned(map)
+  }
+  useEffect(() => { load() }, [])
+
+  const review = async (id, action) => {
+    setBusy(id + action)
+    const { data, error } = await supabase.rpc('admin_review_completion', {
+      p_completion_id: id, p_action: action, p_reason: null,
+    })
+    setBusy(null)
+    if (error || !data?.ok) return addNotification(`Review failed: ${error?.message || data?.error || 'unknown'}`, 'error')
+    addNotification(
+      action === 'approved' ? '🏆 Quest verified — permanent.'
+      : action === 'rejected' ? '🚨 Completion rejected — data reverted.'
+      : '⚠️ Flagged as suspicious.',
+      action === 'approved' ? 'success' : action === 'rejected' ? 'error' : 'info')
+    load()
+  }
+
+  const AI = { pass: '#4ade80', fail: '#fb7185', error: '#22d3ee', pending: '#8080aa' }
+
+  if (loading) {
+    return <div className="glass-card p-8 text-center font-nunito" style={{ color: 'var(--text-muted)' }}>
+      <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="text-2xl inline-block">⚙️</motion.div>
+    </div>
+  }
+  if (!rows.length) {
+    return <div className="glass-card p-10 text-center font-nunito" style={{ color: 'var(--text-muted)' }}>
+      <div className="text-3xl mb-2">✅</div>No completions awaiting review.
+    </div>
+  }
+
+  return (
+    <div className="space-y-3">
+      <h3 className="font-cinzel font-bold text-base flex items-center gap-2">
+        <Clock size={16} style={{ color: '#f5a31a' }} /> Verification Queue
+        <span className="font-nunito font-normal text-sm" style={{ color: 'var(--text-muted)' }}>({rows.length} pending)</span>
+      </h3>
+      {rows.map(r => (
+        <div key={r.id} className="glass-card p-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3">
+            <span className="font-nunito font-bold text-sm" style={{ color: '#e2e2ff' }}>
+              {r.profiles?.username || 'Unknown'}
+            </span>
+            <span className="text-sm font-nunito" style={{ color: '#c0c0e0' }}>{r.tasks?.text || '(quest)'}</span>
+            <span className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
+              {r.difficulty} · +{r.points_earned} pts · {Math.floor((r.duration_seconds || 0) / 60)}m
+            </span>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3 mb-3">
+            <div className="rounded-lg overflow-hidden" style={{ background: '#000', aspectRatio: '4/3' }}>
+              {signed[r.id]
+                ? <img src={signed[r.id]} alt="Proof" className="w-full h-full object-cover" />
+                : <div className="w-full h-full flex items-center justify-center text-xs font-nunito" style={{ color: '#5050aa' }}>no photo</div>}
+            </div>
+            <div>
+              <p className="text-xs font-nunito font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>Progress log</p>
+              <p className="text-sm font-nunito mb-2" style={{ color: '#c0c0e0' }}>{r.progress_log}</p>
+              <p className="text-xs font-nunito">
+                <span style={{ color: 'var(--text-muted)' }}>AI verdict: </span>
+                <span style={{ color: AI[r.ai_verdict] || '#8080aa', fontWeight: 700 }}>
+                  {r.ai_verdict}{r.ai_confidence != null ? ` (${Math.round(r.ai_confidence * 100)}%)` : ''}
+                </span>
+              </p>
+              {r.ai_reason && <p className="text-xs font-nunito mt-1" style={{ color: 'var(--text-soft)' }}>{r.ai_reason}</p>}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <CheatButton onClick={() => review(r.id, 'approved')} busy={busy} color="#22c55e">✅ Approve</CheatButton>
+            <CheatButton onClick={() => review(r.id, 'rejected')} busy={busy} color="#f43f5e">❌ Reject (rollback)</CheatButton>
+            <CheatButton onClick={() => review(r.id, 'suspicious')} busy={busy} color="#f5a31a">⚠️ Suspicious</CheatButton>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function AdminPage() {
   const navigate  = useNavigate()
   const { profile } = useGame()
 
+  const [tab,      setTab]      = useState('overview')  // overview | queue
   const [users,    setUsers]    = useState([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState('')
@@ -502,6 +606,24 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ── Tab bar ── */}
+        <div className="flex gap-2">
+          {[['overview', '📊 Overview'], ['queue', '🔍 Verification Queue']].map(([key, label]) => (
+            <button key={key} onClick={() => setTab(key)}
+              className="px-4 py-2 rounded-xl text-sm font-nunito font-bold transition-all"
+              style={{
+                background: tab === key ? 'rgba(245,163,26,0.18)' : 'rgba(19,19,58,0.5)',
+                color:      tab === key ? '#f5a31a' : '#8080aa',
+                border:     `1px solid ${tab === key ? 'rgba(245,163,26,0.45)' : 'rgba(124,58,237,0.15)'}`,
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'queue' && <VerificationQueue />}
+
+        {tab === 'overview' && (<>
         {/* ── Testing & cheats ── */}
         <CheatPanel players={users} onChanged={loadData} />
 
@@ -686,6 +808,7 @@ export default function AdminPage() {
             </div>
           )}
         </motion.div>
+        </>)}
       </div>
     </div>
   )

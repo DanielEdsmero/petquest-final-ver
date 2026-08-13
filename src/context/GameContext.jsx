@@ -417,6 +417,40 @@ export function GameProvider({ children }) {
     return false
   }, [tasks, addNotification, queuePending, applyCompletionSuccess])
 
+  /* Evidence-based completion: snapshot + provisional award via submit_completion,
+     which reuses complete_task server-side. The photo is already uploaded by the
+     VerificationModal; the AI verdict + admin review happen after this returns. */
+  const submitCompletion = useCallback(async (taskId, { photoPath, log, timeStarted }) => {
+    let data, error
+    try {
+      ({ data, error } = await supabase.rpc('submit_completion', {
+        p_task_id: taskId, p_photo_path: photoPath, p_log: log, p_time_started: timeStarted,
+      }))
+    } catch (e) { error = e }
+
+    if (error || !data) {
+      addNotification(`Could not submit proof: ${error?.message || 'unknown error'}.`, 'error')
+      return { ok: false, error: error?.message }
+    }
+
+    if (data.ok) {
+      applyCompletionSuccess(taskId, data)  // provisional award + reward animations
+      return { ok: true, completionId: data.completion_id, data }
+    }
+
+    if (data.error === 'locked') {
+      setProfile(prev => { const n = { ...prev, completion_lock_until: data.locked_until }; lsSet('profile', n); return n })
+      addNotification('Suspicious activity detected. Completion locked for 5 minutes.', 'error')
+    } else if (data.error === 'too_soon') {
+      addNotification('This quest isn’t ready yet.', 'error')
+    } else if (data.error === 'log_too_short') {
+      addNotification('Your progress log needs at least 20 characters.', 'error')
+    } else {
+      addNotification(`Could not submit proof: ${data.error || 'unknown'}.`, 'error')
+    }
+    return { ok: false, error: data.error }
+  }, [addNotification, applyCompletionSuccess])
+
   /* Re-run complete_task for every queued quest once we're back online. */
   const flushPending = useCallback(async () => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) return
@@ -589,7 +623,7 @@ export function GameProvider({ children }) {
       user: profile, login, register, logout,
       selectedPet, selectPet,
       petStats,
-      tasks, addTask, completeTask, deleteTask,
+      tasks, addTask, completeTask, submitCompletion, deleteTask,
       progressLogs, addProgressLog, bulkAddPresets,
       points, spendPoints,
       feedPet, showerPet, playWithPet,

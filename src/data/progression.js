@@ -92,4 +92,5 @@ export const BADGES = {
   dragon_master: { name: 'Dragon Master', emoji: '🐉', desc: 'Reach a Level 3 companion',   rarity: 'Epic' },
   collector:     { name: 'Collector',     emoji: '🎁', desc: 'Own 5 accessories',           rarity: 'Rare' },
   speed_demon:   { name: 'Speed Demon',   emoji: '⚡', desc: 'Complete 5 quests in one day', rarity: 'Legendary' },
+  verified_quest:{ name: 'Verified Quest', emoji: '✅', desc: 'Had a completion admin-verified', rarity: 'Rare' },
 }

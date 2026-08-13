@@ -5,6 +5,7 @@ import { useGame, HARD_PERIOD_MS, MEDIUM_PERIOD_MS, DIFF_MIN_COMPLETE_MS } from 
 import CompletionFx from './animations/CompletionFx'
 import CheckDraw from './animations/CheckDraw'
 import EmptyStatePet from './animations/EmptyStatePet'
+import VerificationModal from './VerificationModal'
 import { DIFFICULTY_COLORS } from '../data/difficulty'
 
 const DIFF_CONFIG = {
@@ -91,27 +92,13 @@ function ProgressLogs({ taskId, logs = [], onAdd }) {
   )
 }
 
-/* Minimum time the spinner stays up. The RPC is real work, so we don't pad the
-   request — we just hold the spinner long enough that a fast response doesn't
-   make it flash. */
-const MIN_SPINNER_MS = 400
-const PRESS_MS = 100
-
-function TaskItem({ task, onComplete, onDelete, onAddProgress, logs, canLog, now, locked, onReward }) {
+function TaskItem({ task, onVerify, onDelete, onAddProgress, logs, canLog, now, locked }) {
   const [expanded, setExpanded] = useState(false)
-  /* idle -> pressing -> processing -> (success | idle) */
-  const [stage, setStage] = useState('idle')
+  /* Completion now goes through the VerificationModal (opened via onVerify),
+     so the button only needs an idle/ready/completed view. */
+  const [stage] = useState('idle')
   const cardRef = useRef(null)
   const btnRef  = useRef(null)
-  const alive   = useRef(true)
-  /* Set on mount, not just cleared on unmount: React StrictMode runs the
-     cleanup once immediately after mounting, and refs survive that cycle — so
-     a cleanup-only effect would leave this false forever and every completion
-     would bail out after the press stage. */
-  useEffect(() => {
-    alive.current = true
-    return () => { alive.current = false }
-  }, [])
 
   const cfg = DIFF_CONFIG[task.difficulty || 'easy']
 
@@ -126,42 +113,11 @@ function TaskItem({ task, onComplete, onDelete, onAddProgress, logs, canLog, now
   const gated = !task.completed && !pending && (remaining > 0 || locked)
   const ready = !task.completed && !pending && !gated && stage === 'idle'
 
-  const wait = (ms) => new Promise(r => setTimeout(r, ms))
-
-  /* Reward feedback only fires once the server has actually awarded the
-     points — a too_soon/locked rejection rewinds to idle with nothing shown. */
-  const handleComplete = async () => {
+  /* Completion requires evidence — open the verification modal (which handles
+     photo + log + provisional award). The time-gate `ready` check gates it. */
+  const handleComplete = () => {
     if (task.completed || !ready) return
-
-    // Stage 1 — press.
-    setStage('pressing')
-    await wait(PRESS_MS)
-    if (!alive.current) return
-
-    // Stage 2 — validating against the server.
-    setStage('processing')
-    const startedAt = Date.now()
-    const ok = await onComplete(task.id)
-    const elapsed = Date.now() - startedAt
-    if (elapsed < MIN_SPINNER_MS) await wait(MIN_SPINNER_MS - elapsed)
-    if (!alive.current) return
-
-    if (!ok) { setStage('idle'); return }
-
-    // Stage 3 — success. Measured before React re-parents the card into the
-    // Completed list, then handed to a portal so it survives the unmount.
-    setStage('success')
-    const card = cardRef.current?.getBoundingClientRect()
-    const btn  = btnRef.current?.getBoundingClientRect()
-    if (card && btn) {
-      onReward?.({
-        cardX: card.left + card.width / 2,
-        cardY: card.top + card.height / 2,
-        btnY:  btn.top + btn.height / 2,
-        color: cfg.color,
-        label: `+${cfg.pts} pts`,
-      })
-    }
+    onVerify?.(task)
   }
 
   return (
@@ -181,37 +137,20 @@ function TaskItem({ task, onComplete, onDelete, onAddProgress, logs, canLog, now
           disabled={task.completed || !ready}
           className="flex-shrink-0 relative"
           whileTap={ready ? { scale: 0.85 } : {}}
-          animate={
-            stage === 'pressing' ? { scale: 0.95 }
-            : ready              ? { scale: [1, 1.12, 1] }
-            :                      { scale: 1 }
-          }
-          transition={
-            stage === 'pressing' ? { duration: PRESS_MS / 1000 }
-            : ready              ? { duration: 1.6, repeat: Infinity, ease: 'easeInOut' }
-            :                      { duration: 0.2 }
-          }
+          animate={ready ? { scale: [1, 1.12, 1] } : { scale: 1 }}
+          transition={ready
+            ? { duration: 1.6, repeat: Infinity, ease: 'easeInOut' }
+            : { duration: 0.2 }}
           style={{
             borderRadius: '50%',
             cursor: task.completed || !ready ? 'not-allowed' : 'pointer',
             boxShadow: ready ? `0 0 10px ${cfg.color}66` : 'none',
           }}
-          aria-label={task.completed ? 'Completed' : ready ? 'Mark complete' : 'Not yet available'}
+          aria-label={task.completed ? 'Completed' : ready ? 'Verify & complete' : 'Not yet available'}
         >
-          {stage === 'processing' ? (
-            <motion.span
-              className="spinner-ring"
-              style={{ borderTopColor: cfg.color }}
-              animate={{ rotate: 360 }}
-              transition={{ duration: 0.7, repeat: Infinity, ease: 'linear' }}
-            />
-          ) : task.completed || stage === 'success' ? (
-            /* Draws itself in on mount — including when the card re-mounts
-               into the Completed list right after a successful completion. */
-            <CheckDraw size={22} />
-          ) : (
-            <Circle size={22} style={{ color: cfg.color + (ready ? 'ff' : '38') }} className="transition-opacity" />
-          )}
+          {task.completed
+            ? <CheckDraw size={22} />
+            : <Circle size={22} style={{ color: cfg.color + (ready ? 'ff' : '38') }} className="transition-opacity" />}
         </motion.button>
 
         <span
@@ -306,7 +245,11 @@ export default function TaskList() {
   const [input, setInput] = useState('')
   const [plannedDate, setPlannedDate] = useState('')  // research: intended finish, '' = skipped
   const inputRef = useRef(null)
-  const { tasks, addTask, completeTask, deleteTask, addProgressLog, progressLogs, profile, selectedPet } = useGame()
+  const { tasks, addTask, deleteTask, addProgressLog, progressLogs, profile, selectedPet } = useGame()
+
+  /* The quest currently being verified (opens VerificationModal). Owned here,
+     not in TaskItem, so it survives the card re-parenting on completion. */
+  const [verifyingTask, setVerifyingTask] = useState(null)
 
   const cfg = DIFF_CONFIG[activeDiff]
 
@@ -374,9 +317,26 @@ export default function TaskList() {
 
   const canLog = activeDiff === 'medium' || activeDiff === 'hard'
 
+  /* Fired when the modal reports a provisional award — plays the reward burst
+     from screen centre (the card is already moving to the Completed list). */
+  const handleVerified = () => {
+    fireReward({
+      cardX: window.innerWidth / 2, cardY: window.innerHeight / 2,
+      btnY: window.innerHeight / 2, color: '#f5a31a', label: '+pts',
+    })
+  }
+
   return (
     <div className="flex flex-col h-full">
       <CompletionFx reward={reward} onDone={() => setReward(null)} />
+
+      {verifyingTask && (
+        <VerificationModal
+          task={verifyingTask}
+          onClose={() => setVerifyingTask(null)}
+          onVerified={handleVerified}
+        />
+      )}
 
       {/* Difficulty tabs */}
       <div className="flex gap-2 mb-4">
@@ -520,14 +480,13 @@ export default function TaskList() {
             <div key={task.id} className="group">
               <TaskItem
                 task={task}
-                onComplete={completeTask}
+                onVerify={setVerifyingTask}
                 onDelete={deleteTask}
                 onAddProgress={addProgressLog}
                 logs={progressLogs[task.id] || []}
                 canLog={canLog}
                 now={now}
                 locked={locked}
-                onReward={fireReward}
               />
             </div>
           ))}
@@ -542,7 +501,7 @@ export default function TaskList() {
                 <div key={task.id} className="group">
                   <TaskItem
                     task={task}
-                    onComplete={completeTask}
+                    onVerify={setVerifyingTask}
                     onDelete={deleteTask}
                     onAddProgress={addProgressLog}
                     logs={progressLogs[task.id] || []}
