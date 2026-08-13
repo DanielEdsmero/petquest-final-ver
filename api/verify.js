@@ -17,7 +17,9 @@ import { createClient } from '@supabase/supabase-js'
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY
 const GEMINI_KEY   = process.env.GEMINI_API_KEY
-const GEMINI_MODEL = 'gemini-1.5-flash'
+// Configurable so a retired model can be swapped without a code change.
+// gemini-1.5-flash is being retired; gemini-2.0-flash is the current fast vision model.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -98,7 +100,15 @@ export default async function handler(req, res) {
     })
 
     if (!gResp.ok) {
-      return finish('error', null, 'AI service error — queued for manual review.')
+      // Surface the real Gemini error (status + message) so the admin queue
+      // shows the actual cause instead of a generic "AI service error".
+      let detail = ''
+      try {
+        const errText = await gResp.text()
+        try { detail = JSON.parse(errText)?.error?.message || errText } catch { detail = errText }
+      } catch { /* ignore */ }
+      console.error('[verify] Gemini error', gResp.status, detail)
+      return finish('error', null, `AI error ${gResp.status} (${GEMINI_MODEL}): ${String(detail).slice(0, 300)}`)
     }
     const gData = await gResp.json()
     const raw = gData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
