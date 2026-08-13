@@ -17,9 +17,32 @@ import { createClient } from '@supabase/supabase-js'
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY
 const GEMINI_KEY   = process.env.GEMINI_API_KEY
-// Configurable so a retired model can be swapped without a code change.
-// gemini-1.5-flash is being retired; gemini-2.0-flash is the current fast vision model.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
+const GEMINI_API   = 'https://generativelanguage.googleapis.com/v1beta'
+
+/*
+ * Model resolution. Google retires model names over time (1.5-flash, 2.0-flash
+ * are both gone), so instead of hardcoding one we ask the API which models this
+ * key can actually use and pick a current "flash" one. An explicit GEMINI_MODEL
+ * env var always wins. Cached per warm serverless instance.
+ */
+let cachedModel = null
+async function resolveModel() {
+  if (process.env.GEMINI_MODEL) return process.env.GEMINI_MODEL
+  if (cachedModel) return cachedModel
+  try {
+    const r = await fetch(`${GEMINI_API}/models?key=${GEMINI_KEY}&pageSize=100`)
+    if (r.ok) {
+      const models = (await r.json()).models || []
+      const usable = models.filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+      // Prefer a plain flash model (fast, vision-capable), else anything usable.
+      const pick = usable.find(m => /flash/i.test(m.name) && !/(vision|thinking|live|image|tts)/i.test(m.name))
+        || usable.find(m => /flash/i.test(m.name))
+        || usable[0]
+      if (pick) { cachedModel = pick.name.replace(/^models\//, ''); return cachedModel }
+    }
+  } catch { /* fall through to a best-effort guess */ }
+  return 'gemini-2.5-flash'
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -89,7 +112,8 @@ export default async function handler(req, res) {
       `Consider relevance, plausibility, and whether it looks staged or generic.\n` +
       `Respond with ONLY JSON: {"verdict":"pass"|"fail","confidence":0.0-1.0,"reason":"short explanation"}`
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`
+    const model = await resolveModel()
+    const url = `${GEMINI_API}/models/${model}:generateContent?key=${GEMINI_KEY}`
     const gResp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -107,8 +131,8 @@ export default async function handler(req, res) {
         const errText = await gResp.text()
         try { detail = JSON.parse(errText)?.error?.message || errText } catch { detail = errText }
       } catch { /* ignore */ }
-      console.error('[verify] Gemini error', gResp.status, detail)
-      return finish('error', null, `AI error ${gResp.status} (${GEMINI_MODEL}): ${String(detail).slice(0, 300)}`)
+      console.error('[verify] Gemini error', gResp.status, model, detail)
+      return finish('error', null, `AI error ${gResp.status} (${model}): ${String(detail).slice(0, 300)}`)
     }
     const gData = await gResp.json()
     const raw = gData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
