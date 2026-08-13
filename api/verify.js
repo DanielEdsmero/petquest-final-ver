@@ -34,14 +34,19 @@ async function resolveModel() {
     if (r.ok) {
       const models = (await r.json()).models || []
       const usable = models.filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
-      // Prefer a plain flash model (fast, vision-capable), else anything usable.
-      const pick = usable.find(m => /flash/i.test(m.name) && !/(vision|thinking|live|image|tts)/i.test(m.name))
-        || usable.find(m => /flash/i.test(m.name))
-        || usable[0]
+      // Plain text/vision flash models only — exclude image/tts/audio/etc variants.
+      const flash = usable.filter(m => /flash/i.test(m.name)
+        && !/(tts|image|audio|live|robotics|computer|omni|nano|lyria|vision|thinking)/i.test(m.name))
+      // Prefer the stable "-latest" alias (never retired), then a non-preview
+      // flash, then anything usable. Pinned versions get deprecated for new keys.
+      const pick =
+        flash.find(m => /gemini-flash-latest$/.test(m.name)) ||
+        flash.find(m => !/preview/i.test(m.name)) ||
+        flash[0] || usable[0]
       if (pick) { cachedModel = pick.name.replace(/^models\//, ''); return cachedModel }
     }
-  } catch { /* fall through to a best-effort guess */ }
-  return 'gemini-2.5-flash'
+  } catch { /* fall through to a best-effort default */ }
+  return 'gemini-flash-latest'
 }
 
 export default async function handler(req, res) {
