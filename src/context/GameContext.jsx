@@ -418,13 +418,17 @@ export function GameProvider({ children }) {
   }, [tasks, addNotification, queuePending, applyCompletionSuccess])
 
   /* Evidence-based completion: snapshot + provisional award via submit_completion,
-     which reuses complete_task server-side. The photo is already uploaded by the
-     VerificationModal; the AI verdict + admin review happen after this returns. */
-  const submitCompletion = useCallback(async (taskId, { photoPath, log, timeStarted }) => {
+     which reuses complete_task server-side. Points are awarded provisionally in
+     the DB here, but we DON'T celebrate yet — the quest enters a local "verifying"
+     state and the UI only shows the award once the AI verdict returns PASS
+     (finalizeVerification) or reverts on FAIL (cancelVerification). This is what
+     removes the +10 → 0 flicker. */
+  const submitCompletion = useCallback(async (taskId, { photoPath, log, timeStarted, verificationStartedAt, source }) => {
     let data, error
     try {
       ({ data, error } = await supabase.rpc('submit_completion', {
         p_task_id: taskId, p_photo_path: photoPath, p_log: log, p_time_started: timeStarted,
+        p_verification_started_at: verificationStartedAt, p_source: source || 'camera',
       }))
     } catch (e) { error = e }
 
@@ -434,7 +438,8 @@ export function GameProvider({ children }) {
     }
 
     if (data.ok) {
-      applyCompletionSuccess(taskId, data)  // provisional award + reward animations
+      // Mark the quest as verifying (no points/celebration shown yet).
+      setTasks(prev => { const n = prev.map(t => t.id === taskId ? { ...t, verifying: true } : t); lsSet('tasks', n); return n })
       return { ok: true, completionId: data.completion_id, data }
     }
 
@@ -449,7 +454,21 @@ export function GameProvider({ children }) {
       addNotification(`Could not submit proof: ${data.error || 'unknown'}.`, 'error')
     }
     return { ok: false, error: data.error }
-  }, [addNotification, applyCompletionSuccess])
+  }, [addNotification])
+
+  /* AI verdict PASS/ERROR — the provisional award stands. Clear the verifying
+     flag and run the normal completion mirror + celebration. */
+  const finalizeVerification = useCallback((taskId, data) => {
+    setTasks(prev => { const n = prev.map(t => t.id === taskId ? { ...t, verifying: false } : t); lsSet('tasks', n); return n })
+    applyCompletionSuccess(taskId, data)
+  }, [applyCompletionSuccess])
+
+  /* AI verdict FAIL — the server already reverted. Clear the verifying flag and
+     resync from the server (points restored, quest re-opened). */
+  const cancelVerification = useCallback(async (taskId) => {
+    setTasks(prev => { const n = prev.map(t => t.id === taskId ? { ...t, verifying: false } : t); lsSet('tasks', n); return n })
+    await refreshProfile()
+  }, [refreshProfile])
 
   /* Re-run complete_task for every queued quest once we're back online. */
   const flushPending = useCallback(async () => {
@@ -623,7 +642,7 @@ export function GameProvider({ children }) {
       user: profile, login, register, logout,
       selectedPet, selectPet,
       petStats,
-      tasks, addTask, completeTask, submitCompletion, deleteTask,
+      tasks, addTask, completeTask, submitCompletion, finalizeVerification, cancelVerification, deleteTask,
       progressLogs, addProgressLog, bulkAddPresets,
       points, spendPoints,
       feedPet, showerPet, playWithPet,

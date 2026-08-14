@@ -109,9 +109,10 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, logs, canLog, now, 
   /* `gated` = genuinely blocked (timer or lock) and drives the countdown pill.
      `ready` additionally requires an idle button, so the pill doesn't reappear
      mid-animation while a completion is being processed. */
-  const pending = !task.completed && !!task.pending  // queued offline, awaiting verify
-  const gated = !task.completed && !pending && (remaining > 0 || locked)
-  const ready = !task.completed && !pending && !gated && stage === 'idle'
+  const verifying = !task.completed && !!task.verifying  // proof submitted, awaiting AI verdict
+  const pending = !task.completed && !verifying && !!task.pending
+  const gated = !task.completed && !pending && !verifying && (remaining > 0 || locked)
+  const ready = !task.completed && !pending && !verifying && !gated && stage === 'idle'
 
   /* Completion requires evidence — open the verification modal (which handles
      photo + log + provisional award). The time-gate `ready` check gates it. */
@@ -172,6 +173,20 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, logs, canLog, now, 
           >
             <Clock size={11} />
             Pending verification
+          </span>
+        )}
+
+        {verifying && (
+          <span
+            className="flex items-center gap-1 text-xs font-nunito font-semibold flex-shrink-0 px-2 py-0.5 rounded-lg"
+            style={{ background: 'rgba(6,182,212,0.12)', color: '#22d3ee', border: '1px solid rgba(6,182,212,0.3)' }}
+            title="Proof submitted — verifying. Points are pending until the verdict."
+          >
+            <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+              style={{ display: 'inline-flex' }}>
+              <Clock size={11} />
+            </motion.span>
+            Verifying…
           </span>
         )}
 

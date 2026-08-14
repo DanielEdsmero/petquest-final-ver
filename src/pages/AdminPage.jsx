@@ -383,24 +383,41 @@ function CheatPanel({ players = [], onChanged }) {
    MAIN ADMIN PAGE
 ════════════════════════════════════════════ */
 /* ────── verification queue (pending quest completions) ────── */
+const AI_COLOR = { pass: '#4ade80', fail: '#fb7185', error: '#22d3ee', pending: '#8080aa' }
+const STATUS_META = {
+  pending:  { label: 'Pending',  color: '#f5a31a' },
+  verified: { label: 'Verified', color: '#4ade80' },
+  reverted: { label: 'Reverted', color: '#fb7185' },
+}
+const qcAgo = (iso) => {
+  if (!iso) return ''
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 60) return `${s}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
+const qcAbs = (iso) => iso ? new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+
 function VerificationQueue() {
   const { addNotification } = useGame()
   const [rows, setRows]     = useState([])
-  const [signed, setSigned] = useState({})   // completion id -> signed photo url
+  const [signed, setSigned] = useState({})
   const [loading, setLoad]  = useState(true)
   const [busy, setBusy]     = useState(null)
+  const [filter, setFilter] = useState('all')  // all | pending | pass | fail
 
   const load = async () => {
     setLoad(true)
+    // Phase 3: ALL recent submissions (pass/fail/error), not just pending.
     const { data, error } = await supabase
       .from('quest_completions')
-      .select('*, tasks(text), profiles(username, selected_pet_id)')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true })
+      .select('*, tasks(text, planned_completion_date), profiles(username, selected_pet_id)')
+      .order('created_at', { ascending: false })
+      .limit(100)
     if (error) { addNotification(`Queue load failed: ${error.message}`, 'error'); setLoad(false); return }
     setRows(data || [])
     setLoad(false)
-    // Sign the private proof photos (5-min URLs).
     const map = {}
     await Promise.all((data || []).map(async r => {
       if (!r.proof_photo_url) return
@@ -413,9 +430,7 @@ function VerificationQueue() {
 
   const review = async (id, action) => {
     setBusy(id + action)
-    const { data, error } = await supabase.rpc('admin_review_completion', {
-      p_completion_id: id, p_action: action, p_reason: null,
-    })
+    const { data, error } = await supabase.rpc('admin_review_completion', { p_completion_id: id, p_action: action, p_reason: null })
     setBusy(null)
     if (error || !data?.ok) return addNotification(`Review failed: ${error?.message || data?.error || 'unknown'}`, 'error')
     addNotification(
@@ -426,16 +441,20 @@ function VerificationQueue() {
     load()
   }
 
-  const AI = { pass: '#4ade80', fail: '#fb7185', error: '#22d3ee', pending: '#8080aa' }
+  const counts = {
+    all: rows.length,
+    pending: rows.filter(r => r.status === 'pending').length,
+    pass: rows.filter(r => r.ai_verdict === 'pass').length,
+    fail: rows.filter(r => r.ai_verdict === 'fail').length,
+  }
+  const shown = rows.filter(r =>
+    filter === 'all' ? true
+    : filter === 'pending' ? r.status === 'pending'
+    : r.ai_verdict === filter)
 
   if (loading) {
-    return <div className="glass-card p-8 text-center font-nunito" style={{ color: 'var(--text-muted)' }}>
+    return <div className="glass-card p-8 text-center">
       <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="text-2xl inline-block">⚙️</motion.div>
-    </div>
-  }
-  if (!rows.length) {
-    return <div className="glass-card p-10 text-center font-nunito" style={{ color: 'var(--text-muted)' }}>
-      <div className="text-3xl mb-2">✅</div>No completions awaiting review.
     </div>
   }
 
@@ -443,44 +462,87 @@ function VerificationQueue() {
     <div className="space-y-3">
       <h3 className="font-cinzel font-bold text-base flex items-center gap-2">
         <Clock size={16} style={{ color: '#f5a31a' }} /> Verification Queue
-        <span className="font-nunito font-normal text-sm" style={{ color: 'var(--text-muted)' }}>({rows.length} pending)</span>
+        <span className="font-nunito font-normal text-sm" style={{ color: 'var(--text-muted)' }}>({rows.length} total)</span>
       </h3>
-      {rows.map(r => (
-        <div key={r.id} className="glass-card p-4">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3">
-            <span className="font-nunito font-bold text-sm" style={{ color: '#e2e2ff' }}>
-              {r.profiles?.username || 'Unknown'}
-            </span>
-            <span className="text-sm font-nunito" style={{ color: '#c0c0e0' }}>{r.tasks?.text || '(quest)'}</span>
-            <span className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
-              {r.difficulty} · +{r.points_earned} pts · {Math.floor((r.duration_seconds || 0) / 60)}m
-            </span>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-3 mb-3">
-            <div className="rounded-lg overflow-hidden" style={{ background: '#000', aspectRatio: '4/3' }}>
-              {signed[r.id]
-                ? <img src={signed[r.id]} alt="Proof" className="w-full h-full object-cover" />
-                : <div className="w-full h-full flex items-center justify-center text-xs font-nunito" style={{ color: '#5050aa' }}>no photo</div>}
-            </div>
-            <div>
-              <p className="text-xs font-nunito font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>Progress log</p>
-              <p className="text-sm font-nunito mb-2" style={{ color: '#c0c0e0' }}>{r.progress_log}</p>
-              <p className="text-xs font-nunito">
-                <span style={{ color: 'var(--text-muted)' }}>AI verdict: </span>
-                <span style={{ color: AI[r.ai_verdict] || '#8080aa', fontWeight: 700 }}>
-                  {r.ai_verdict}{r.ai_confidence != null ? ` (${Math.round(r.ai_confidence * 100)}%)` : ''}
-                </span>
-              </p>
-              {r.ai_reason && <p className="text-xs font-nunito mt-1" style={{ color: 'var(--text-soft)' }}>{r.ai_reason}</p>}
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <CheatButton onClick={() => review(r.id, 'approved')} busy={busy} color="#22c55e">✅ Approve</CheatButton>
-            <CheatButton onClick={() => review(r.id, 'rejected')} busy={busy} color="#f43f5e">❌ Reject (rollback)</CheatButton>
-            <CheatButton onClick={() => review(r.id, 'suspicious')} busy={busy} color="#f5a31a">⚠️ Suspicious</CheatButton>
-          </div>
+
+      {/* Filter chips */}
+      <div className="flex flex-wrap gap-2">
+        {[['all', 'All'], ['pending', 'Pending'], ['pass', 'Passed'], ['fail', 'Failed']].map(([k, label]) => (
+          <button key={k} onClick={() => setFilter(k)}
+            className="px-3 py-1 rounded-lg text-xs font-nunito font-bold"
+            style={{
+              background: filter === k ? 'rgba(245,163,26,0.18)' : 'rgba(19,19,58,0.5)',
+              color: filter === k ? '#f5a31a' : '#8080aa',
+              border: `1px solid ${filter === k ? 'rgba(245,163,26,0.45)' : 'rgba(124,58,237,0.15)'}`,
+            }}>
+            {label} ({counts[k]})
+          </button>
+        ))}
+      </div>
+
+      {shown.length === 0 && (
+        <div className="glass-card p-10 text-center font-nunito" style={{ color: 'var(--text-muted)' }}>
+          <div className="text-3xl mb-2">✅</div>Nothing here.
         </div>
-      ))}
+      )}
+
+      {shown.map(r => {
+        const st = STATUS_META[r.status] || { label: r.status, color: '#8080aa' }
+        const planned = r.tasks?.planned_completion_date
+        return (
+          <div key={r.id} className="glass-card p-4">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3">
+              <span className="font-nunito font-bold text-sm" style={{ color: '#e2e2ff' }}>{r.profiles?.username || 'Unknown'}</span>
+              <span className="text-sm font-nunito" style={{ color: '#c0c0e0' }}>{r.tasks?.text || '(quest)'}</span>
+              {/* status + source badges */}
+              <span className="text-xs font-nunito font-bold px-1.5 py-0.5 rounded"
+                style={{ background: st.color + '22', color: st.color }}>{st.label}</span>
+              {r.source === 'upload' && (
+                <span className="text-xs font-nunito px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,163,26,0.15)', color: '#f5a31a' }}>
+                  ⚠️ File upload (not live)
+                </span>
+              )}
+              <span className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
+                {r.difficulty} · +{r.points_earned} pts
+              </span>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3 mb-3">
+              <div className="rounded-lg overflow-hidden" style={{ background: '#000', aspectRatio: '4/3' }}>
+                {signed[r.id]
+                  ? <img src={signed[r.id]} alt="Proof" className="w-full h-full object-cover" />
+                  : <div className="w-full h-full flex items-center justify-center text-xs font-nunito" style={{ color: '#5050aa' }}>no photo</div>}
+              </div>
+              <div>
+                <p className="text-xs font-nunito font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>Progress log</p>
+                <p className="text-sm font-nunito mb-2" style={{ color: '#c0c0e0' }}>{r.progress_log}</p>
+                <p className="text-xs font-nunito">
+                  <span style={{ color: 'var(--text-muted)' }}>AI verdict: </span>
+                  <span style={{ color: AI_COLOR[r.ai_verdict] || '#8080aa', fontWeight: 700 }}>
+                    {r.ai_verdict}{r.ai_confidence != null ? ` (${Math.round(r.ai_confidence * 100)}%)` : ''}
+                  </span>
+                </p>
+                {r.ai_reason && <p className="text-xs font-nunito mt-1" style={{ color: 'var(--text-soft)' }}>{r.ai_reason}</p>}
+              </div>
+            </div>
+
+            {/* Timestamps / research metadata */}
+            <div className="text-xs font-nunito mb-3 grid grid-cols-2 gap-x-4 gap-y-0.5" style={{ color: 'var(--text-muted)' }}>
+              <div>Submitted: <span style={{ color: '#c0c0e0' }}>{qcAgo(r.created_at)}</span> · {qcAbs(r.created_at)}</div>
+              <div>Total time on quest: <span style={{ color: '#c0c0e0' }}>{Math.floor((r.duration_seconds || 0) / 60)}m</span></div>
+              {r.ai_verdict_at && <div>AI verdict at: {qcAbs(r.ai_verdict_at)}</div>}
+              {planned && <div>Planned finish: {qcAbs(planned)}</div>}
+              {r.admin_reviewed_at && <div>Admin reviewed: {qcAbs(r.admin_reviewed_at)}</div>}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <CheatButton onClick={() => review(r.id, 'approved')} busy={busy} color="#22c55e">✅ Approve</CheatButton>
+              <CheatButton onClick={() => review(r.id, 'rejected')} busy={busy} color="#f43f5e">❌ Reject (rollback)</CheatButton>
+              <CheatButton onClick={() => review(r.id, 'suspicious')} busy={busy} color="#f5a31a">⚠️ Suspicious</CheatButton>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

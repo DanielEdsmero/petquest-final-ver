@@ -1,45 +1,65 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Camera, X, RotateCcw, Check, AlertTriangle, Clock } from 'lucide-react'
+import { Camera, X, RotateCcw, Check, AlertTriangle, Clock, Upload } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useGame } from '../context/GameContext'
 
 /*
- * Evidence capture for a quest completion: a LIVE camera photo (no gallery
- * uploads) + a progress log (20+ chars) + the elapsed timer. On submit it
- * uploads the photo to the private quest-proofs bucket, calls submit_completion
- * (provisional award), then POSTs the AI proxy at /api/verify. A FAIL is
- * reversed server-side; the modal offers one retry.
+ * Evidence capture for a quest completion: a LIVE camera photo (preferred) or,
+ * if the camera can't start, a file upload flagged as non-live. Plus a progress
+ * log (20+ chars). On submit the quest enters a "verifying" state — points are
+ * NOT shown as earned until the AI verdict returns PASS.
  */
 const MIN_LOG = 20
+const MIN_BLOB_BYTES = 3000
 
-function fmt(s) {
-  const m = Math.floor(s / 60), sec = s % 60
-  return `${m}:${String(sec).padStart(2, '0')}`
+/* Reject an all-black / uniform frame (broken camera, placeholder). */
+function frameLooksBlank(canvas) {
+  try {
+    const { width, height } = canvas
+    const data = canvas.getContext('2d').getImageData(0, 0, width, height).data
+    const lum = []
+    let sum = 0
+    for (let i = 0; i < data.length; i += 4 * 40) {   // sample ~every 40th pixel
+      const l = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+      lum.push(l); sum += l
+    }
+    if (!lum.length) return true
+    const mean = sum / lum.length
+    const near = lum.filter(l => Math.abs(l - mean) < 10).length
+    return near / lum.length > 0.95   // >95% of pixels ≈ identical → uniform/blank
+  } catch { return false }
 }
 
+function ago(ms) {
+  const s = Math.floor((Date.now() - ms) / 1000)
+  if (s < 60) return `${s}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
+const fmtAbs = (ms) => new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+
 export default function VerificationModal({ task, onClose, onVerified }) {
-  const { submitCompletion, refreshProfile, addNotification, profile } = useGame()
+  const { submitCompletion, finalizeVerification, cancelVerification, addNotification, profile } = useGame()
   const videoRef  = useRef(null)
   const streamRef = useRef(null)
+  const fileRef   = useRef(null)
+  const alive     = useRef(true)
+  const vStartRef = useRef(Date.now())   // when verification was started (this modal opened)
 
   const [phase, setPhase]     = useState('camera')  // camera | preview | submitting | result
+  const [streaming, setStream]= useState(false)
   const [blob, setBlob]       = useState(null)
+  const [source, setSource]   = useState('camera')  // 'camera' | 'upload'
   const [previewUrl, setPrev] = useState(null)
   const [log, setLog]         = useState('')
   const [camError, setCamErr] = useState('')
-  const [result, setResult]   = useState(null)      // { verdict, reason }
+  const [result, setResult]   = useState(null)
   const [retries, setRetries] = useState(0)
-  const [elapsed, setElapsed] = useState(0)
 
-  /* Live elapsed timer from when the quest was started. */
-  useEffect(() => {
-    const start = new Date(task.started_at || task.created_at).getTime()
-    setElapsed(Math.max(0, Math.floor((Date.now() - start) / 1000)))
-    const id = setInterval(() => setElapsed(Math.max(0, Math.floor((Date.now() - start) / 1000))), 1000)
-    return () => clearInterval(id)
-  }, [task])
+  useEffect(() => () => { alive.current = false }, [])
 
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach(t => t.stop())
@@ -50,6 +70,7 @@ export default function VerificationModal({ task, onClose, onVerified }) {
   useEffect(() => {
     if (phase !== 'camera') return
     let active = true
+    setStream(false)
     ;(async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -63,17 +84,23 @@ export default function VerificationModal({ task, onClose, onVerified }) {
         }
         setCamErr('')
       } catch {
-        setCamErr('Camera unavailable or permission denied. A live photo is required to submit proof.')
+        // Phase 1: no dead end — fall back to a (flagged) file upload.
+        setCamErr('Camera unavailable or blocked. You can upload a photo instead — it will be marked as a non-live upload for review.')
       }
     })()
     return () => { active = false }
   }, [phase])
 
-  /* Stop the camera + free the preview URL on unmount. */
   useEffect(() => () => { stopCamera(); if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
 
   const close = () => { stopCamera(); onClose?.() }
 
+  const usePhoto = (b, src) => {
+    stopCamera()
+    setBlob(b); setSource(src); setPrev(URL.createObjectURL(b)); setPhase('preview')
+  }
+
+  /* Live capture — gated on a real streaming frame (Phase 2/6). */
   const capture = () => {
     const v = videoRef.current
     if (!v || !v.videoWidth) return
@@ -81,40 +108,49 @@ export default function VerificationModal({ task, onClose, onVerified }) {
     canvas.width = v.videoWidth
     canvas.height = v.videoHeight
     canvas.getContext('2d').drawImage(v, 0, 0)
-    canvas.toBlob(b => {
-      if (!b) return
-      stopCamera()
-      setBlob(b)
-      setPrev(URL.createObjectURL(b))
-      setPhase('preview')
-    }, 'image/jpeg', 0.85)
+    if (frameLooksBlank(canvas)) {
+      addNotification('No image detected — make sure your camera feed is live.', 'error')
+      return
+    }
+    canvas.toBlob(b => { if (b) usePhoto(b, 'camera') }, 'image/jpeg', 0.85)
+  }
+
+  const onFile = (e) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    if (!f.type.startsWith('image/')) { addNotification('Please choose an image file.', 'error'); return }
+    usePhoto(f, 'upload')
   }
 
   const retake = () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
-    setBlob(null); setPrev(null); setPhase('camera')
+    setBlob(null); setPrev(null); setSource('camera'); setPhase('camera')
   }
 
   const submit = async () => {
     if (!blob) return
     if (log.trim().length < MIN_LOG) { addNotification(`Progress log needs at least ${MIN_LOG} characters.`, 'error'); return }
+    if (blob.size < MIN_BLOB_BYTES) { addNotification('That photo looks empty — please retake with a live feed.', 'error'); return }
     if (!navigator.onLine) { addNotification('You need a connection to submit proof.', 'error'); return }
 
     setPhase('submitting')
-    const path = `${profile.id}/${task.id}-${Date.now()}.jpg`
+    const ext = source === 'upload' ? (blob.type.split('/')[1] || 'jpg') : 'jpg'
+    const path = `${profile.id}/${task.id}-${Date.now()}.${ext}`
     const { error: upErr } = await supabase.storage
-      .from('quest-proofs').upload(path, blob, { contentType: 'image/jpeg', upsert: false })
+      .from('quest-proofs').upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: false })
+    if (!alive.current) return
     if (upErr) { addNotification('Photo upload failed. Try again.', 'error'); setPhase('preview'); return }
 
     const res = await submitCompletion(task.id, {
       photoPath: path, log: log.trim(),
       timeStarted: task.started_at || task.created_at,
+      verificationStartedAt: new Date(vStartRef.current).toISOString(),
+      source,
     })
-    if (!res.ok) { setPhase('preview'); return }  // context already notified (too_soon/locked/…)
+    if (!alive.current) return
+    if (!res.ok) { setPhase('preview'); return }
 
-    onVerified?.()  // let the card play its provisional-award success animation
-
-    // AI verdict (server reverses on fail). Any transport failure → manual review.
+    // AI verdict. Provisional points are held (verifying) until we know it.
     let verdict = 'error', reason = 'Queued for manual review.'
     try {
       const r = await fetch('/api/verify', {
@@ -123,15 +159,18 @@ export default function VerificationModal({ task, onClose, onVerified }) {
       })
       if (r.ok) { const d = await r.json(); verdict = d.verdict || 'error'; reason = d.reason || reason }
     } catch { /* keep manual-review fallback */ }
+    if (!alive.current) return
 
     if (verdict === 'fail') {
-      await refreshProfile()  // resync reverted points + re-opened quest
-      addNotification(`⚠️ Proof rejected. ${reason} You can retry once with new evidence.`, 'error')
-    } else if (verdict === 'pass') {
-      addNotification('✅ Proof accepted! You earned points (pending final review).', 'success')
+      await cancelVerification(task.id)   // server already reverted; resync
+      addNotification(`⚠️ Proof rejected: ${reason}`, 'error')
     } else {
-      addNotification('Submitted — queued for manual review.', 'info')
+      // pass OR error → provisional award stands (error goes to manual review).
+      finalizeVerification(task.id, res.data)
+      if (verdict === 'pass') { onVerified?.(); addNotification('✅ +' + res.data.awarded + ' Quest Points earned!', 'success') }
+      else addNotification('Submitted — queued for manual review.', 'info')
     }
+    if (!alive.current) return
     setResult({ verdict, reason })
     setPhase('result')
   }
@@ -140,73 +179,81 @@ export default function VerificationModal({ task, onClose, onVerified }) {
   const doRetry = () => { setRetries(r => r + 1); setResult(null); setLog(''); retake() }
 
   return createPortal(
-    <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4"
-      style={{ background: 'rgba(4,4,16,0.75)' }}>
-      <motion.div
-        initial={{ opacity: 0, y: 24, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        className="glass-card w-full max-w-md p-5 relative"
-      >
-        <div className="flex items-center justify-between mb-3">
+    <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4" style={{ background: 'rgba(4,4,16,0.75)' }}>
+      <motion.div initial={{ opacity: 0, y: 24, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+        className="glass-card w-full max-w-md p-5 relative">
+        <div className="flex items-center justify-between mb-2">
           <h3 className="font-cinzel font-bold text-base" style={{ color: '#ffd166' }}>Verify your quest</h3>
-          <button onClick={close} className="p-1 rounded-lg" style={{ color: 'var(--text-muted)' }} aria-label="Close">
-            <X size={18} />
-          </button>
+          {/* Always closable, in every phase. */}
+          <button onClick={close} className="p-1 rounded-lg" style={{ color: 'var(--text-muted)' }} aria-label="Close"><X size={18} /></button>
         </div>
 
-        <p className="text-sm font-nunito mb-3" style={{ color: '#c0c0e0' }}>{task.text}</p>
+        <p className="text-sm font-nunito mb-2" style={{ color: '#c0c0e0' }}>{task.text}</p>
 
-        <div className="flex items-center gap-1.5 text-xs font-nunito mb-4" style={{ color: 'var(--text-muted)' }}>
-          <Clock size={13} /> Time on quest: <span className="tabular-nums font-bold" style={{ color: '#c0c0e0' }}>{fmt(elapsed)}</span>
+        {/* Phase 5: clear, non-inflated timing. */}
+        <div className="text-xs font-nunito mb-4 space-y-0.5" style={{ color: 'var(--text-muted)' }}>
+          <div>Quest created: <span style={{ color: '#c0c0e0' }}>{fmtAbs(new Date(task.created_at).getTime())}</span> · {ago(new Date(task.created_at).getTime())}</div>
+          <div className="flex items-center gap-1.5"><Clock size={12} /> Verification started just now</div>
         </div>
 
         <AnimatePresence mode="wait">
-          {/* CAMERA */}
+          {/* CAMERA / UPLOAD */}
           {phase === 'camera' && (
             <motion.div key="cam" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               {camError ? (
-                <div className="text-sm font-nunito p-3 rounded-lg mb-3"
-                  style={{ background: 'rgba(244,63,94,0.1)', color: '#fb7185', border: '1px solid rgba(244,63,94,0.3)' }}>
-                  ⚠️ {camError}
-                </div>
+                <>
+                  <div className="text-sm font-nunito p-3 rounded-lg mb-3"
+                    style={{ background: 'rgba(244,63,94,0.1)', color: '#fb7185', border: '1px solid rgba(244,63,94,0.3)' }}>
+                    ⚠️ {camError}
+                  </div>
+                  <button onClick={() => fileRef.current?.click()} className="btn-gold w-full py-3 flex items-center justify-center gap-2">
+                    <Upload size={18} /> Choose a photo
+                  </button>
+                </>
               ) : (
-                <div className="rounded-xl overflow-hidden mb-3" style={{ background: '#000', aspectRatio: '4/3' }}>
-                  <video ref={videoRef} playsInline muted className="w-full h-full object-cover" />
-                </div>
+                <>
+                  <div className="rounded-xl overflow-hidden mb-3 relative" style={{ background: '#000', aspectRatio: '4/3' }}>
+                    <video ref={videoRef} playsInline muted onLoadedData={() => setStream(true)}
+                      className="w-full h-full object-cover" />
+                    {!streaming && (
+                      <div className="absolute inset-0 flex items-center justify-center text-xs font-nunito" style={{ color: '#8080aa' }}>
+                        Waiting for camera…
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={capture} disabled={!streaming}
+                    className="btn-gold w-full py-3 flex items-center justify-center gap-2" style={{ opacity: streaming ? 1 : 0.4 }}>
+                    <Camera size={18} /> Take live photo
+                  </button>
+                </>
               )}
-              <button onClick={capture} disabled={!!camError}
-                className="btn-gold w-full py-3 flex items-center justify-center gap-2"
-                style={{ opacity: camError ? 0.4 : 1 }}>
-                <Camera size={18} /> Take live photo
-              </button>
+              <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onFile} className="hidden" />
             </motion.div>
           )}
 
           {/* PREVIEW + LOG */}
           {phase === 'preview' && (
             <motion.div key="prev" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div className="rounded-xl overflow-hidden mb-3" style={{ aspectRatio: '4/3' }}>
+              <div className="rounded-xl overflow-hidden mb-2" style={{ aspectRatio: '4/3' }}>
                 <img src={previewUrl} alt="Proof" className="w-full h-full object-cover" />
               </div>
+              {source === 'upload' && (
+                <p className="text-xs font-nunito mb-2 flex items-center gap-1" style={{ color: '#f5a31a' }}>
+                  <Upload size={12} /> Uploaded photo (not a live capture) — flagged for review.
+                </p>
+              )}
               <button onClick={retake} className="btn-ghost w-full py-2 mb-3 flex items-center justify-center gap-2 text-sm">
-                <RotateCcw size={15} /> Retake
+                <RotateCcw size={15} /> {source === 'upload' ? 'Choose again' : 'Retake'}
               </button>
-              <label className="block text-xs font-nunito font-bold uppercase tracking-widest mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                Progress log
-              </label>
-              <textarea
-                value={log} onChange={e => setLog(e.target.value)} rows={3} maxLength={500}
-                placeholder="Describe what you did to complete this quest…"
-                className="input-field w-full text-sm" style={{ resize: 'none' }}
-              />
+              <label className="block text-xs font-nunito font-bold uppercase tracking-widest mb-1.5" style={{ color: 'var(--text-muted)' }}>Progress log</label>
+              <textarea value={log} onChange={e => setLog(e.target.value)} rows={3} maxLength={500}
+                placeholder="Describe what you did to complete this quest…" className="input-field w-full text-sm" style={{ resize: 'none' }} />
               <div className="flex justify-end text-xs font-nunito mt-1 mb-3"
                 style={{ color: log.trim().length >= MIN_LOG ? '#4ade80' : 'var(--text-muted)' }}>
-                {log.trim().length}/{MIN_LOG} min
+                {log.trim().length}/{MIN_LOG} characters
               </div>
               <button onClick={submit} disabled={log.trim().length < MIN_LOG}
-                className="btn-gold w-full py-3" style={{ opacity: log.trim().length < MIN_LOG ? 0.4 : 1 }}>
-                Submit proof
-              </button>
+                className="btn-gold w-full py-3" style={{ opacity: log.trim().length < MIN_LOG ? 0.4 : 1 }}>Submit proof</button>
             </motion.div>
           )}
 
@@ -217,6 +264,7 @@ export default function VerificationModal({ task, onClose, onVerified }) {
               <motion.span className="spinner-ring" style={{ width: 32, height: 32, borderTopColor: '#f5a31a' }}
                 animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} />
               <p className="text-sm font-nunito" style={{ color: 'var(--text-muted)' }}>Verifying your proof…</p>
+              <p className="text-xs font-nunito" style={{ color: '#5050aa' }}>Points are pending verification</p>
             </motion.div>
           )}
 
@@ -225,25 +273,20 @@ export default function VerificationModal({ task, onClose, onVerified }) {
             <motion.div key="res" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
               className="py-6 flex flex-col items-center gap-3 text-center">
               {result.verdict === 'pass' ? (
-                <>
-                  <div className="w-14 h-14 rounded-full flex items-center justify-center"
-                    style={{ background: 'rgba(34,197,94,0.15)' }}><Check size={28} style={{ color: '#4ade80' }} /></div>
-                  <p className="font-cinzel font-bold text-lg" style={{ color: '#4ade80' }}>Verified!</p>
-                </>
+                <><div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: 'rgba(34,197,94,0.15)' }}><Check size={28} style={{ color: '#4ade80' }} /></div>
+                  <p className="font-cinzel font-bold text-lg" style={{ color: '#4ade80' }}>Verified!</p></>
               ) : result.verdict === 'fail' ? (
-                <>
-                  <div className="w-14 h-14 rounded-full flex items-center justify-center"
-                    style={{ background: 'rgba(244,63,94,0.15)' }}><AlertTriangle size={26} style={{ color: '#fb7185' }} /></div>
-                  <p className="font-cinzel font-bold text-lg" style={{ color: '#fb7185' }}>Proof rejected</p>
-                </>
+                <><div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: 'rgba(244,63,94,0.15)' }}><AlertTriangle size={26} style={{ color: '#fb7185' }} /></div>
+                  <p className="font-cinzel font-bold text-lg" style={{ color: '#fb7185' }}>Proof rejected</p></>
               ) : (
-                <>
-                  <div className="w-14 h-14 rounded-full flex items-center justify-center"
-                    style={{ background: 'rgba(6,182,212,0.15)' }}><Clock size={26} style={{ color: '#22d3ee' }} /></div>
-                  <p className="font-cinzel font-bold text-lg" style={{ color: '#22d3ee' }}>Pending review</p>
-                </>
+                <><div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: 'rgba(6,182,212,0.15)' }}><Clock size={26} style={{ color: '#22d3ee' }} /></div>
+                  <p className="font-cinzel font-bold text-lg" style={{ color: '#22d3ee' }}>Pending review</p></>
               )}
-              <p className="text-sm font-nunito max-w-xs" style={{ color: 'var(--text-soft)' }}>{result.reason}</p>
+              <p className="text-sm font-nunito max-w-xs" style={{ color: 'var(--text-soft)' }}>
+                {result.verdict === 'fail'
+                  ? `Your proof was rejected: ${result.reason}${canRetry ? ' You have 1 retry — take a new photo and describe what you did.' : ' No retries left.'}`
+                  : result.reason}
+              </p>
               <div className="flex gap-2 w-full mt-2">
                 {canRetry && <button onClick={doRetry} className="btn-ghost flex-1 py-2 text-sm">Retry once</button>}
                 <button onClick={close} className="btn-gold flex-1 py-2">Done</button>

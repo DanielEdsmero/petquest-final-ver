@@ -24,7 +24,7 @@ export default function LoginPage() {
   const [info,     setInfo]     = useState('')
   const [loading,  setLoading]  = useState(false)
 
-  const { login, register } = useGame()
+  const { login, register, addNotification } = useGame()
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
@@ -49,12 +49,17 @@ export default function LoginPage() {
     if (tab === 'login') {
       const { error } = await login(email.trim(), password)
       await settle()
-      if (error) { setError(error); setLoading(false); return }
+      if (error) {
+        // Keep typed values; show both an inline message and a toast.
+        setError(error === 'Invalid login credentials' ? 'Invalid email or password' : error)
+        addNotification('Invalid email or password', 'error')
+        setLoading(false); return
+      }
       navigate('/select')
     } else {
       const { error, data } = await register(email.trim(), password, username.trim())
       await settle()
-      if (error) { setError(error); setLoading(false); return }
+      if (error) { setError(error); addNotification(error, 'error'); setLoading(false); return }
       if (data?.user && !data.session) {
         setInfo('Check your email to confirm your account, then log in.')
         setTab('login'); setLoading(false); return
@@ -122,14 +127,16 @@ export default function LoginPage() {
           ))}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {/* autoComplete off (+ non-standard tokens) so saved credentials don't
+            auto-inject and clobber what the user types. */}
+        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
           <AnimatePresence mode="wait">
             {tab === 'register' && (
               <motion.div key="username" initial={{ opacity:0, height:0 }} animate={{ opacity:1, height:'auto' }} exit={{ opacity:0, height:0 }}>
                 <label className="block text-xs font-semibold mb-1.5 font-nunito uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                   Adventurer Name
                 </label>
-                <input type="text" className="input-field" placeholder="Your hero's name..."
+                <input type="text" className="input-field" placeholder="Your hero's name..." autoComplete="off"
                   value={username} onChange={e => setUsername(e.target.value)} />
               </motion.div>
             )}
@@ -137,13 +144,13 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-xs font-semibold mb-1.5 font-nunito uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Email</label>
-            <input type="email" className="input-field" placeholder="your@email.com"
+            <input type="email" className="input-field" placeholder="your@email.com" autoComplete="petquest-email" name="petquest-email"
               value={email} onChange={e => setEmail(e.target.value)} autoFocus />
           </div>
 
           <div>
             <label className="block text-xs font-semibold mb-1.5 font-nunito uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Password</label>
-            <input type="password" className="input-field" placeholder="6+ characters"
+            <input type="password" className="input-field" placeholder="6+ characters" autoComplete="new-password"
               value={password} onChange={e => setPassword(e.target.value)} />
           </div>
 

@@ -74,10 +74,10 @@ export default async function handler(req, res) {
     .from('tasks').select('text').eq('id', completion.quest_id).single()
   const questText = quest?.text || 'the quest'
 
-  // Helper: persist the verdict service-side and respond.
+  // Helper: persist the verdict service-side (with timestamp) and respond.
   const finish = async (verdict, confidence, reason, httpStatus = 200) => {
     await admin.from('quest_completions')
-      .update({ ai_verdict: verdict, ai_confidence: confidence, ai_reason: reason })
+      .update({ ai_verdict: verdict, ai_confidence: confidence, ai_reason: reason, ai_verdict_at: new Date().toISOString() })
       .eq('id', completionId)
     if (verdict === 'fail') {
       await admin.rpc('rollback_completion', { p_completion_id: completionId, p_reason: 'ai_rejected' })
@@ -100,6 +100,12 @@ export default async function handler(req, res) {
         const imgResp = await fetch(signed.signedUrl)
         if (imgResp.ok) {
           const buf = Buffer.from(await imgResp.arrayBuffer())
+          // Server-side blank/placeholder guard: a real JPEG photo is well over a
+          // few KB; a black/empty frame compresses to almost nothing. Reject as
+          // fraud (this triggers rollback via finish('fail')).
+          if (buf.length < 3000) {
+            return finish('fail', 0, 'Image too small or blank — no real evidence detected.')
+          }
           const mime = imgResp.headers.get('content-type') || 'image/jpeg'
           imagePart = { inline_data: { mime_type: mime, data: buf.toString('base64') } }
         }
