@@ -138,8 +138,7 @@ export default function VerificationModal({ task, onClose, onVerified }) {
     const path = `${profile.id}/${task.id}-${Date.now()}.${ext}`
     const { error: upErr } = await supabase.storage
       .from('quest-proofs').upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: false })
-    if (!alive.current) return
-    if (upErr) { addNotification('Photo upload failed. Try again.', 'error'); setPhase('preview'); return }
+    if (upErr) { if (alive.current) { addNotification('Photo upload failed. Try again.', 'error'); setPhase('preview') } return }
 
     const res = await submitCompletion(task.id, {
       photoPath: path, log: log.trim(),
@@ -147,10 +146,12 @@ export default function VerificationModal({ task, onClose, onVerified }) {
       verificationStartedAt: new Date(vStartRef.current).toISOString(),
       source,
     })
-    if (!alive.current) return
-    if (!res.ok) { setPhase('preview'); return }
+    if (!res.ok) { if (alive.current) setPhase('preview'); return }
 
-    // AI verdict. Provisional points are held (verifying) until we know it.
+    /* CRITICAL: from here on we do NOT bail on `alive`. The AI verdict + the
+       finalize/rollback are server-and-context work that must complete even if
+       the user closed the modal — otherwise the row is orphaned at ai_verdict
+       'pending' (that was the QA bug). Only the modal's own setState is guarded. */
     let verdict = 'error', reason = 'Queued for manual review.'
     try {
       const r = await fetch('/api/verify', {
@@ -159,20 +160,17 @@ export default function VerificationModal({ task, onClose, onVerified }) {
       })
       if (r.ok) { const d = await r.json(); verdict = d.verdict || 'error'; reason = d.reason || reason }
     } catch { /* keep manual-review fallback */ }
-    if (!alive.current) return
 
     if (verdict === 'fail') {
       await cancelVerification(task.id)   // server already reverted; resync
       addNotification(`⚠️ Proof rejected: ${reason}`, 'error')
     } else {
-      // pass OR error → provisional award stands (error goes to manual review).
-      finalizeVerification(task.id, res.data)
+      finalizeVerification(task.id, res.data)   // pass OR error → provisional award stands
       if (verdict === 'pass') { onVerified?.(); addNotification('✅ +' + res.data.awarded + ' Quest Points earned!', 'success') }
       else addNotification('Submitted — queued for manual review.', 'info')
     }
-    if (!alive.current) return
-    setResult({ verdict, reason })
-    setPhase('result')
+
+    if (alive.current) { setResult({ verdict, reason }); setPhase('result') }
   }
 
   const canRetry = result?.verdict === 'fail' && retries < 1

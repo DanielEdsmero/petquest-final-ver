@@ -428,6 +428,22 @@ function VerificationQueue() {
   }
   useEffect(() => { load() }, [])
 
+  /* Re-run AI for a row whose verdict never got written (e.g. the user closed
+     the tab before /api/verify fired). Calls the same serverless endpoint. */
+  const rerunAI = async (id) => {
+    setBusy(id + 'ai')
+    try {
+      const r = await fetch('/api/verify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completion_id: id }),
+      })
+      const d = await r.json().catch(() => ({}))
+      addNotification(r.ok ? `AI verdict: ${d.verdict}` : `AI re-run failed (${d.error || r.status})`, r.ok ? 'info' : 'error')
+    } catch (e) { addNotification(`AI re-run failed: ${e.message}`, 'error') }
+    setBusy(null)
+    load()
+  }
+
   const review = async (id, action) => {
     setBusy(id + action)
     const { data, error } = await supabase.rpc('admin_review_completion', { p_completion_id: id, p_action: action, p_reason: null })
@@ -539,6 +555,9 @@ function VerificationQueue() {
               <CheatButton onClick={() => review(r.id, 'approved')} busy={busy} color="#22c55e">✅ Approve</CheatButton>
               <CheatButton onClick={() => review(r.id, 'rejected')} busy={busy} color="#f43f5e">❌ Reject (rollback)</CheatButton>
               <CheatButton onClick={() => review(r.id, 'suspicious')} busy={busy} color="#f5a31a">⚠️ Suspicious</CheatButton>
+              {r.ai_verdict === 'pending' && (
+                <CheatButton onClick={() => rerunAI(r.id)} busy={busy} color="#06b6d4">🔁 Re-run AI</CheatButton>
+              )}
             </div>
           </div>
         )
