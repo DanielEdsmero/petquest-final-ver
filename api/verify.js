@@ -123,27 +123,40 @@ export default async function handler(req, res) {
       `Consider relevance, plausibility, and whether it looks staged or generic.\n` +
       `Respond with ONLY JSON: {"verdict":"pass"|"fail","confidence":0.0-1.0,"reason":"short explanation"}`
 
-    const model = await resolveModel()
-    const url = `${GEMINI_API}/models/${model}:generateContent?key=${GEMINI_KEY}`
-    const gResp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }, imagePart] }],
-        generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
-      }),
+    const body = JSON.stringify({
+      contents: [{ parts: [{ text: prompt }, imagePart] }],
+      generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
     })
+    const callModel = (m) => fetch(`${GEMINI_API}/models/${m}:generateContent?key=${GEMINI_KEY}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+    const TRANSIENT = new Set([429, 500, 502, 503, 504])
+
+    // Try the resolved model with backoff on transient overload (503/429/5xx),
+    // then fall back to the lighter flash-lite alias which usually has headroom.
+    const primary = await resolveModel()
+    const candidates = [...new Set([primary, 'gemini-flash-lite-latest'])]
+    let gResp, model
+    outer: for (const m of candidates) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        model = m
+        gResp = await callModel(m)
+        if (gResp.ok) break outer
+        if (!TRANSIENT.has(gResp.status)) break        // real error (bad key/model) → don't retry this model
+        await sleep(700 * (attempt + 1))               // 0.7s, 1.4s backoff before retry
+      }
+    }
 
     if (!gResp.ok) {
-      // Surface the real Gemini error (status + message) so the admin queue
-      // shows the actual cause instead of a generic "AI service error".
       let detail = ''
       try {
         const errText = await gResp.text()
         try { detail = JSON.parse(errText)?.error?.message || errText } catch { detail = errText }
       } catch { /* ignore */ }
       console.error('[verify] Gemini error', gResp.status, model, detail)
-      return finish('error', null, `AI error ${gResp.status} (${model}): ${String(detail).slice(0, 300)}`)
+      // Any error (overload or otherwise) → 'error' verdict: points stay provisional
+      // for manual admin review rather than being flagged as fraud.
+      return finish('error', null, `AI busy/error ${gResp.status} (${model}): ${String(detail).slice(0, 200)} — queued for manual review.`)
     }
     const gData = await gResp.json()
     const raw = gData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
