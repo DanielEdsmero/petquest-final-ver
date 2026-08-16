@@ -1,9 +1,64 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Camera, X, RotateCcw, Check, AlertTriangle, Clock, Upload } from 'lucide-react'
+import { Camera, X, RotateCcw, Check, AlertTriangle, Clock, Upload, Sparkles, Scale } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useGame } from '../context/GameContext'
+
+/* Gilded Waypoints — verification progress. Three golden nodes
+   (Uploading → AI Analyzing → Verdict) + a gold shimmer bar. `stage` and `pct`
+   are driven by REAL events, never a fake timer (see submit()). */
+const WP_STAGES = [
+  { label: 'Uploading',    Icon: Upload,   flavors: ['Uploading your evidence to the Hall of Quests…', 'Sealing your scroll for the Oracle…'] },
+  { label: 'AI Analyzing', Icon: Sparkles, flavors: ['The Oracle peers closely at your proof…', 'Runes flicker as the Oracle studies your deed…'] },
+  { label: 'Verdict',      Icon: Scale,    flavors: ['Weighing your words against the Oracle’s wisdom…', 'The verdict draws near…'] },
+]
+
+function GildedWaypoints({ stage, pct, failed }) {
+  const [fi, setFi] = useState(0)
+  useEffect(() => { setFi(0); const id = setInterval(() => setFi(i => i + 1), 2600); return () => clearInterval(id) }, [stage])
+  const flavors = WP_STAGES[Math.min(stage, 2)]?.flavors || ['…']
+  const accent = failed ? '#fb7185' : '#e8b94b'
+
+  return (
+    <div className="py-3">
+      <div className="flex items-center justify-between mb-4">
+        {WP_STAGES.map((s, i) => {
+          const done = i < stage, active = i === stage
+          return (
+            <div key={s.label} className="flex items-center" style={{ flex: i < 2 ? 1 : 'none' }}>
+              <div className="flex flex-col items-center gap-1.5" style={{ width: 56 }}>
+                <motion.div
+                  animate={active && !failed ? { boxShadow: ['0 0 0px rgba(232,185,75,0.4)', '0 0 14px rgba(232,185,75,0.9)', '0 0 0px rgba(232,185,75,0.4)'], scale: [1, 1.08, 1] } : {}}
+                  transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+                  className="w-9 h-9 rounded-full flex items-center justify-center"
+                  style={{
+                    background: done ? 'linear-gradient(135deg,#8a6d1f,#e8b94b)' : active ? 'rgba(232,185,75,0.14)' : 'rgba(18,20,38,0.9)',
+                    border: `1px solid ${i <= stage ? 'rgba(232,185,75,0.7)' : 'rgba(80,80,120,0.4)'}`,
+                  }}>
+                  {done ? <Check size={18} style={{ color: '#0c0d16' }} />
+                    : <s.Icon size={16} style={{ color: active ? '#f5d980' : '#5b5b80' }} />}
+                </motion.div>
+                <span className="text-[10px] font-nunito text-center leading-tight" style={{ color: i <= stage ? accent : 'var(--text-muted)' }}>{s.label}</span>
+              </div>
+              {i < 2 && <div className="flex-1 h-0.5 mx-1 -mt-4" style={{ background: done ? 'linear-gradient(90deg,#e8b94b,#8a6d1f)' : 'rgba(80,80,120,0.35)' }} />}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="rounded-full overflow-hidden relative" style={{ height: 8, background: 'rgba(18,20,38,0.9)', border: `1px solid ${failed ? 'rgba(244,63,94,0.3)' : 'rgba(232,185,75,0.25)'}` }}>
+        <div className="h-full gilded-bar" style={{
+          width: `${pct}%`, transition: 'width 0.25s linear',
+          background: failed ? 'linear-gradient(90deg,#7f1d2e,#f43f5e,#fb7185)' : 'linear-gradient(90deg,#8a6d1f,#e8b94b,#f5d980)',
+        }} />
+      </div>
+      <p className="text-xs font-nunito text-center mt-3" style={{ color: '#e8d9a8' }}>
+        {flavors[fi % flavors.length]} <span style={{ color: accent, fontWeight: 700 }}>{Math.round(pct)}%</span>
+      </p>
+    </div>
+  )
+}
 
 /*
  * Evidence capture for a quest completion: a LIVE camera photo (preferred) or,
@@ -58,8 +113,25 @@ export default function VerificationModal({ task, onClose, onVerified }) {
   const [camError, setCamErr] = useState('')
   const [result, setResult]   = useState(null)
   const [retries, setRetries] = useState(0)
+  const [prog, setProg]       = useState({ stage: 0, pct: 0, failed: false })  // Gilded Waypoints — driven by real events
 
   useEffect(() => () => { alive.current = false }, [])
+
+  /* Ease the bar toward the current stage's cap so it moves smoothly BETWEEN
+     real events without ever claiming more progress than has actually happened.
+     Real events (upload done, verdict in) bump `stage`, which raises the cap. */
+  useEffect(() => {
+    if (phase !== 'submitting') return
+    const caps = [32, 90, 100]   // uploading · analyzing · verdict
+    const id = setInterval(() => {
+      setProg(p => {
+        const cap = caps[Math.min(p.stage, 2)]
+        if (p.pct >= cap) return p
+        return { ...p, pct: Math.min(cap, p.pct + Math.max(0.4, (cap - p.pct) * 0.05)) }
+      })
+    }, 110)
+    return () => clearInterval(id)
+  }, [phase])
 
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach(t => t.stop())
@@ -133,6 +205,7 @@ export default function VerificationModal({ task, onClose, onVerified }) {
     if (blob.size < MIN_BLOB_BYTES) { addNotification('That photo looks empty — please retake with a live feed.', 'error'); return }
     if (!navigator.onLine) { addNotification('You need a connection to submit proof.', 'error'); return }
 
+    setProg({ stage: 0, pct: 4, failed: false })   // Waypoint 1: Uploading
     setPhase('submitting')
     const ext = source === 'upload' ? (blob.type.split('/')[1] || 'jpg') : 'jpg'
     const path = `${profile.id}/${task.id}-${Date.now()}.${ext}`
@@ -148,6 +221,8 @@ export default function VerificationModal({ task, onClose, onVerified }) {
     })
     if (!res.ok) { if (alive.current) setPhase('preview'); return }
 
+    setProg(p => ({ ...p, stage: 1, pct: Math.max(p.pct, 34) }))   // Waypoint 2: AI Analyzing (photo stored, verdict requested)
+
     /* CRITICAL: from here on we do NOT bail on `alive`. The AI verdict + the
        finalize/rollback are server-and-context work that must complete even if
        the user closed the modal — otherwise the row is orphaned at ai_verdict
@@ -160,6 +235,8 @@ export default function VerificationModal({ task, onClose, onVerified }) {
       })
       if (r.ok) { const d = await r.json(); verdict = d.verdict || 'error'; reason = d.reason || reason }
     } catch { /* keep manual-review fallback */ }
+
+    setProg({ stage: 2, pct: 100, failed: verdict === 'fail' })   // Waypoint 3: Verdict in
 
     if (verdict === 'fail') {
       await cancelVerification(task.id)   // server already reverted; resync
@@ -255,14 +332,11 @@ export default function VerificationModal({ task, onClose, onVerified }) {
             </motion.div>
           )}
 
-          {/* SUBMITTING */}
+          {/* SUBMITTING — Gilded Waypoints */}
           {phase === 'submitting' && (
-            <motion.div key="sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="py-10 flex flex-col items-center gap-3">
-              <motion.span className="spinner-ring" style={{ width: 32, height: 32, borderTopColor: '#f5a31a' }}
-                animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} />
-              <p className="text-sm font-nunito" style={{ color: 'var(--text-muted)' }}>Verifying your proof…</p>
-              <p className="text-xs font-nunito" style={{ color: '#5050aa' }}>Points are pending verification</p>
+            <motion.div key="sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pt-2">
+              <GildedWaypoints stage={prog.stage} pct={prog.pct} failed={prog.failed} />
+              <p className="text-[11px] font-nunito text-center mt-1" style={{ color: '#5b5b80' }}>Points are pending the Oracle’s verdict</p>
             </motion.div>
           )}
 

@@ -452,6 +452,21 @@ body::before {
   box-sizing: border-box;
 }
 
+/* Gilded Waypoints — sweeping highlight across the gold progress bar. */
+.gilded-bar { position: relative; overflow: hidden; }
+.gilded-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,0.55) 50%, transparent 80%);
+  transform: translateX(-100%);
+  animation: gildedSweep 1.6s ease-in-out infinite;
+}
+@keyframes gildedSweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
 /* Streak milestone halo. */
 .streak-halo {
   position: absolute;

@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { PETS } from '../data/pets'
-import { MILESTONE_REWARDS } from '../data/progression'
+import { MILESTONE_REWARDS, levelFromPoints } from '../data/progression'
 import { ACCESSORIES } from '../data/accessories'
 
 const GameContext = createContext(null)
@@ -66,6 +66,33 @@ export function GameProvider({ children }) {
   useEffect(() => { profileRef.current = profile }, [profile])
 
   const selectedPet = PETS.find(p => p.id === profile?.selected_pet_id) || null
+
+  /* ── Evolution watcher (Phase 2) ──
+     Single source of truth for the "Your companion evolved!" celebration. It
+     compares the stage COMPUTED from points against the highest stage we've
+     already celebrated (persisted per-user in localStorage, best-effort mirrored
+     to profiles.evolution_seen_level). This fires for BOTH a live threshold
+     crossing (points just went up) and RETROACTIVELY — an existing player who
+     was already past a threshold when the new art shipped sees it once on their
+     next visit. Baseline (level 1) never celebrates. */
+  useEffect(() => {
+    const uid = profile?.id
+    if (!uid || !profile?.selected_pet_id) return
+    const computed = levelFromPoints(profile?.total_points_earned || 0)
+    // Seen = the higher of the server column and the local marker. This makes the
+    // logic correct whether or not the migration has run: pre-migration the
+    // column is absent so localStorage carries it; post-migration the column's
+    // default (1) can't force a replay because localStorage still remembers.
+    const col = Number.isFinite(profile?.evolution_seen_level) ? profile.evolution_seen_level : 0
+    const seen = Math.max(col, Number(lsGet('evo_seen_' + uid, 0)) || 0)
+    if (computed > seen) {
+      if (computed > 1) setEvolution({ id: Date.now(), level: computed, petId: profile.selected_pet_id })
+      lsSet('evo_seen_' + uid, computed)
+      setProfile(prev => { const n = { ...prev, evolution_seen_level: computed }; lsSet('profile', n); return n })
+      // Column may not exist until the Phase 9 migration is run — ignore failure.
+      supabase.from('profiles').update({ evolution_seen_level: computed }).eq('id', uid).then(() => {}, () => {})
+    }
+  }, [profile?.id, profile?.selected_pet_id, profile?.total_points_earned, profile?.evolution_seen_level])
 
   /* ── auth listener ── */
   useEffect(() => {
@@ -222,6 +249,19 @@ export function GameProvider({ children }) {
     await supabase.from('pet_stats').upsert({ user_id: profile.id, ...INITIAL_STATS, updated_at: new Date().toISOString() })
   }, [profile?.id])
 
+  /* Egg-hatching onboarding (Phase 3): register the chosen companion as a fresh
+     LV1 Baby (selectPet resets stats; a new user is already at 0 pts) and record
+     the hatch metadata for research. The hatched_* columns are best-effort —
+     they may not exist until the Phase 3 migration is run, so a failure there
+     must not block onboarding. */
+  const hatchPet = useCallback(async (petId) => {
+    await selectPet(petId)
+    const now = new Date().toISOString()
+    setProfile(prev => { const n = { ...prev, hatched_pet_type: petId, hatched_at: now }; lsSet('profile', n); return n })
+    const uid = profileRef.current?.id
+    if (uid) supabase.from('profiles').update({ hatched_pet_type: petId, hatched_at: now }).eq('id', uid).then(() => {}, () => {})
+  }, [selectPet])
+
   /* ── game mode ── */
   const setGameMode = useCallback(async (mode) => {
     setProfile(prev => { const n = { ...prev, game_mode: mode }; lsSet('profile', n); return n })
@@ -355,7 +395,8 @@ export function GameProvider({ children }) {
       }
       if (data.title) addNotification(`👑 Title earned: ${data.title}`, 'success')
       if (data.boss_unlocked) addNotification('💀 Boss Battles unlocked!', 'success')
-      if (data.level_up) setEvolution({ id: Date.now(), level: data.level })
+      /* Evolution celebration is fired by the dedicated watcher (Phase 2), which
+         keys off total_points_earned and dedupes via the persisted seen-level. */
       if (data.new_badges?.length) setBadgeUnlock({ id: Date.now(), badges: data.new_badges })
     }
   }, [addNotification])
@@ -640,7 +681,7 @@ export function GameProvider({ children }) {
     <GameContext.Provider value={{
       session, profile, authReady,
       user: profile, login, register, logout,
-      selectedPet, selectPet,
+      selectedPet, selectPet, hatchPet,
       petStats,
       tasks, addTask, completeTask, submitCompletion, finalizeVerification, cancelVerification, deleteTask,
       progressLogs, addProgressLog, bulkAddPresets,

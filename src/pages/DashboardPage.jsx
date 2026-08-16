@@ -26,6 +26,7 @@ import EvolutionBar from '../components/EvolutionBar'
 import EvolutionOverlay from '../components/animations/EvolutionOverlay'
 import ConnectionStatus from '../components/ConnectionStatus'
 import CountUp from '../components/reactbits/CountUp'
+import { getStageForPoints } from '../config/pets'
 
 function CareButton({ icon: Icon, label, cost, color, glowColor, onClick, disabled }) {
   return (
@@ -119,6 +120,14 @@ export default function DashboardPage() {
   const navigate = useNavigate()
   const [actionAnim, setActionAnim] = useState(null)
 
+  /* Sanity log: confirm the right evolution sprite resolves for this user's pet.
+     Remove once the sprites are visually confirmed. */
+  useEffect(() => {
+    if (!selectedPet?.id) return
+    const stage = getStageForPoints(selectedPet.id, totalPointsEarned)
+    console.log(`[pets] ${selectedPet.id} · ${totalPointsEarned}pts → ${stage.label} (L${stage.level}) → ${stage.sprite}`)
+  }, [selectedPet?.id, totalPointsEarned])
+
   /* A broken streak plays the pet's sad reaction once, then clears. */
   useEffect(() => {
     if (!streakBroken) return
@@ -146,8 +155,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen relative" style={{ background: 'var(--bg-deep)' }}>
       <EvolutionOverlay
-        evolution={evolution}
-        petEmoji={selectedPet?.emoji}
+        evolution={evolution ? { ...evolution, petId: evolution.petId || selectedPet?.id } : null}
         onDone={clearEvolution}
       />
 

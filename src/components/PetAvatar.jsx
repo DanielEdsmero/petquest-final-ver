@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ACCESSORIES } from '../data/accessories'
 import useReducedMotion from '../hooks/useReducedMotion'
 import { getLevelMeta } from '../data/progression'
+import PetSprite from './PetSprite'
 
 const SIZE_CONFIG = {
   lg: { container: 180, pet: 100 },
@@ -150,7 +151,8 @@ export default function PetAvatar({
               : { duration: 3.5, repeat: Infinity, ease: 'easeInOut' }
           }
         >
-          {pet?.emoji || '🐾'}
+          {/* Evolution sprite (falls back to the pet emoji if art is missing). */}
+          <PetSprite petId={pet?.id} level={level} size={petSize} style={{ display: 'block' }} />
         </motion.div>
 
         {/* Shower sparkles ring the pet while it shakes off. */}

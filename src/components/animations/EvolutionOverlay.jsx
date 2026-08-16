@@ -1,31 +1,38 @@
-import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { getLevelMeta } from '../../data/progression'
+import { stageName, petMeta } from '../../config/pets'
+import PetSprite from '../PetSprite'
 import useReducedMotion from '../../hooks/useReducedMotion'
 
 /*
- * Full-screen transformation sequence when the pet evolves:
- * white flash -> expanding gold rings -> the new form announced.
+ * Full-screen companion celebration — used for BOTH pet evolution (Phase 2) and
+ * egg hatching (Phase 3). Dims the screen, flashes gold, expands rings, then
+ * reveals the new-stage sprite with a scale-in and a CTA button.
  *
- * Portalled to <body> so no transformed ancestor can trap the fixed overlay.
- * `evolution` = { id, level } | null
+ * `evolution` (name kept for back-compat) = {
+ *   id, level, petId,
+ *   kind?: 'evolve' | 'hatch',   // default 'evolve'
+ *   title?, subtitle?, button?,  // optional overrides (Phase 3 hatch copy)
+ * } | null
  */
-export default function EvolutionOverlay({ evolution, petEmoji = '🐾', onDone }) {
+export default function EvolutionOverlay({ evolution, onDone }) {
   const reduceMotion = useReducedMotion()
+  if (!evolution) return null
 
-  // Auto-dismiss; the whole sequence runs ~2.6s.
-  useEffect(() => {
-    if (!evolution) return
-    const id = setTimeout(onDone, reduceMotion ? 1600 : 2600)
-    return () => clearTimeout(id)
-  }, [evolution, onDone, reduceMotion])
+  const { level = 1, petId, kind = 'evolve' } = evolution
+  const meta = getLevelMeta(level)
+  const isHatch = kind === 'hatch'
 
-  const meta = evolution ? getLevelMeta(evolution.level) : null
+  const title    = evolution.title    || (isHatch ? 'Hatched!' : 'Evolution!')
+  const subtitle = evolution.subtitle || (isHatch
+    ? `Your companion has hatched: the ${petMeta(petId).species}!`
+    : `Your companion evolved to ${stageName(level)}!`)
+  const button   = evolution.button   || 'View your companion'
 
   return createPortal(
     <AnimatePresence>
-      {evolution && meta && (
+      {evolution && (
         <motion.div
           key={evolution.id}
           className="evolution-overlay"
@@ -45,8 +52,8 @@ export default function EvolutionOverlay({ evolution, petEmoji = '🐾', onDone 
           )}
 
           <div className="flex flex-col items-center gap-5 relative" style={{ zIndex: 2 }}>
-            <div className="relative flex items-center justify-center" style={{ width: 190, height: 190 }}>
-              {/* Expanding rings */}
+            <div className="relative flex items-center justify-center" style={{ width: 200, height: 200 }}>
+              {/* Expanding gold rings */}
               {!reduceMotion && [0, 0.25, 0.5].map((delay, i) => (
                 <motion.span
                   key={i}
@@ -57,8 +64,9 @@ export default function EvolutionOverlay({ evolution, petEmoji = '🐾', onDone 
                 />
               ))}
 
-              <motion.span
-                style={{ fontSize: 96, lineHeight: 1, filter: 'drop-shadow(0 0 30px var(--gold))' }}
+              {/* New-stage sprite (falls back to emoji if art is missing) */}
+              <motion.div
+                style={{ filter: 'drop-shadow(0 0 30px var(--gold))' }}
                 initial={{ scale: 0.4, rotate: -12, opacity: 0 }}
                 animate={
                   reduceMotion
@@ -67,8 +75,8 @@ export default function EvolutionOverlay({ evolution, petEmoji = '🐾', onDone 
                 }
                 transition={{ duration: 1.1, ease: 'easeOut', delay: 0.3 }}
               >
-                {petEmoji}
-              </motion.span>
+                <PetSprite petId={petId} level={level} size={150} style={{ display: 'block' }} />
+              </motion.div>
             </div>
 
             <motion.div
@@ -77,15 +85,14 @@ export default function EvolutionOverlay({ evolution, petEmoji = '🐾', onDone 
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: reduceMotion ? 0.1 : 0.9, duration: 0.5 }}
             >
-              <p className="font-cinzel font-black text-3xl gradient-text-gold mb-1">
-                Evolution!
-              </p>
-              <p className="font-cinzel font-bold text-xl" style={{ color: 'var(--text-primary)' }}>
-                Level {meta.level} — {meta.name}
-              </p>
-              <p className="font-nunito text-sm mt-2 max-w-xs" style={{ color: 'var(--text-soft)' }}>
-                {meta.blurb}
-              </p>
+              <p className="font-cinzel font-black text-3xl gradient-text-gold mb-1">{title}</p>
+              <p className="font-cinzel font-bold text-xl" style={{ color: 'var(--text-primary)' }}>{subtitle}</p>
+              {!isHatch && (
+                <p className="font-nunito text-sm mt-2 max-w-xs" style={{ color: 'var(--text-soft)' }}>{meta.blurb}</p>
+              )}
+              <button onClick={onDone} className="btn-gold px-8 py-2.5 mt-5 font-cinzel font-bold tracking-wide">
+                {button}
+              </button>
             </motion.div>
           </div>
         </motion.div>

@@ -121,6 +121,7 @@ export default function AccessoriesPage() {
   const {
     selectedPet,
     points,
+    petLevel,
     ownedAccessories,
     equippedAccessories,
     buyAccessory,
@@ -224,6 +225,7 @@ export default function AccessoriesPage() {
                   equippedAccessories={equippedAccessories}
                   size="lg"
                   glowing={true}
+                  level={petLevel}
                 />
               </div>
 

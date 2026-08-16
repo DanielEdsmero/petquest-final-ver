@@ -4,7 +4,7 @@ import PageTransition from './components/animations/PageTransition'
 import PortalLoader from './components/animations/PortalLoader'
 import ErrorBoundary from './components/ErrorBoundary'
 import LoginPage          from './pages/LoginPage'
-import PetSelectPage      from './pages/PetSelectPage'
+import EggHatchingPage    from './pages/EggHatchingPage'
 import GameModeSelectPage from './pages/GameModeSelectPage'
 import DashboardPage      from './pages/DashboardPage'
 import AccessoriesPage    from './pages/AccessoriesPage'
@@ -50,7 +50,7 @@ function AppRoutes() {
           element={
             !loggedIn ? <Navigate to="/" replace /> :
             hasPet    ? (hasMode ? <Navigate to="/dashboard" replace /> : <Navigate to="/mode-select" replace />) :
-            <PageTransition variant="scaleFade"><PetSelectPage /></PageTransition>
+            <PageTransition variant="scaleFade"><EggHatchingPage /></PageTransition>
           }
         />
         <Route path="/mode-select"
