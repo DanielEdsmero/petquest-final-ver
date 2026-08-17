@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { LogOut, Sparkles, Star, ShoppingBag, Droplets, Heart, Utensils, Shield, Settings, Trophy, Scroll, CheckCircle2, Lightbulb } from 'lucide-react'
-import { useGame } from '../context/GameContext'
+import { useGame, DIFF_POINTS } from '../context/GameContext'
 
 const MODE_META = {
   fitness:  { emoji: '💪', label: 'Fitness',  color: '#f43f5e' },
@@ -484,7 +484,7 @@ export default function DashboardPage() {
                 </h3>
                 <div className="text-xs font-nunito px-2 py-1 rounded-lg"
                   style={{ background: 'rgba(245, 163, 26, 0.1)', color: '#f5a31a', border: '1px solid rgba(245, 163, 26, 0.2)' }}>
-                  +10 pts per quest
+                  +{DIFF_POINTS.easy}/{DIFF_POINTS.medium}/{DIFF_POINTS.hard} pts by difficulty
                 </div>
               </div>
               <TaskList />

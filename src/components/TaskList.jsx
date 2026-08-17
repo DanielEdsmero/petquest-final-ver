@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Trash2, Plus, Circle, BookOpen, Clock, ChevronUp, CalendarClock } from 'lucide-react'
-import { useGame, HARD_PERIOD_MS, MEDIUM_PERIOD_MS, DIFF_MIN_COMPLETE_MS } from '../context/GameContext'
+import { useGame, HARD_PERIOD_MS, MEDIUM_PERIOD_MS, DIFF_MIN_COMPLETE_MS, DIFF_POINTS } from '../context/GameContext'
 import CompletionFx from './animations/CompletionFx'
 import CheckDraw from './animations/CheckDraw'
 import EmptyStatePet from './animations/EmptyStatePet'
@@ -385,7 +385,7 @@ export default function TaskList() {
           <div className="flex items-center gap-2">
             <Clock size={11} style={{ color: cfg.color }} />
             <span style={{ color: cfg.color }} className="font-bold">
-              {activeDiff === 'hard' ? `${hardSlots}/1` : `${medSlots}/3`} slots used
+              {activeTasks.length} {cfg.label.toLowerCase()} quest{activeTasks.length !== 1 ? 's' : ''} active
             </span>
           </div>
           <span style={{ color: 'var(--text-muted)' }}>
@@ -467,14 +467,12 @@ export default function TaskList() {
         )}
       </div>
 
-      {activeDiff === 'easy' && (
-        <div className="flex justify-end mb-2">
-          <span className="text-xs font-nunito px-2 py-0.5 rounded-lg"
-            style={{ background: 'rgba(245,163,26,0.1)', color: '#f5a31a', border: '1px solid rgba(245,163,26,0.2)' }}>
-            +10 pts per quest
-          </span>
-        </div>
-      )}
+      <div className="flex justify-end mb-2">
+        <span className="text-xs font-nunito px-2 py-0.5 rounded-lg"
+          style={{ background: 'rgba(245,163,26,0.1)', color: '#f5a31a', border: '1px solid rgba(245,163,26,0.2)' }}>
+          +{DIFF_POINTS[activeDiff] ?? DIFF_POINTS.easy} pts per quest
+        </span>
+      </div>
 
       {/* Task list */}
       <div className="flex-1 overflow-y-auto max-h-60 pr-1 custom-scroll">
