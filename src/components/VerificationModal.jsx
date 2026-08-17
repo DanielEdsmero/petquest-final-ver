@@ -300,18 +300,26 @@ export default function VerificationModal({ task, onClose, onVerified }) {
                 </>
               ) : (
                 <>
-                  <div className="rounded-xl overflow-hidden mb-3 relative" style={{ background: '#000', aspectRatio: '4/3' }}>
+                  <div className="rounded-xl overflow-hidden mb-3 relative" style={{ background: '#0c0d16', aspectRatio: '4/3' }}>
                     <video ref={videoRef} playsInline muted onLoadedData={() => setStream(true)}
                       className="w-full h-full object-cover" />
                     {!streaming && (
-                      <div className="absolute inset-0 flex items-center justify-center text-xs font-nunito" style={{ color: '#8080aa' }}>
-                        Waiting for camera…
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-xs font-nunito" style={{ color: '#8080aa' }}>
+                        <motion.span className="spinner-ring" style={{ width: 24, height: 24, borderTopColor: '#f5a31a' }}
+                          animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} />
+                        Camera loading…
                       </div>
                     )}
                   </div>
+                  {/* Button stays visible (disabled) during warm-up so the modal is never a blank box. */}
                   <button onClick={capture} disabled={!streaming}
                     className="btn-gold w-full py-3 flex items-center justify-center gap-2" style={{ opacity: streaming ? 1 : 0.4 }}>
-                    <Camera size={18} /> Take live photo
+                    <Camera size={18} /> {streaming ? 'Take live photo' : 'Camera loading…'}
+                  </button>
+                  {/* Upload fallback always available — usable even while the camera warms up. */}
+                  <button onClick={() => fileRef.current?.click()}
+                    className="w-full py-2 mt-2 flex items-center justify-center gap-2 text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
+                    <Upload size={14} /> or upload a photo instead
                   </button>
                 </>
               )}
@@ -360,10 +368,14 @@ export default function VerificationModal({ task, onClose, onVerified }) {
             </motion.div>
           )}
 
-          {/* RESULT */}
+          {/* RESULT — keeps the proof pinned so the verdict reads as a transformation */}
           {phase === 'result' && result && (
             <motion.div key="res" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-              className="py-6 flex flex-col items-center gap-3 text-center">
+              className="py-4 flex flex-col items-center gap-3 text-center">
+              {previewUrl && (
+                <img src={previewUrl} alt="Your proof" className="rounded-lg object-cover"
+                  style={{ width: 88, height: 88, border: '1px solid rgba(232,185,75,0.25)' }} />
+              )}
               {result.verdict === 'pass' ? (
                 <><div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: 'rgba(34,197,94,0.15)' }}><Check size={28} style={{ color: '#4ade80' }} /></div>
                   <p className="font-cinzel font-bold text-lg" style={{ color: '#4ade80' }}>Verified!</p></>

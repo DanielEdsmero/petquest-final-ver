@@ -617,16 +617,20 @@ export function GameProvider({ children }) {
   const bulkAddPresets = useCallback(async (questsToAdd) => {
     if (!questsToAdd.length || !profile?.id) return 0
 
-    // Per-row dedupe against what the user already owns (by quest text).
+    // Per-row dedupe against what the user already owns — normalized title match
+    // (lowercase, strip punctuation, collapse spaces) so near-identical rows
+    // don't slip through.
+    const norm = (s) => String(s || '').toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
     const { data: existing, error: exErr } = await supabase
       .from('tasks').select('text').eq('user_id', profile.id)
     if (exErr) { console.error('[bulkAddPresets] load existing failed:', exErr) }
-    const owned = new Set((existing || []).map(t => t.text))
-    const fresh = questsToAdd.filter(q => !owned.has(q.text))
+    const owned = new Set((existing || []).map(t => norm(t.text)))
+    const fresh = questsToAdd.filter(q => !owned.has(norm(q.text)))
     const skipped = questsToAdd.length - fresh.length
 
     if (!fresh.length) {
-      addNotification(`All ${questsToAdd.length} quests are already in your log.`, 'info')
+      // Zero-insert case ALWAYS surfaces a toast (never a silent no-op).
+      addNotification(`✓ 0 quests added — all ${questsToAdd.length} are already in your quest log.`, 'info')
       return 0
     }
 

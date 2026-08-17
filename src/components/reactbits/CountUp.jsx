@@ -20,12 +20,17 @@ export default function CountUp({
   startWhen = true,
   separator = '',
   suffix = '', // [petquest]
+  animateOnMount = true, // [petquest] false = show `to` immediately, only animate on later changes (no 0-flash on remount)
   onStart,
   onEnd
 }) {
   const ref = useRef(null);
   const reduceMotion = useReducedMotion(); // [petquest]
-  const motionValue = useMotionValue(direction === 'down' ? to : from);
+  // [petquest] When animateOnMount is false, seed at `to` so a remount (e.g. SPA
+  // navigation back to the dashboard) shows the real value instantly instead of
+  // counting up from 0. In-session changes to `to` still animate.
+  const startFrom = animateOnMount ? from : to;
+  const motionValue = useMotionValue(direction === 'down' ? to : startFrom);
 
   const damping = 20 + 40 * (1 / duration);
   const stiffness = 100 * (1 / duration);
@@ -73,7 +78,7 @@ export default function CountUp({
   useEffect(() => {
     if (ref.current) {
       // [petquest] Reduced motion: settle on the target rather than the start value.
-      ref.current.textContent = formatValue(reduceMotion ? to : direction === 'down' ? to : from);
+      ref.current.textContent = formatValue(reduceMotion ? to : direction === 'down' ? to : startFrom);
     }
   }, [from, to, direction, formatValue, reduceMotion]);
 

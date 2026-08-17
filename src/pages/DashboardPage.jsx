@@ -95,7 +95,7 @@ function PointsDisplay({ points }) {
       <div className="relative" style={{ zIndex: 1 }}>
         <div className="font-cinzel font-black text-lg leading-none"
           style={{ color: '#ffd166', textShadow: '0 0 16px rgba(245,163,26,0.35)' }}>
-          <CountUp to={points} separator="," duration={0.8} />
+          <CountUp to={points} separator="," duration={0.8} animateOnMount={false} />
         </div>
         <div className="text-xs font-nunito" style={{ color: 'var(--text-soft)' }}>Points</div>
       </div>
@@ -451,7 +451,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <div className="font-cinzel font-black text-2xl leading-none" style={{ color: '#ffd166' }}>
-                    <CountUp to={tasks.filter(t => t.completed).length * 10} duration={0.8} />
+                    <CountUp to={tasks.filter(t => t.completed).length * 10} duration={0.8} animateOnMount={false} />
                     <span className="text-base font-nunito font-bold" style={{ color: 'var(--text-muted)' }}> pts</span>
                   </div>
                   <div className="text-xs font-nunito mt-1 uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
@@ -468,7 +468,7 @@ export default function DashboardPage() {
                 <div key={label} className="glass-card p-4 flex flex-col justify-center gap-1">
                   <Icon size={16} style={{ color }} />
                   <div className="font-cinzel font-black text-xl" style={{ color }}>
-                    <CountUp to={value} duration={0.8} />
+                    <CountUp to={value} duration={0.8} animateOnMount={false} />
                   </div>
                   <div className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>{label}</div>
                 </div>

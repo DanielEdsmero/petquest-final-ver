@@ -388,11 +388,15 @@ export default function TaskList() {
               {activeTasks.length} {cfg.label.toLowerCase()} quest{activeTasks.length !== 1 ? 's' : ''} active
             </span>
           </div>
-          <span style={{ color: 'var(--text-muted)' }}>
-            {activeDiff === 'hard'
-              ? hardLeft > 0  ? `Resets in ${formatTimeLeft(hardLeft)}` : 'Period reset — slot available!'
-              : medLeft  > 0  ? `Resets in ${formatTimeLeft(medLeft)}`  : 'Period reset — slots available!'}
-          </span>
+          {/* Only show reset/countdown text when a period is actually anchored;
+              otherwise the "Period reset" line is misleading (no period running). */}
+          {(activeDiff === 'hard' ? hardStart > 0 : medStart > 0) && (
+            <span style={{ color: 'var(--text-muted)' }}>
+              {activeDiff === 'hard'
+                ? (hardLeft > 0 ? `Resets in ${formatTimeLeft(hardLeft)}` : 'Period reset — slot available!')
+                : (medLeft  > 0 ? `Resets in ${formatTimeLeft(medLeft)}`  : 'Period reset — slots available!')}
+            </span>
+          )}
           <span className="font-bold px-1.5 py-0.5 rounded-lg"
             style={{ background: cfg.color + '20', color: cfg.color }}>
             +{cfg.pts} pts

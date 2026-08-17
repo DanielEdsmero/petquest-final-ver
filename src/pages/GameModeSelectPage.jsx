@@ -142,14 +142,22 @@ function QuestCard({ quest, diff, isSelected, onToggle, onReroll, rerollsLeft, a
 /* ══════════════════════════════════
    QUEST PICKER MODAL
 ══════════════════════════════════ */
-function QuestPickerModal({ mode, enabledDiffs, onConfirm, onClose }) {
+/* Normalize a quest title for dedupe: lowercase, strip punctuation, collapse
+   whitespace. Shared by the picker (don't offer owned quests) and the insert. */
+export const normalizeQuestText = (s) =>
+  String(s || '').toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
+
+function QuestPickerModal({ mode, enabledDiffs, ownedTexts, onConfirm, onClose }) {
   const [rerollState, setRerollState] = useState(() => loadRerolls())
+
+  // Only offer quests the user does NOT already own (normalized-title match).
+  const poolFor = (diff) =>
+    (PRESET_QUESTS[mode]?.[diff] || []).filter(t => !ownedTexts.has(normalizeQuestText(t)))
 
   const [slots, setSlots] = useState(() => {
     const init = {}
     enabledDiffs.forEach(diff => {
-      const pool = PRESET_QUESTS[mode]?.[diff] || []
-      init[diff] = pickRandom(pool, SLOTS_COUNT[diff] || 3)
+      init[diff] = pickRandom(poolFor(diff), SLOTS_COUNT[diff] || 3)
     })
     return init
   })
@@ -174,7 +182,7 @@ function QuestPickerModal({ mode, enabledDiffs, onConfirm, onClose }) {
 
   const rerollQuest = (diff, idx) => {
     if (rerollsLeft <= 0) return
-    const pool    = PRESET_QUESTS[mode]?.[diff] || []
+    const pool    = poolFor(diff)
     const current = slots[diff] || []
     const [fresh] = pickRandom(pool, 1, current)
     if (!fresh) return
@@ -317,8 +325,9 @@ function QuestPickerModal({ mode, enabledDiffs, onConfirm, onClose }) {
    MAIN PAGE
 ══════════════════════════════════ */
 export default function GameModeSelectPage() {
-  const { setGameMode, bulkAddPresets, markOnboardingComplete, logout, profile } = useGame()
+  const { setGameMode, bulkAddPresets, markOnboardingComplete, logout, profile, tasks } = useGame()
   const navigate = useNavigate()
+  const ownedTexts = new Set((tasks || []).map(t => normalizeQuestText(t.text)))
 
   const [selected,     setSelected]     = useState(profile?.game_mode || null)
   const [enabled,      setEnabled]      = useState({ easy: true, medium: true, hard: true })
@@ -539,6 +548,7 @@ export default function GameModeSelectPage() {
           <QuestPickerModal
             mode={selected}
             enabledDiffs={enabledDiffs}
+            ownedTexts={ownedTexts}
             onConfirm={finalize}
             onClose={() => setPickerOpen(false)}
           />
