@@ -88,6 +88,7 @@ function UserRow({ user, index, onResetPeriod }) {
         <div className="flex-1 min-w-0">
           <p className="font-nunito font-bold text-sm truncate" style={{ color: '#e2e2ff' }}>
             {user.username}
+            <span style={{ color: '#6060aa', fontWeight: 400 }}> · {String(user.user_id || '').slice(0, 6)}</span>
             {user.role === 'admin' && <span className="ml-2 text-xs px-1.5 py-0.5 rounded"
               style={{ background: 'rgba(245,163,26,0.15)', color: '#f5a31a' }}>Admin</span>}
           </p>
@@ -320,7 +321,7 @@ function CheatPanel({ players = [], onChanged }) {
         >
           {players.map(p => (
             <option key={p.user_id} value={p.user_id}>
-              {p.username}{p.user_id === profile?.id ? ' (you)' : ''}{p.role === 'admin' ? ' · admin' : ''}
+              {p.username} · {String(p.user_id || '').slice(0, 6)}{p.user_id === profile?.id ? ' (you)' : ''}{p.role === 'admin' ? ' · admin' : ''}
             </option>
           ))}
         </select>
@@ -406,6 +407,7 @@ function VerificationQueue() {
   const [loading, setLoad]  = useState(true)
   const [busy, setBusy]     = useState(null)
   const [filter, setFilter] = useState('all')  // all | pending | pass | fail
+  const [rerunProg, setRerunProg] = useState(null)  // { done, total } while bulk re-running
 
   const load = async () => {
     setLoad(true)
@@ -444,24 +446,33 @@ function VerificationQueue() {
     load()
   }
 
-  /* Phase 3: re-run AI for every entry stuck without a real verdict
-     (ai_verdict pending/error/null). Sequential so we don't hammer Gemini. */
+  /* Re-run AI for every entry stuck without a real verdict (pending/error/null).
+     Sequential (don't hammer Gemini) with a per-row timeout so one slow/hanging
+     row can never freeze the whole batch, live progress, and a summary toast
+     that classifies each row as re-verdicted (pass/fail) vs queued for review. */
   const rerunAllStuck = async () => {
     const stuck = rows.filter(r => !r.ai_verdict || r.ai_verdict === 'pending' || r.ai_verdict === 'error')
     if (!stuck.length) { addNotification('No stuck entries to re-run.', 'info'); return }
     setBusy('rerun-all')
-    let ok = 0
-    for (const r of stuck) {
+    setRerunProg({ done: 0, total: stuck.length })
+    let verdicted = 0, manual = 0
+    for (let i = 0; i < stuck.length; i++) {
+      const ctl = new AbortController()
+      const to = setTimeout(() => ctl.abort(), 25000)   // never wait forever on one row
       try {
         const res = await fetch('/api/verify', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ completion_id: r.id }),
+          body: JSON.stringify({ completion_id: stuck[i].id }), signal: ctl.signal,
         })
-        if (res.ok) ok++
-      } catch { /* keep going */ }
+        const d = await res.json().catch(() => ({}))
+        if (d.verdict === 'pass' || d.verdict === 'fail') verdicted++
+        else manual++   // 'error' / unavailable photo / bad response → manual review
+      } catch { manual++ }   // timeout / network → manual review
+      clearTimeout(to)
+      setRerunProg({ done: i + 1, total: stuck.length })
     }
-    setBusy(null)
-    addNotification(`Re-ran ${stuck.length} stuck ${stuck.length === 1 ? 'entry' : 'entries'} — ${ok} returned a verdict.`, ok ? 'success' : 'error')
+    setRerunProg(null); setBusy(null)
+    addNotification(`${stuck.length} ${stuck.length === 1 ? 'entry' : 'entries'} re-checked: ${verdicted} re-verdicted, ${manual} queued for manual review.`, 'success')
     load()
   }
 
@@ -519,7 +530,9 @@ function VerificationQueue() {
         <button onClick={rerunAllStuck} disabled={busy === 'rerun-all'}
           className="px-3 py-1 rounded-lg text-xs font-nunito font-bold ml-auto disabled:opacity-50"
           style={{ background: 'rgba(6,182,212,0.15)', color: '#22d3ee', border: '1px solid rgba(6,182,212,0.4)' }}>
-          {busy === 'rerun-all' ? '⏳ Re-running…' : '🔁 Re-run stuck (pending/error)'}
+          {busy === 'rerun-all'
+            ? `⏳ Re-running ${rerunProg ? `${rerunProg.done}/${rerunProg.total}` : ''}…`
+            : '🔁 Re-run stuck (pending/error)'}
         </button>
       </div>
 
@@ -579,7 +592,13 @@ function VerificationQueue() {
                     {r.ai_verdict}{r.ai_confidence != null ? ` (${Math.round(r.ai_confidence * 100)}%)` : ''}
                   </span>
                 </p>
-                {r.ai_reason && <p className="text-xs font-nunito mt-1" style={{ color: 'var(--text-soft)' }}>{r.ai_reason}</p>}
+                {/* Never surface raw model names / HTTP codes. Error rows show a
+                    friendly line; the raw reason stays in the hover tooltip. */}
+                {(r.ai_reason || r.ai_verdict === 'error') && (
+                  <p className="text-xs font-nunito mt-1" style={{ color: 'var(--text-soft)' }} title={r.ai_reason || ''}>
+                    {r.ai_verdict === 'error' ? 'AI service busy — queued for manual review.' : r.ai_reason}
+                  </p>
+                )}
               </div>
             </div>
 

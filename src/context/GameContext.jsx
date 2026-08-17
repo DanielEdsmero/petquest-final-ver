@@ -248,10 +248,13 @@ export function GameProvider({ children }) {
   }, [])
 
   const logout = useCallback(async () => {
-    await supabase.auth.signOut()
-    Object.keys(localStorage).filter(k => k.startsWith(CACHE_PREFIX)).forEach(k => localStorage.removeItem(k))
+    /* Clear client state FIRST (in one batch) so the route guard redirects to
+       login on the same render — no flash of zeroed metrics over the stale
+       dashboard — THEN tear down the Supabase session. */
     setProfile(null); setPetStats(INITIAL_STATS); setTasks([]); setPoints(0)
     setOwnedAccessories([]); setEquippedAccessories({}); setProgressLogs({})
+    Object.keys(localStorage).filter(k => k.startsWith(CACHE_PREFIX)).forEach(k => localStorage.removeItem(k))
+    await supabase.auth.signOut()
   }, [])
 
   /* ── pet ── */
@@ -607,13 +610,27 @@ export function GameProvider({ children }) {
   }, [])
 
   /* ── bulk preset loader ── */
-  /* Insert every selected starter quest. Period caps gate COMPLETIONS, never
-     insertions (Round 5 Phase 1.2/1.3) — a participant who picks 8 quests must
-     receive all 8. Errors are retried once and surfaced, never dropped silently. */
+  /* Insert selected starter quests — ALL difficulties, never gated by the period
+     caps (those gate completions, not insertions). Quests the user already owns
+     (matched by text) are skipped per-row so a re-run can't create duplicates,
+     and the batch never aborts on an existing one. A summary toast always fires. */
   const bulkAddPresets = useCallback(async (questsToAdd) => {
     if (!questsToAdd.length || !profile?.id) return 0
-    const rows = questsToAdd.map(q => ({ user_id: profile.id, text: q.text, difficulty: q.difficulty }))
 
+    // Per-row dedupe against what the user already owns (by quest text).
+    const { data: existing, error: exErr } = await supabase
+      .from('tasks').select('text').eq('user_id', profile.id)
+    if (exErr) { console.error('[bulkAddPresets] load existing failed:', exErr) }
+    const owned = new Set((existing || []).map(t => t.text))
+    const fresh = questsToAdd.filter(q => !owned.has(q.text))
+    const skipped = questsToAdd.length - fresh.length
+
+    if (!fresh.length) {
+      addNotification(`All ${questsToAdd.length} quests are already in your log.`, 'info')
+      return 0
+    }
+
+    const rows = fresh.map(q => ({ user_id: profile.id, text: q.text, difficulty: q.difficulty }))
     let { data, error } = await supabase.from('tasks').insert(rows).select()
     if (error) {
       console.error('[bulkAddPresets] insert failed, retrying once:', error)
@@ -623,10 +640,13 @@ export function GameProvider({ children }) {
       addNotification('Your starter quests could not be added — please try again.', 'error')
       return 0
     }
+
     setTasks(prev => { const n = [...prev, ...data]; lsSet('tasks', n); return n })
-    if (data.length < questsToAdd.length) {
-      addNotification(`${questsToAdd.length - data.length} quest(s) could not be added — try again.`, 'error')
-    }
+    addNotification(
+      skipped
+        ? `${data.length} quest${data.length !== 1 ? 's' : ''} added, ${skipped} skipped (already in your log).`
+        : `${data.length} quest${data.length !== 1 ? 's' : ''} added!`,
+      'success')
     return data.length
   }, [profile?.id, addNotification])
 
