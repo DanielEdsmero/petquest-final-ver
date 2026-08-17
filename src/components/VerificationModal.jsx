@@ -82,8 +82,8 @@ function frameLooksBlank(canvas) {
     }
     if (!lum.length) return true
     const mean = sum / lum.length
-    const near = lum.filter(l => Math.abs(l - mean) < 10).length
-    return near / lum.length > 0.95   // >95% of pixels ≈ identical → uniform/blank
+    const near = lum.filter(l => Math.abs(l - mean) < 12).length
+    return near / lum.length > 0.90   // >90% of pixels ≈ identical → uniform/blank (covered lens, black frame)
   } catch { return false }
 }
 

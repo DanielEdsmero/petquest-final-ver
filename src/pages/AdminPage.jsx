@@ -444,6 +444,27 @@ function VerificationQueue() {
     load()
   }
 
+  /* Phase 3: re-run AI for every entry stuck without a real verdict
+     (ai_verdict pending/error/null). Sequential so we don't hammer Gemini. */
+  const rerunAllStuck = async () => {
+    const stuck = rows.filter(r => !r.ai_verdict || r.ai_verdict === 'pending' || r.ai_verdict === 'error')
+    if (!stuck.length) { addNotification('No stuck entries to re-run.', 'info'); return }
+    setBusy('rerun-all')
+    let ok = 0
+    for (const r of stuck) {
+      try {
+        const res = await fetch('/api/verify', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ completion_id: r.id }),
+        })
+        if (res.ok) ok++
+      } catch { /* keep going */ }
+    }
+    setBusy(null)
+    addNotification(`Re-ran ${stuck.length} stuck ${stuck.length === 1 ? 'entry' : 'entries'} — ${ok} returned a verdict.`, ok ? 'success' : 'error')
+    load()
+  }
+
   const review = async (id, action) => {
     setBusy(id + action)
     const { data, error } = await supabase.rpc('admin_review_completion', { p_completion_id: id, p_action: action, p_reason: null })
@@ -494,6 +515,12 @@ function VerificationQueue() {
             {label} ({counts[k]})
           </button>
         ))}
+        {/* Phase 3: batch-recover entries stuck without a real verdict. */}
+        <button onClick={rerunAllStuck} disabled={busy === 'rerun-all'}
+          className="px-3 py-1 rounded-lg text-xs font-nunito font-bold ml-auto disabled:opacity-50"
+          style={{ background: 'rgba(6,182,212,0.15)', color: '#22d3ee', border: '1px solid rgba(6,182,212,0.4)' }}>
+          {busy === 'rerun-all' ? '⏳ Re-running…' : '🔁 Re-run stuck (pending/error)'}
+        </button>
       </div>
 
       {shown.length === 0 && (
@@ -505,6 +532,15 @@ function VerificationQueue() {
       {shown.map(r => {
         const st = STATUS_META[r.status] || { label: r.status, color: '#8080aa' }
         const planned = r.tasks?.planned_completion_date
+        // Phase 5: real active work time = verification opened → submitted, NOT
+        // the quest's age since creation (which produced the bogus "34523m").
+        const activeMs = r.verification_started_at
+          ? Math.max(0, new Date(r.created_at).getTime() - new Date(r.verification_started_at).getTime())
+          : null
+        const activeLabel = activeMs == null ? '—'
+          : activeMs < 60000 ? `${Math.round(activeMs / 1000)}s`
+          : `${Math.floor(activeMs / 60000)}m ${Math.floor((activeMs % 60000) / 1000)}s`
+        const stuck = !r.ai_verdict || r.ai_verdict === 'pending' || r.ai_verdict === 'error'
         return (
           <div key={r.id} className="glass-card p-4">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3">
@@ -545,7 +581,7 @@ function VerificationQueue() {
             {/* Timestamps / research metadata */}
             <div className="text-xs font-nunito mb-3 grid grid-cols-2 gap-x-4 gap-y-0.5" style={{ color: 'var(--text-muted)' }}>
               <div>Submitted: <span style={{ color: '#c0c0e0' }}>{qcAgo(r.created_at)}</span> · {qcAbs(r.created_at)}</div>
-              <div>Total time on quest: <span style={{ color: '#c0c0e0' }}>{Math.floor((r.duration_seconds || 0) / 60)}m</span></div>
+              <div>Active time (verify → submit): <span style={{ color: '#c0c0e0' }}>{activeLabel}</span></div>
               {r.ai_verdict_at && <div>AI verdict at: {qcAbs(r.ai_verdict_at)}</div>}
               {planned && <div>Planned finish: {qcAbs(planned)}</div>}
               {r.admin_reviewed_at && <div>Admin reviewed: {qcAbs(r.admin_reviewed_at)}</div>}
@@ -555,7 +591,7 @@ function VerificationQueue() {
               <CheatButton onClick={() => review(r.id, 'approved')} busy={busy} color="#22c55e">✅ Approve</CheatButton>
               <CheatButton onClick={() => review(r.id, 'rejected')} busy={busy} color="#f43f5e">❌ Reject (rollback)</CheatButton>
               <CheatButton onClick={() => review(r.id, 'suspicious')} busy={busy} color="#f5a31a">⚠️ Suspicious</CheatButton>
-              {r.ai_verdict === 'pending' && (
+              {stuck && (
                 <CheatButton onClick={() => rerunAI(r.id)} busy={busy} color="#06b6d4">🔁 Re-run AI</CheatButton>
               )}
             </div>

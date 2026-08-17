@@ -317,7 +317,7 @@ function QuestPickerModal({ mode, enabledDiffs, onConfirm, onClose }) {
    MAIN PAGE
 ══════════════════════════════════ */
 export default function GameModeSelectPage() {
-  const { setGameMode, bulkAddPresets, profile } = useGame()
+  const { setGameMode, bulkAddPresets, markOnboardingComplete, logout, profile } = useGame()
   const navigate = useNavigate()
 
   const [selected,     setSelected]     = useState(profile?.game_mode || null)
@@ -338,6 +338,7 @@ export default function GameModeSelectPage() {
     setPickerOpen(false)
     await setGameMode(selected)
     if (questsToAdd.length) await bulkAddPresets(questsToAdd)
+    await markOnboardingComplete()   // Phase 1: never replay onboarding after this
     navigate('/dashboard', { replace: true })
   }
 
@@ -518,9 +519,16 @@ export default function GameModeSelectPage() {
             </button>
           )}
           {!isUpdate && (
-            <p className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
-              You can change mode or reload presets anytime from the dashboard.
-            </p>
+            <>
+              <p className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
+                You can change mode or reload presets anytime from the dashboard.
+              </p>
+              {/* Escape hatch so a stuck onboarding user can always reset. */}
+              <button onClick={async () => { await logout(); navigate('/', { replace: true }) }}
+                className="text-xs font-nunito underline mt-1" style={{ color: 'var(--text-muted)' }}>
+                Sign out
+              </button>
+            </>
           )}
         </div>
       </motion.div>

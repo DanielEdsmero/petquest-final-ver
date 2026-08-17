@@ -49,7 +49,7 @@ function Egg({ egg, disabled, onChoose }) {
 }
 
 export default function EggHatchingPage() {
-  const { reserveHatch, commitHatch, addNotification, user } = useGame()
+  const { reserveHatch, commitHatch, addNotification, logout, user } = useGame()
   const navigate = useNavigate()
   const [chosen, setChosen]       = useState(null)      // petId being hatched
   const [busy, setBusy]           = useState(false)     // persisting the choice
@@ -109,6 +109,13 @@ export default function EggHatchingPage() {
           <p className="font-nunito text-base" style={{ color: '#8080aa' }}>
             One of these holds your destined companion. Trust your instinct — the egg will do the rest.
           </p>
+          {/* Escape hatch so a stuck onboarding user can always reset. */}
+          {!hatching && (
+            <button onClick={async () => { await logout(); navigate('/', { replace: true }) }}
+              className="text-xs font-nunito underline mt-3" style={{ color: 'var(--text-muted)' }}>
+              Sign out
+            </button>
+          )}
         </motion.div>
 
         <AnimatePresence mode="wait">

@@ -7,7 +7,10 @@ import { ACCESSORIES } from '../data/accessories'
 const GameContext = createContext(null)
 
 const INITIAL_STATS = { hunger: 80, cleanliness: 78, happiness: 72 }
-const STAT_DECREASE_INTERVAL = 30000
+/* Gentle decay so participants aren't punished for being offline: ~2%/hr hunger,
+   ~1.5%/hr cleanliness & happiness. The interval only runs while a pet-owner is
+   logged in (see the effect below), so stats never drain while signed out. */
+const STAT_DECREASE_INTERVAL = 1800000   // 30 minutes
 const CACHE_PREFIX = 'pq_'
 
 export const HARD_PERIOD_MS   = 7 * 24 * 60 * 60 * 1000
@@ -200,9 +203,9 @@ export function GameProvider({ children }) {
     const id = setInterval(async () => {
       setPetStats(prev => {
         const next = {
-          hunger:      Math.max(0, prev.hunger      - 2),
-          cleanliness: Math.max(0, prev.cleanliness - 1.5),
-          happiness:   Math.max(0, prev.happiness   - 1.5),
+          hunger:      Math.max(0, prev.hunger      - 1),
+          cleanliness: Math.max(0, prev.cleanliness - 0.75),
+          happiness:   Math.max(0, prev.happiness   - 0.75),
         }
         lsSet('stats', next)
         supabase.from('pet_stats').upsert({ user_id: profile.id, ...next, updated_at: new Date().toISOString() }).then(() => {})
@@ -286,6 +289,17 @@ export function GameProvider({ children }) {
     setProfile(prev => { const n = { ...prev, game_mode: mode }; lsSet('profile', n); return n })
     await supabase.from('profiles').update({ game_mode: mode }).eq('id', profile?.id)
   }, [profile?.id])
+
+  /* Onboarding completion flag (Phase 1). Set once the user finishes mode-select
+     + starter quests, so the route guard can send them straight to the dashboard
+     forever after — independent of any single field. Best-effort server write
+     (the column may not exist until the Phase 9 migration runs); the local set
+     unblocks the guard immediately. */
+  const markOnboardingComplete = useCallback(async () => {
+    setProfile(prev => { const n = { ...prev, onboarding_complete: true }; lsSet('profile', n); return n })
+    const uid = profileRef.current?.id
+    if (uid) supabase.from('profiles').update({ onboarding_complete: true }).eq('id', uid).then(() => {}, () => {})
+  }, [])
 
   /* ── tasks ── */
   const addTask = useCallback(async (text, difficulty = 'easy', plannedCompletionDate = null) => {
@@ -700,7 +714,7 @@ export function GameProvider({ children }) {
     <GameContext.Provider value={{
       session, profile, authReady,
       user: profile, login, register, logout,
-      selectedPet, selectPet, reserveHatch, commitHatch,
+      selectedPet, selectPet, reserveHatch, commitHatch, markOnboardingComplete,
       petStats,
       tasks, addTask, completeTask, submitCompletion, finalizeVerification, cancelVerification, deleteTask,
       progressLogs, addProgressLog, bulkAddPresets,

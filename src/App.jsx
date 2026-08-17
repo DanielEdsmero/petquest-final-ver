@@ -26,8 +26,12 @@ function AppRoutes() {
   if (!authReady) return <LoadingScreen />
 
   const loggedIn = !!profile
-  const hasPet   = !!profile?.selected_pet_id
-  const hasMode  = !!profile?.game_mode
+  const done     = !!profile?.onboarding_complete
+  /* Once onboarding is complete, treat both steps as satisfied so a completed
+     user is NEVER redirected back into egg/mode-select (Phase 1). Existing users
+     (no flag, but a pet + mode already) are unaffected. */
+  const hasPet   = !!profile?.selected_pet_id || done
+  const hasMode  = !!profile?.game_mode || done
   const isAdmin  = profile?.role === 'admin'
 
   /* Pages animate IN on mount via PageTransition. We intentionally do NOT wrap

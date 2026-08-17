@@ -22,6 +22,20 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists hatched_at timestamptz;
 
+-- Phase 1 (Round 4) — explicit onboarding-finished flag. Once true, the route
+-- guard sends the user straight to the dashboard forever, independent of any
+-- single field. The app also treats an existing pet+mode as "done" so players
+-- who onboarded before this column existed are never sent back.
+alter table public.profiles
+  add column if not exists onboarding_complete boolean not null default false;
+
+-- Backfill: anyone who already has a pet AND a game mode has finished onboarding.
+update public.profiles
+   set onboarding_complete = true
+ where onboarding_complete = false
+   and selected_pet_id is not null
+   and game_mode is not null;
+
 -- NOTE: intentionally NO backfill of evolution_seen_level. Leaving existing
 -- players at the default (1) is what lets them see the evolution celebration
 -- ONCE retroactively for their current stage (per the approved spec). After that
