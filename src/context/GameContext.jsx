@@ -162,7 +162,15 @@ export function GameProvider({ children }) {
   async function fetchPetStats(userId) {
     const { data } = await supabase.from('pet_stats').select('*').eq('user_id', userId).single()
     if (data) {
-      const s = { hunger: data.hunger, cleanliness: data.cleanliness, happiness: data.happiness }
+      let s = { hunger: data.hunger, cleanliness: data.cleanliness, happiness: data.happiness }
+      /* Round 5 fix: accounts that were drained to ~0 by the old (240%/hr) decay
+         come back starving with no recovery path. Heal any clearly-crashed pet
+         back to the healthy baseline once on load, and persist it. Normal pets
+         (any stat above the crash threshold) are left untouched. */
+      if (s.hunger <= 5 && s.cleanliness <= 5 && s.happiness <= 5) {
+        s = { ...INITIAL_STATS }
+        supabase.from('pet_stats').upsert({ user_id: userId, ...s, updated_at: new Date().toISOString() }).then(() => {}, () => {})
+      }
       setPetStats(s); lsSet('stats', s)
     }
   }
@@ -203,9 +211,11 @@ export function GameProvider({ children }) {
     const id = setInterval(async () => {
       setPetStats(prev => {
         const next = {
-          hunger:      Math.max(0, prev.hunger      - 1),
-          cleanliness: Math.max(0, prev.cleanliness - 0.75),
-          happiness:   Math.max(0, prev.happiness   - 0.75),
+          /* Floor at 10 so a pet can never fully "starve" to an unrecoverable 0
+             — there is always a care action away from healthy. */
+          hunger:      Math.max(10, prev.hunger      - 1),
+          cleanliness: Math.max(10, prev.cleanliness - 0.75),
+          happiness:   Math.max(10, prev.happiness   - 0.75),
         }
         lsSet('stats', next)
         supabase.from('pet_stats').upsert({ user_id: profile.id, ...next, updated_at: new Date().toISOString() }).then(() => {})
@@ -597,34 +607,28 @@ export function GameProvider({ children }) {
   }, [])
 
   /* ── bulk preset loader ── */
+  /* Insert every selected starter quest. Period caps gate COMPLETIONS, never
+     insertions (Round 5 Phase 1.2/1.3) — a participant who picks 8 quests must
+     receive all 8. Errors are retried once and surfaced, never dropped silently. */
   const bulkAddPresets = useCallback(async (questsToAdd) => {
     if (!questsToAdd.length || !profile?.id) return 0
+    const rows = questsToAdd.map(q => ({ user_id: profile.id, text: q.text, difficulty: q.difficulty }))
 
-    const now       = Date.now()
-    const hardStart = new Date(profile?.hard_period_start  || 0).getTime()
-    const medStart  = new Date(profile?.medium_period_start || 0).getTime()
-    const hardExpired = now - hardStart >= HARD_PERIOD_MS
-    const medExpired  = now - medStart  >= MEDIUM_PERIOD_MS
-
-    let hardCount = hardExpired ? 0 : tasks.filter(t =>
-      t.difficulty === 'hard' && new Date(t.created_at).getTime() >= hardStart
-    ).length
-    let medCount = medExpired ? 0 : tasks.filter(t =>
-      t.difficulty === 'medium' && new Date(t.created_at).getTime() >= medStart
-    ).length
-
-    const allowed = questsToAdd.filter(q => {
-      if (q.difficulty === 'hard')   { if (hardCount >= 1) return false; hardCount++; return true }
-      if (q.difficulty === 'medium') { if (medCount  >= 3) return false; medCount++;  return true }
-      return true
-    })
-
-    if (!allowed.length) return 0
-    const rows = allowed.map(q => ({ user_id: profile.id, text: q.text, difficulty: q.difficulty }))
-    const { data } = await supabase.from('tasks').insert(rows).select()
-    if (data) { setTasks(prev => { const n = [...prev, ...data]; lsSet('tasks', n); return n }); return data.length }
-    return 0
-  }, [profile, tasks])
+    let { data, error } = await supabase.from('tasks').insert(rows).select()
+    if (error) {
+      console.error('[bulkAddPresets] insert failed, retrying once:', error)
+      ;({ data, error } = await supabase.from('tasks').insert(rows).select())
+    }
+    if (error || !data) {
+      addNotification('Your starter quests could not be added — please try again.', 'error')
+      return 0
+    }
+    setTasks(prev => { const n = [...prev, ...data]; lsSet('tasks', n); return n })
+    if (data.length < questsToAdd.length) {
+      addNotification(`${questsToAdd.length - data.length} quest(s) could not be added — try again.`, 'error')
+    }
+    return data.length
+  }, [profile?.id, addNotification])
 
   /* ── progress logs ── */
   const addProgressLog = useCallback(async (taskId, note) => {

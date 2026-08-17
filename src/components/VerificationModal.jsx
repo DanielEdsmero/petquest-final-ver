@@ -191,7 +191,20 @@ export default function VerificationModal({ task, onClose, onVerified }) {
     const f = e.target.files?.[0]
     if (!f) return
     if (!f.type.startsWith('image/')) { addNotification('Please choose an image file.', 'error'); return }
-    usePhoto(f, 'upload')
+    // Blank/blank-ish uploads are rejected before preview (the live-camera path
+    // is already gated in capture()), so no blank proof can reach Submit.
+    const img = new Image()
+    img.onload = () => {
+      const c = document.createElement('canvas')
+      c.width = img.naturalWidth; c.height = img.naturalHeight
+      c.getContext('2d').drawImage(img, 0, 0)
+      const blank = frameLooksBlank(c)
+      URL.revokeObjectURL(img.src)
+      if (blank) { addNotification('Photo appears blank — please choose an image with visible evidence.', 'error'); return }
+      usePhoto(f, 'upload')
+    }
+    img.onerror = () => { URL.revokeObjectURL(img.src); addNotification('Could not read that image.', 'error') }
+    img.src = URL.createObjectURL(f)
   }
 
   const retake = () => {
@@ -332,9 +345,16 @@ export default function VerificationModal({ task, onClose, onVerified }) {
             </motion.div>
           )}
 
-          {/* SUBMITTING — Gilded Waypoints */}
+          {/* SUBMITTING — keep the evidence on screen; the Waypoints are the focus */}
           {phase === 'submitting' && (
-            <motion.div key="sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pt-2">
+            <motion.div key="sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pt-1">
+              <div className="flex gap-3 mb-4">
+                {previewUrl && (
+                  <img src={previewUrl} alt="Your proof" className="rounded-lg object-cover flex-shrink-0"
+                    style={{ width: 72, height: 72, border: '1px solid rgba(232,185,75,0.25)' }} />
+                )}
+                <p className="text-xs font-nunito flex-1 overflow-y-auto" style={{ color: '#c0c0e0', maxHeight: 72 }}>{log}</p>
+              </div>
               <GildedWaypoints stage={prog.stage} pct={prog.pct} failed={prog.failed} />
               <p className="text-[11px] font-nunito text-center mt-1" style={{ color: '#5b5b80' }}>Points are pending the Oracle’s verdict</p>
             </motion.div>

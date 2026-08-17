@@ -102,10 +102,12 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, logs, canLog, now, 
 
   const cfg = DIFF_CONFIG[task.difficulty || 'easy']
 
-  /* Anti-cheat gate: a quest can only be completed after its difficulty's
-     minimum active time. The server re-checks this in complete_task(). */
-  const startedMs = new Date(task.started_at || task.created_at).getTime()
-  const remaining = startedMs + DIFF_MIN_COMPLETE_MS[task.difficulty || 'easy'] - now
+  /* Anti-farm cooldown: anchored to the LAST completion, not creation, so brand
+     new starter quests are instantly verifiable while re-completing the same
+     quest still waits out its difficulty cooldown. The server mirrors this in
+     complete_task(). A never-completed quest has no cooldown. */
+  const lastDoneMs = task.completed_at ? new Date(task.completed_at).getTime() : 0
+  const remaining = lastDoneMs ? (lastDoneMs + DIFF_MIN_COMPLETE_MS[task.difficulty || 'easy'] - now) : 0
   /* `gated` = genuinely blocked (timer or lock) and drives the countdown pill.
      `ready` additionally requires an idle button, so the pill doesn't reappear
      mid-animation while a completion is being processed. */

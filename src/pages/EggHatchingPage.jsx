@@ -16,6 +16,7 @@ const EGG_GLOW = {
 
 function Egg({ egg, disabled, onChoose }) {
   const glow = EGG_GLOW[egg.id] || 'rgba(245,163,26,0.5)'
+  const [failed, setFailed] = useState(false)
   return (
     <motion.button
       type="button"
@@ -33,16 +34,15 @@ function Egg({ egg, disabled, onChoose }) {
         animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.85, 0.5] }}
         transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
       />
-      {/* Gentle idle bob */}
-      <motion.img
-        src={eggFor(egg.id)}
-        alt="A mysterious egg"
-        onError={(e) => { e.currentTarget.style.display = 'none' }}
-        className="relative z-10"
-        style={{ width: 128, height: 128, objectFit: 'contain', imageRendering: 'pixelated', filter: `drop-shadow(0 8px 14px rgba(0,0,0,0.5))` }}
-        animate={{ y: [0, -8, 0] }}
+      {/* Gentle idle bob (falls back to an egg glyph rather than a broken box) */}
+      <motion.div className="relative z-10" animate={{ y: [0, -8, 0] }}
         transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-      />
+        style={{ filter: 'drop-shadow(0 8px 14px rgba(0,0,0,0.5))' }}>
+        {failed
+          ? <span style={{ fontSize: 96, lineHeight: 1, display: 'block' }}>🥚</span>
+          : <img src={eggFor(egg.id)} alt="A mysterious egg" onError={() => setFailed(true)}
+              style={{ width: 128, height: 128, objectFit: 'contain', imageRendering: 'pixelated', display: 'block' }} />}
+      </motion.div>
       <p className="font-cinzel italic text-sm relative z-10" style={{ color: '#c9b98a' }}>{egg.eggRiddle}</p>
     </motion.button>
   )

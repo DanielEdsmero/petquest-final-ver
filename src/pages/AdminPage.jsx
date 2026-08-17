@@ -544,7 +544,12 @@ function VerificationQueue() {
         return (
           <div key={r.id} className="glass-card p-4">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3">
-              <span className="font-nunito font-bold text-sm" style={{ color: '#e2e2ff' }}>{r.profiles?.username || 'Unknown'}</span>
+              <span className="font-nunito font-bold text-sm" style={{ color: '#e2e2ff' }}>
+                {r.profiles?.username || 'Unknown'}
+                {/* Disambiguate duplicate usernames with a short user-id suffix. */}
+                <span style={{ color: '#6060aa', fontWeight: 400 }}> · {String(r.user_id || '').slice(0, 6)}</span>
+                {!r.profiles?.selected_pet_id && <span style={{ color: '#f5a31a' }}> · 👤 no pet</span>}
+              </span>
               <span className="text-sm font-nunito" style={{ color: '#c0c0e0' }}>{r.tasks?.text || '(quest)'}</span>
               {/* status + source badges */}
               <span className="text-xs font-nunito font-bold px-1.5 py-0.5 rounded"

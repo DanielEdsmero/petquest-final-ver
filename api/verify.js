@@ -133,9 +133,10 @@ export default async function handler(req, res) {
     const TRANSIENT = new Set([429, 500, 502, 503, 504])
 
     // Try the resolved model with backoff on transient overload (503/429/5xx),
-    // then fall back to the lighter flash-lite alias which usually has headroom.
+    // then fall through a chain of stable Flash models — the lighter flash-lite
+    // alias usually has headroom, then pinned snapshots as last resorts.
     const primary = await resolveModel()
-    const candidates = [...new Set([primary, 'gemini-flash-lite-latest'])]
+    const candidates = [...new Set([primary, 'gemini-flash-lite-latest', 'gemini-2.5-flash', 'gemini-2.0-flash'])]
     let gResp, model
     outer: for (const m of candidates) {
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -155,8 +156,10 @@ export default async function handler(req, res) {
       } catch { /* ignore */ }
       console.error('[verify] Gemini error', gResp.status, model, detail)
       // Any error (overload or otherwise) → 'error' verdict: points stay provisional
-      // for manual admin review rather than being flagged as fraud.
-      return finish('error', null, `AI busy/error ${gResp.status} (${model}): ${String(detail).slice(0, 200)} — queued for manual review.`)
+      // for manual admin review rather than being flagged as fraud. The stored
+      // reason is user-friendly — internal model names / HTTP codes are logged
+      // above but NEVER surfaced to the queue UI.
+      return finish('error', null, 'AI service busy — queued for manual review.')
     }
     const gData = await gResp.json()
     const raw = gData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
