@@ -49,17 +49,27 @@ function Egg({ egg, disabled, onChoose }) {
 }
 
 export default function EggHatchingPage() {
-  const { hatchPet, user } = useGame()
+  const { reserveHatch, commitHatch, addNotification, user } = useGame()
   const navigate = useNavigate()
   const [chosen, setChosen]       = useState(null)      // petId being hatched
+  const [busy, setBusy]           = useState(false)     // persisting the choice
   const [burst, setBurst]         = useState(false)
   const [celebrate, setCelebrate] = useState(null)      // EvolutionOverlay payload
   const hatching = !!chosen
 
   const chosenMeta = EGG_CHOICES.find(e => e.id === chosen)
 
-  const choose = (petId) => {
-    if (hatching) return
+  const choose = async (petId) => {
+    if (busy || hatching) return
+    // Persist the choice to Supabase FIRST — the animation must never be what
+    // unblocks the route, and a refresh mid-hatch must still find a saved pet.
+    setBusy(true)
+    const { error } = await reserveHatch(petId)
+    setBusy(false)
+    if (error) {
+      addNotification(`Could not hatch your companion: ${error}. Please try again.`, 'error')
+      return
+    }
     setChosen(petId)
     // Sequence: wobble (~1.1s) → crack + particle burst → hatch reveal.
     setTimeout(() => setBurst(true), 1100)
@@ -74,8 +84,10 @@ export default function EggHatchingPage() {
     }, 1550)
   }
 
-  const finish = async () => {
-    await hatchPet(chosen)      // register LV1 Baby + store hatch metadata
+  // "Meet your companion" — the choice is already saved server-side; just mirror
+  // it locally and route on. Navigation never awaits the network.
+  const finish = () => {
+    commitHatch(chosen)
     navigate('/mode-select')    // pick a mode → starter quests → dashboard
   }
 
@@ -106,7 +118,7 @@ export default function EggHatchingPage() {
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               {EGG_CHOICES.map((egg, i) => (
                 <motion.div key={egg.id} initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.15, duration: 0.5 }}>
-                  <Egg egg={egg} disabled={false} onChoose={choose} />
+                  <Egg egg={egg} disabled={busy} onChoose={choose} />
                 </motion.div>
               ))}
             </motion.div>

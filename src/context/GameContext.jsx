@@ -249,18 +249,37 @@ export function GameProvider({ children }) {
     await supabase.from('pet_stats').upsert({ user_id: profile.id, ...INITIAL_STATS, updated_at: new Date().toISOString() })
   }, [profile?.id])
 
-  /* Egg-hatching onboarding (Phase 3): register the chosen companion as a fresh
-     LV1 Baby (selectPet resets stats; a new user is already at 0 pts) and record
-     the hatch metadata for research. The hatched_* columns are best-effort —
-     they may not exist until the Phase 3 migration is run, so a failure there
-     must not block onboarding. */
-  const hatchPet = useCallback(async (petId) => {
-    await selectPet(petId)
-    const now = new Date().toISOString()
-    setProfile(prev => { const n = { ...prev, hatched_pet_type: petId, hatched_at: now }; lsSet('profile', n); return n })
+  /* Egg-hatching onboarding (Phase 3), split into two steps so the route guard
+     can never soft-lock:
+
+     reserveHatch(petId) — persist the choice to Supabase FIRST (awaited, errors
+     surfaced) BEFORE any animation. It writes selected_pet_id (a guaranteed
+     column) so a refresh or the onboarding guard immediately sees a hatched pet.
+     It deliberately does NOT touch local `profile` yet, so the /select route
+     doesn't redirect mid-animation. hatched_* metadata is best-effort (those
+     columns may not exist until the Phase 9 migration runs).
+
+     commitHatch(petId) — mirror the persisted state into local memory at the end
+     (on "Meet your companion") so the UI updates and navigation is instant. */
+  const reserveHatch = useCallback(async (petId) => {
     const uid = profileRef.current?.id
-    if (uid) supabase.from('profiles').update({ hatched_pet_type: petId, hatched_at: now }).eq('id', uid).then(() => {}, () => {})
-  }, [selectPet])
+    if (!uid) return { error: 'No active session — please sign in again.' }
+    const now = new Date().toISOString()
+    const { error } = await supabase.from('profiles').update({ selected_pet_id: petId }).eq('id', uid)
+    if (error) return { error: error.message || 'Could not save your companion.' }
+    await supabase.from('pet_stats').upsert({ user_id: uid, ...INITIAL_STATS, updated_at: now }).then(() => {}, () => {})
+    supabase.from('profiles').update({ hatched_pet_type: petId, hatched_at: now }).eq('id', uid).then(() => {}, () => {})
+    return { error: null }
+  }, [])
+
+  const commitHatch = useCallback((petId) => {
+    const now = new Date().toISOString()
+    setProfile(prev => {
+      const n = { ...prev, selected_pet_id: petId, hatched_pet_type: petId, hatched_at: now }
+      lsSet('profile', n); return n
+    })
+    setPetStats(INITIAL_STATS); lsSet('stats', INITIAL_STATS)
+  }, [])
 
   /* ── game mode ── */
   const setGameMode = useCallback(async (mode) => {
@@ -681,7 +700,7 @@ export function GameProvider({ children }) {
     <GameContext.Provider value={{
       session, profile, authReady,
       user: profile, login, register, logout,
-      selectedPet, selectPet, hatchPet,
+      selectedPet, selectPet, reserveHatch, commitHatch,
       petStats,
       tasks, addTask, completeTask, submitCompletion, finalizeVerification, cancelVerification, deleteTask,
       progressLogs, addProgressLog, bulkAddPresets,

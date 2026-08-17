@@ -488,7 +488,9 @@ body::before {
   background: rgba(6, 6, 26, 0.92);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  pointer-events: none;
+  /* Interactive modal: MUST capture clicks so its buttons work and clicks can't
+     fall through to the task list behind it (that leak opened the verify modal). */
+  pointer-events: auto;
 }
 .evolution-flash {
   position: absolute;
