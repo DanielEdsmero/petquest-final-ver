@@ -315,10 +315,8 @@ export function GameProvider({ children }) {
   }, [])
 
   /* ── tasks ── */
-  const addTask = useCallback(async (text, difficulty = 'easy', plannedCompletionDate = null, opts = {}) => {
+  const addTask = useCallback(async (text, difficulty = 'easy', plannedCompletionDate = null) => {
     if (!text.trim()) return false
-    const goal     = (opts.goal || '').trim() || null       // [research] goal statement
-    const priority = ['P1', 'P2', 'P3'].includes(opts.priority) ? opts.priority : 'P2'  // [research] prioritization
 
     const now = Date.now()
     const hardStart  = new Date(profile?.hard_period_start  || 0).getTime()
@@ -379,12 +377,10 @@ export function GameProvider({ children }) {
       planned_completion_date: plannedISO,
       completion_duration_minutes: null,
       is_procrastinated: false,
-      goal,
-      priority,
     }
     setTasks(prev => { const n = [...prev, tmp]; lsSet('tasks', n); return n })
     const { data } = await supabase.from('tasks')
-      .insert({ user_id: profile?.id, text: text.trim(), difficulty, planned_completion_date: plannedISO, goal, priority })
+      .insert({ user_id: profile?.id, text: text.trim(), difficulty, planned_completion_date: plannedISO })
       .select().single()
     if (data) setTasks(prev => { const n = prev.map(t => t.id === tmp.id ? data : t); lsSet('tasks', n); return n })
     return true

@@ -71,9 +71,8 @@ export default async function handler(req, res) {
   if (cErr || !completion) return res.status(404).json({ error: 'completion_not_found' })
 
   const { data: quest } = await admin
-    .from('tasks').select('text, goal').eq('id', completion.quest_id).single()
+    .from('tasks').select('text').eq('id', completion.quest_id).single()
   const questText = quest?.text || 'the quest'
-  const questGoal = quest?.goal || ''
 
   // Helper: persist the verdict service-side (with timestamp) and respond.
   const finish = async (verdict, confidence, reason, httpStatus = 200) => {
@@ -118,7 +117,6 @@ export default async function handler(req, res) {
     const prompt =
       `You are a quest verification AI for a productivity app.\n` +
       `The user claims they completed this quest: "${questText}"\n` +
-      (questGoal ? `Their stated goal (what "done" looks like): "${questGoal}"\n` : '') +
       `They provided this description: "${completion.progress_log}"\n` +
       `They uploaded the attached photo as evidence.\n\n` +
       `Evaluate: does the photo plausibly show evidence of completing this quest? ` +
