@@ -18,11 +18,14 @@ A gamified task manager with real authentication, persistent cloud data, and an 
 ### Step 2 — Run the database schema
 1. In Supabase dashboard → click **SQL Editor** in the left sidebar
 2. Click **New query** (the + button)
-3. Open `supabase-schema.sql` from this project folder
+3. Open `supabase/supabase-schema.sql` from this project folder
 4. Copy ALL of it, paste into the SQL editor
 5. Click the green **Run** button → you should see "Success" ✅
 
 This creates all 5 tables, security rules, the auto-profile trigger, and the admin analytics views in one shot.
+
+> All database migrations now live in the **`supabase/`** folder. Run them in the
+> order listed in `supabase/README.md` (schema first, then the numbered phases).
 
 ### Step 3 — Get your API keys
 1. Click **Project Settings** (gear icon, bottom-left)
@@ -91,9 +94,10 @@ Or via Vercel dashboard: import from GitHub, add your two env vars (`VITE_SUPABA
 ```
 pet-quest/
 ├── .env.example              <- copy to .env.local, add your Supabase keys
-├── supabase-schema.sql       <- paste into Supabase SQL Editor
+├── supabase/                  <- all DB migrations (run by hand; see supabase/README.md)
+├── api/verify.js             <- Vercel serverless AI verification
 ├── vercel.json               <- SPA routing rules
-└── src/
+└── src/                       <- app code (see PROJECT_STRUCTURE.md for a full map)
     ├── lib/supabase.js       <- Supabase client
     ├── context/GameContext   <- all state management + DB sync
     ├── data/                 <- pets.js, accessories.js

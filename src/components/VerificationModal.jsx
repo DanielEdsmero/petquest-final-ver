@@ -276,7 +276,12 @@ export default function VerificationModal({ task, onClose, onVerified }) {
           <button onClick={close} className="p-1 rounded-lg" style={{ color: 'var(--text-muted)' }} aria-label="Close"><X size={18} /></button>
         </div>
 
-        <p className="text-sm font-nunito mb-2" style={{ color: '#c0c0e0' }}>{task.text}</p>
+        <p className="text-sm font-nunito mb-1" style={{ color: '#c0c0e0' }}>{task.text}</p>
+        {task.goal && (
+          <p className="text-xs font-nunito mb-2 flex items-start gap-1" style={{ color: '#8a9bb8' }}>
+            <span>🎯</span><span>Goal: {task.goal}</span>
+          </p>
+        )}
 
         {/* Phase 5: clear, non-inflated timing. */}
         <div className="text-xs font-nunito mb-4 space-y-0.5" style={{ color: 'var(--text-muted)' }}>

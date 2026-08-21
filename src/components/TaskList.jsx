@@ -123,6 +123,22 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, logs, canLog, now, 
     onVerify?.(task)
   }
 
+  /* Prioritization badge + planning/on-time status (research constructs). */
+  const PRI = { P1: '#f43f5e', P2: '#f5a31a', P3: '#8080aa' }
+  const plannedMs = task.planned_completion_date ? new Date(task.planned_completion_date).getTime() : null
+  let plan = null
+  if (plannedMs) {
+    if (task.completed) {
+      plan = new Date(task.completed_at).getTime() <= plannedMs
+        ? { label: 'On time', color: '#4ade80' }
+        : { label: 'Late', color: '#fb7185' }
+    } else {
+      plan = now > plannedMs
+        ? { label: 'Overdue', color: '#fb7185' }
+        : { label: 'Due ' + new Date(plannedMs).toLocaleDateString([], { month: 'short', day: 'numeric' }), color: '#8080aa' }
+    }
+  }
+
   return (
     <motion.div
       ref={cardRef}
@@ -156,12 +172,24 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, logs, canLog, now, 
             : <Circle size={22} style={{ color: cfg.color + (ready ? 'ff' : '38') }} className="transition-opacity" />}
         </motion.button>
 
-        <span
-          className={`flex-1 text-sm font-nunito font-medium ${task.completed ? 'line-through' : ''}`}
-          style={{ color: task.completed ? '#5050aa' : '#c0c0e0' }}
-        >
-          {task.text}
-        </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            {task.priority && task.priority !== 'P2' && (
+              <span className="text-[9px] font-nunito font-black px-1 py-0.5 rounded flex-shrink-0"
+                style={{ background: PRI[task.priority] + '22', color: PRI[task.priority] }}>{task.priority}</span>
+            )}
+            <span className={`text-sm font-nunito font-medium ${task.completed ? 'line-through' : ''}`}
+              style={{ color: task.completed ? '#5050aa' : '#c0c0e0' }}>
+              {task.text}
+            </span>
+          </div>
+          {(plan || task.goal) && (
+            <div className="flex items-center gap-2 mt-0.5 text-[10px] font-nunito" style={{ color: 'var(--text-muted)' }}>
+              {plan && <span style={{ color: plan.color, fontWeight: 700 }}>{plan.label}</span>}
+              {task.goal && <span className="truncate" title={task.goal}>🎯 {task.goal}</span>}
+            </div>
+          )}
+        </div>
 
         {pending && (
           <span
@@ -261,8 +289,10 @@ export default function TaskList() {
   const [activeDiff, setActiveDiff] = useState('easy')
   const [input, setInput] = useState('')
   const [plannedDate, setPlannedDate] = useState('')  // research: intended finish, '' = skipped
+  const [goal, setGoal] = useState('')                // research: goal statement (what does done look like?)
+  const [priority, setPriority] = useState('P2')       // research: prioritization
   const inputRef = useRef(null)
-  const { tasks, addTask, deleteTask, addProgressLog, progressLogs, profile, selectedPet } = useGame()
+  const { tasks, addTask, deleteTask, addProgressLog, progressLogs, profile, selectedPet, addNotification } = useGame()
 
   /* The quest currently being verified (opens VerificationModal). Owned here,
      not in TaskItem, so it survives the card re-parenting on completion. */
@@ -318,14 +348,24 @@ export default function TaskList() {
     (activeDiff === 'hard'   && hardLeft > 0 && hardSlots >= 1) ||
     (activeDiff === 'medium' && medLeft  > 0 && medSlots  >= 3)
 
-  const canAdd = !!input.trim() && !atLimit
+  /* Research inputs are required so the study can measure the constructs:
+     a goal statement (goal-setting) on every quest, and a planned finish date
+     (planning) on Medium/Hard. Easy quests keep the planned date optional. */
+  const needsPlan = activeDiff !== 'easy'
+  const goalOk = goal.trim().length >= 10
+  const planOk = !needsPlan || !!plannedDate
+  const canAdd = !!input.trim() && goalOk && planOk && !atLimit
 
   const handleAdd = async () => {
     if (!input.trim()) return
-    const ok = await addTask(input, activeDiff, plannedDate || null)
+    if (!goalOk) { addNotification('Add a goal statement — what does “done” look like? (at least 10 characters)', 'error'); return }
+    if (!planOk) { addNotification(`${cfg.label} quests need a planned finish date.`, 'error'); return }
+    const ok = await addTask(input, activeDiff, plannedDate || null, { goal, priority })
     if (ok) {
       setInput('')
       setPlannedDate('')
+      setGoal('')
+      setPriority('P2')
       inputRef.current?.focus()
     }
   }
@@ -446,8 +486,8 @@ export default function TaskList() {
           plan, though the server does not reject it. */}
       <div className="flex items-center gap-2 mb-4 -mt-1 px-1">
         <CalendarClock size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-        <label htmlFor="planned-date" className="text-xs font-nunito flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
-          Plan to finish?
+        <label htmlFor="planned-date" className="text-xs font-nunito flex-shrink-0" style={{ color: needsPlan && !plannedDate ? '#fb7185' : 'var(--text-muted)' }}>
+          Plan to finish?{needsPlan ? ' *' : ''}
         </label>
         <input
           id="planned-date"
@@ -469,6 +509,41 @@ export default function TaskList() {
             Clear
           </button>
         )}
+      </div>
+
+      {/* Goal statement (goal-setting construct) — required on every quest. */}
+      <div className="mb-3 px-1">
+        <input
+          type="text"
+          className="input-field text-xs py-1.5 w-full"
+          placeholder="Goal — what does “done” look like? (e.g. all 10 problems solved & checked)"
+          value={goal}
+          onChange={e => setGoal(e.target.value)}
+          maxLength={140}
+          disabled={atLimit}
+        />
+        <div className="flex justify-between text-[10px] font-nunito mt-1"
+          style={{ color: goalOk ? '#4ade80' : 'var(--text-muted)' }}>
+          <span>{needsPlan && !plannedDate ? '⚠️ A planned finish date is required for this difficulty.' : ' '}</span>
+          <span>{goal.trim().length}/10 min</span>
+        </div>
+      </div>
+
+      {/* Priority (prioritization construct). */}
+      <div className="flex items-center gap-2 mb-3 px-1">
+        <span className="text-xs font-nunito flex-shrink-0" style={{ color: 'var(--text-muted)' }}>Priority</span>
+        {[['P1', '#f43f5e', 'Urgent'], ['P2', '#f5a31a', 'Normal'], ['P3', '#8080aa', 'Low']].map(([p, color, label]) => (
+          <button key={p} type="button" onClick={() => setPriority(p)}
+            className="text-xs font-nunito font-bold px-2.5 py-1 rounded-lg"
+            style={{
+              background: priority === p ? color + '22' : 'rgba(19,19,58,0.5)',
+              color: priority === p ? color : '#8080aa',
+              border: `1px solid ${priority === p ? color + '66' : 'rgba(124,58,237,0.15)'}`,
+            }}
+            title={label}>
+            {p}
+          </button>
+        ))}
       </div>
 
       <div className="flex justify-end mb-2">

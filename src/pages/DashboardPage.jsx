@@ -26,6 +26,7 @@ import EvolutionBar from '../components/EvolutionBar'
 import EvolutionOverlay from '../components/animations/EvolutionOverlay'
 import ConnectionStatus from '../components/ConnectionStatus'
 import CountUp from '../components/reactbits/CountUp'
+import MyStats from '../components/MyStats'
 import { getStageForPoints } from '../config/pets'
 
 function CareButton({ icon: Icon, label, cost, color, glowColor, onClick, disabled }) {
@@ -430,6 +431,9 @@ export default function DashboardPage() {
               </div>
               <ShoppingBag size={16} style={{ color: '#f5a31a' }} className="group-hover:scale-110 transition-transform" />
             </motion.button>
+
+            {/* Research self-regulation feedback (on-time rate, delay, streak, goals) */}
+            <MyStats />
           </motion.div>
 
           {/* === QUEST PANEL (right, 3 cols) === */}
