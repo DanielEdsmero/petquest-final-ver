@@ -408,6 +408,7 @@ function VerificationQueue() {
   const [busy, setBusy]     = useState(null)
   const [filter, setFilter] = useState('all')  // all | pending | pass | fail
   const [rerunProg, setRerunProg] = useState(null)  // { done, total } while bulk re-running
+  const [imgFailed, setImgFailed] = useState({})    // proof URLs that failed to load → show placeholder
 
   const load = async () => {
     setLoad(true)
@@ -419,6 +420,7 @@ function VerificationQueue() {
       .limit(100)
     if (error) { addNotification(`Queue load failed: ${error.message}`, 'error'); setLoad(false); return }
     setRows(data || [])
+    setImgFailed({})   // fresh signed URLs on reload → give previously-failed images another try
     setLoad(false)
     const map = {}
     await Promise.all((data || []).map(async r => {
@@ -579,9 +581,13 @@ function VerificationQueue() {
 
             <div className="grid sm:grid-cols-2 gap-3 mb-3">
               <div className="rounded-lg overflow-hidden" style={{ background: '#000', aspectRatio: '4/3' }}>
-                {signed[r.id]
-                  ? <img src={signed[r.id]} alt="Proof" className="w-full h-full object-cover" />
-                  : <div className="w-full h-full flex items-center justify-center text-xs font-nunito" style={{ color: '#5050aa' }}>no photo</div>}
+                {signed[r.id] && !imgFailed[r.id]
+                  ? <img src={signed[r.id]} alt="Proof" className="w-full h-full object-cover"
+                      onError={() => setImgFailed(prev => ({ ...prev, [r.id]: true }))} />
+                  : <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-xs font-nunito" style={{ color: '#5050aa' }}>
+                      <span style={{ fontSize: 22 }}>🖼️</span>
+                      {r.proof_photo_url ? 'image unavailable' : 'no photo'}
+                    </div>}
               </div>
               <div>
                 <p className="text-xs font-nunito font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>Progress log</p>

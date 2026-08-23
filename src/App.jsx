@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { GameProvider, useGame } from './context/GameContext'
 import PageTransition from './components/animations/PageTransition'
 import PortalLoader from './components/animations/PortalLoader'
+import MascotLoader from './components/animations/MascotLoader'
 import ErrorBoundary from './components/ErrorBoundary'
 import LoginPage          from './pages/LoginPage'
 import EggHatchingPage    from './pages/EggHatchingPage'
@@ -12,18 +13,16 @@ import LeaderboardPage    from './pages/LeaderboardPage'
 import AdminPage          from './pages/AdminPage'
 import Notifications      from './components/Notifications'
 
-function LoadingScreen() {
-  return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-deep)' }}>
-      <PortalLoader text="Loading Pet Quest..." />
-    </div>
-  )
+function LoadingScreen({ petId, level }) {
+  return <MascotLoader petId={petId || 'dragon'} level={level || 1} text="Loading Pet Quest…" />
 }
 
 function AppRoutes() {
   const { profile, authReady } = useGame()
 
-  if (!authReady) return <LoadingScreen />
+  // Returning users have a cached profile (localStorage) before auth resolves, so
+  // the loader can show THEIR companion; otherwise it defaults to the dragon.
+  if (!authReady) return <LoadingScreen petId={profile?.selected_pet_id} level={profile?.pet_level} />
 
   const loggedIn = !!profile
   const done     = !!profile?.onboarding_complete
