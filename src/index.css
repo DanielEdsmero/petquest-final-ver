@@ -187,6 +187,9 @@ body::before {
   box-shadow: var(--focus-ring);
 }
 .input-field::placeholder { color: var(--text-placeholder); }
+/* Native <select> dropdown (evidence type) keeps the dark theme. */
+select.input-field { appearance: auto; cursor: pointer; }
+select.input-field option { background: #13133a; color: #e2e2ff; }
 
 /* Gold focus ring on every interactive element. :focus-visible keeps it to
    keyboard navigation so mouse users don't see rings on click. */

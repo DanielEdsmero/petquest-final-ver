@@ -1,12 +1,16 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trash2, Plus, Circle, BookOpen, Clock, ChevronUp, CalendarClock } from 'lucide-react'
+import { Trash2, Plus, Circle, BookOpen, Clock, ChevronUp, CalendarClock, RefreshCw, PencilLine, ShieldCheck, Target } from 'lucide-react'
 import { useGame, HARD_PERIOD_MS, MEDIUM_PERIOD_MS, DIFF_MIN_COMPLETE_MS, DIFF_POINTS } from '../context/GameContext'
 import CompletionFx from './animations/CompletionFx'
 import CheckDraw from './animations/CheckDraw'
 import EmptyStatePet from './animations/EmptyStatePet'
+import { MascotLoaderCompact } from './animations/MascotLoader'
 import VerificationModal from './VerificationModal'
 import { DIFFICULTY_COLORS } from '../data/difficulty'
+import {
+  EVIDENCE_TYPES, evidenceMeta, PRIORITIES, VALIDITY_META, isQuestEligible, CHECK_STEPS, CHECK_EXPLAINER,
+} from '../data/questValidity'
 
 const DIFF_CONFIG = {
   easy:   { label: 'Easy',   emoji: '🌱', pts: 10, color: DIFFICULTY_COLORS.easy,   limit: null, desc: 'Unlimited · Daily quests' },
@@ -20,6 +24,14 @@ function formatCountdown(ms) {
   const m = Math.floor(total / 60)
   const s = total % 60
   return `${m}:${String(s).padStart(2, '0')}`
+}
+
+/* ISO timestamp → the local "YYYY-MM-DDTHH:MM" a datetime-local input expects. */
+function toLocalInput(iso) {
+  const d = new Date(iso)
+  if (!Number.isFinite(d.getTime())) return ''
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 function formatTimeLeft(ms) {
@@ -92,8 +104,9 @@ function ProgressLogs({ taskId, logs = [], onAdd }) {
   )
 }
 
-function TaskItem({ task, onVerify, onDelete, onAddProgress, logs, canLog, now, locked }) {
+function TaskItem({ task, onVerify, onDelete, onAddProgress, onRevise, onRecheck, logs, canLog, now, locked }) {
   const [expanded, setExpanded] = useState(false)
+  const [rechecking, setRechecking] = useState(false)
   /* Completion now goes through the VerificationModal (opened via onVerify),
      so the button only needs an idle/ready/completed view. */
   const [stage] = useState('idle')
@@ -114,7 +127,21 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, logs, canLog, now, 
   const verifying = !task.completed && !!task.verifying  // proof submitted, awaiting AI verdict
   const pending = !task.completed && !verifying && !!task.pending
   const gated = !task.completed && !pending && !verifying && (remaining > 0 || locked)
-  const ready = !task.completed && !pending && !verifying && !gated && stage === 'idle'
+  /* Phase 12: a custom quest is completable only once its validity check has
+     accepted it (or it is an exempt starter quest). Mirrored server-side by the
+     tasks_validity_guard trigger, so this is UX, not the enforcement. */
+  const eligible = isQuestEligible(task)
+  const validity = !task.completed && !eligible ? VALIDITY_META[task.validity_status] : null
+  const ready = !task.completed && !pending && !verifying && !gated && eligible && stage === 'idle'
+  const pri = PRIORITIES.find(p => p.id === task.priority)
+  const evidence = task.evidence_type ? evidenceMeta(task.evidence_type) : null
+
+  const handleRecheck = async () => {
+    if (rechecking) return
+    setRechecking(true)
+    await onRecheck?.(task)
+    setRechecking(false)
+  }
 
   /* Completion requires evidence — open the verification modal (which handles
      photo + log + provisional award). The time-gate `ready` check gates it. */
@@ -149,19 +176,82 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, logs, canLog, now, 
             cursor: task.completed || !ready ? 'not-allowed' : 'pointer',
             boxShadow: ready ? `0 0 10px ${cfg.color}66` : 'none',
           }}
-          aria-label={task.completed ? 'Completed' : ready ? 'Verify & complete' : 'Not yet available'}
+          aria-label={task.completed ? 'Completed' : ready ? 'Verify & complete' : validity ? validity.hint : 'Not yet available'}
+          title={validity ? validity.hint : undefined}
         >
           {task.completed
             ? <CheckDraw size={22} />
             : <Circle size={22} style={{ color: cfg.color + (ready ? 'ff' : '38') }} className="transition-opacity" />}
         </motion.button>
 
-        <span
-          className={`flex-1 text-sm font-nunito font-medium ${task.completed ? 'line-through' : ''}`}
-          style={{ color: task.completed ? '#5050aa' : '#c0c0e0' }}
-        >
-          {task.text}
-        </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            {pri && pri.id !== 'P2' && (
+              <span className="text-[9px] font-nunito font-black px-1 py-0.5 rounded flex-shrink-0"
+                style={{ background: pri.color + '22', color: pri.color }} title={`Priority ${pri.id} · ${pri.label}`}>
+                {pri.id}
+              </span>
+            )}
+            <span
+              className={`text-sm font-nunito font-medium truncate ${task.completed ? 'line-through' : ''}`}
+              style={{ color: task.completed ? '#5050aa' : '#c0c0e0' }}
+              title={task.text}
+            >
+              {task.text}
+            </span>
+          </div>
+          {(task.goal || evidence) && !task.completed && (
+            <div className="flex items-center gap-2 mt-0.5 text-[10px] font-nunito min-w-0" style={{ color: 'var(--text-muted)' }}>
+              {task.goal && <span className="truncate" title={task.goal}>🎯 {task.goal}</span>}
+              {evidence && <span className="flex-shrink-0" title={`Evidence: ${evidence.label}`}>{evidence.emoji}</span>}
+            </div>
+          )}
+          {validity && task.validity_reason && (
+            <p className="text-[10px] font-nunito mt-0.5" style={{ color: validity.color }}>{task.validity_reason}</p>
+          )}
+        </div>
+
+        {validity && (
+          <span
+            className="flex items-center gap-1 text-xs font-nunito font-semibold flex-shrink-0 px-2 py-0.5 rounded-lg"
+            style={{ background: validity.color + '1f', color: validity.color, border: `1px solid ${validity.color}4d` }}
+            title={validity.hint}
+          >
+            <ShieldCheck size={11} />
+            {validity.label}
+          </span>
+        )}
+
+        {validity && task.validity_status === 'pending_ai_review' && (
+          <motion.button
+            onClick={handleRecheck}
+            disabled={rechecking}
+            className="flex-shrink-0 p-1 rounded-lg"
+            style={{ color: '#22d3ee' }}
+            whileTap={{ scale: 0.9 }}
+            title="Run the quest check again"
+            aria-label="Run the quest check again"
+          >
+            <motion.span animate={rechecking ? { rotate: 360 } : { rotate: 0 }}
+              transition={rechecking ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+              style={{ display: 'inline-flex' }}>
+              <RefreshCw size={14} />
+            </motion.span>
+          </motion.button>
+        )}
+
+        {validity && task.validity_status !== 'pending_ai_review' && (
+          <motion.button
+            onClick={() => onRevise?.(task)}
+            className="flex-shrink-0 p-1 rounded-lg"
+            style={{ color: validity.color }}
+            whileTap={{ scale: 0.9 }}
+            title="Revise this quest and check it again"
+            aria-label="Revise this quest"
+          >
+            <PencilLine size={14} />
+          </motion.button>
+        )}
 
         {pending && (
           <span
@@ -260,9 +350,17 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, logs, canLog, now, 
 export default function TaskList() {
   const [activeDiff, setActiveDiff] = useState('easy')
   const [input, setInput] = useState('')
-  const [plannedDate, setPlannedDate] = useState('')  // research: intended finish, '' = skipped
+  const [plannedDate, setPlannedDate] = useState('')  // research: intended finish, required for medium/hard
+  const [goal, setGoal] = useState('')                // research: goal statement (what does "done" look like?)
+  const [priority, setPriority] = useState('P2')       // research: prioritization P1/P2/P3
+  const [evidenceType, setEvidenceType] = useState('photo')  // Phase 12: how completion will be shown
+  const [revisingId, setRevisingId] = useState(null)   // a saved quest being revised → deleted once the new one is accepted
+  /* Phase 12 check state: null | { step } while checking; result = the last
+     clarify/reject/pending message shown above the form. */
+  const [checking, setChecking] = useState(null)
+  const [checkResult, setCheckResult] = useState(null)
   const inputRef = useRef(null)
-  const { tasks, addTask, deleteTask, addProgressLog, progressLogs, profile, selectedPet } = useGame()
+  const { tasks, addTask, recheckQuest, deleteTask, addProgressLog, progressLogs, profile, selectedPet, addNotification } = useGame()
 
   /* The quest currently being verified (opens VerificationModal). Owned here,
      not in TaskItem, so it survives the card re-parenting on completion. */
@@ -318,19 +416,86 @@ export default function TaskList() {
     (activeDiff === 'hard'   && hardLeft > 0 && hardSlots >= 1) ||
     (activeDiff === 'medium' && medLeft  > 0 && medSlots  >= 3)
 
-  const canAdd = !!input.trim() && !atLimit
+  /* Required research inputs (client-side gate; the server re-validates):
+     a goal statement on every quest, a planned finish date on Medium/Hard,
+     a priority and an evidence type. Easy quests keep the date optional. */
+  const needsPlan = activeDiff !== 'easy'
+  const goalOk = goal.trim().length >= 10
+  const planOk = !needsPlan || !!plannedDate
+  const showDetails = !!input.trim() || !!goal || !!plannedDate || !!revisingId
+  const canAdd = !!input.trim() && goalOk && planOk && !atLimit && !checking
+
+  /* Advance the loading label on a gentle timer while the single server call is
+     in flight; the final "Saving" step is set when the response lands. */
+  useEffect(() => {
+    if (!checking) return
+    const id = setInterval(() => setChecking(c => c && c.step < CHECK_STEPS.length - 2 ? { step: c.step + 1 } : c), 1600)
+    return () => clearInterval(id)
+  }, [checking])
+
+  const resetForm = () => {
+    setInput(''); setPlannedDate(''); setGoal(''); setPriority('P2'); setEvidenceType('photo'); setRevisingId(null)
+  }
 
   const handleAdd = async () => {
-    if (!input.trim()) return
-    const ok = await addTask(input, activeDiff, plannedDate || null)
-    if (ok) {
-      setInput('')
-      setPlannedDate('')
+    if (!input.trim() || checking) return
+    if (!goalOk) { addNotification('Add a goal statement — what does “done” look like? (at least 10 characters)', 'error'); return }
+    if (!planOk) { addNotification(`${cfg.label} quests need a planned finish date.`, 'error'); return }
+    setCheckResult(null)
+    setChecking({ step: 0 })
+    const res = await addTask(input, activeDiff, plannedDate || null, { goal, priority, evidenceType })
+    if (res.ok) {   // something was saved → show the last step briefly
+      setChecking({ step: CHECK_STEPS.length - 1 })
+      await new Promise(r => setTimeout(r, 400))
+    }
+    setChecking(null)
+
+    if (res.ok) {
+      if (revisingId) deleteTask(revisingId)   // the revised draft replaces the old row
+      if (res.decision === 'accept') {
+        addNotification('✅ Quest accepted — it’s in your log.', 'success')
+        setCheckResult(null)
+      } else {
+        setCheckResult({ tone: 'info', title: 'Saved — awaiting check', reason: res.reason })
+      }
+      resetForm()
       inputRef.current?.focus()
+      return
+    }
+    /* Not saved: keep the draft so the participant can revise and resubmit. */
+    if (res.decision === 'clarify') {
+      setCheckResult({ tone: 'warn', title: 'Almost there — a bit more detail needed', reason: res.reason, evidence: res.recommendedEvidenceType })
+    } else if (res.decision === 'reject') {
+      setCheckResult({ tone: 'bad', title: 'This quest wasn’t accepted yet', reason: res.reason, evidence: res.recommendedEvidenceType })
+    } else if (res.decision === 'invalid') {
+      addNotification(res.reason, 'error')
+    } else if (res.decision !== 'limit') {
+      setCheckResult({ tone: 'info', title: 'Quest check unavailable', reason: res.reason })
     }
   }
 
   const handleKeyDown = (e) => { if (e.key === 'Enter') handleAdd() }
+
+  /* Pre-fill the form from a saved quest the check sent back. The old row is
+     removed only once the revised quest is accepted or saved as pending. */
+  const handleRevise = (task) => {
+    setActiveDiff(task.difficulty || 'easy')
+    setInput(task.text || '')
+    setGoal(task.goal || '')
+    setPriority(['P1', 'P2', 'P3'].includes(task.priority) ? task.priority : 'P2')
+    setEvidenceType(task.evidence_type || 'photo')
+    setPlannedDate(task.planned_completion_date ? toLocalInput(task.planned_completion_date) : '')
+    setRevisingId(task.id)
+    setCheckResult(task.validity_reason ? { tone: 'warn', title: 'Revise and check again', reason: task.validity_reason } : null)
+    inputRef.current?.focus()
+  }
+
+  const handleRecheck = async (task) => {
+    const res = await recheckQuest(task.id)
+    if (res.decision === 'accept') addNotification('✅ Quest accepted — you can work on it now.', 'success')
+    else if (res.decision === 'pending') addNotification(res.reason, 'info')
+    else if (res.ok === false && res.reason) addNotification(res.reason, res.decision === 'clarify' || res.decision === 'reject' ? 'info' : 'error')
+  }
 
   const canLog = activeDiff === 'medium' || activeDiff === 'hard'
 
@@ -417,8 +582,50 @@ export default function TaskList() {
         </p>
       )}
 
+      {/* Phase 12: outcome of the last quest check (clarify / reject / pending). */}
+      <AnimatePresence>
+        {checkResult && !checking && (
+          <motion.div
+            key={checkResult.title + checkResult.reason}
+            initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+            className="mb-3 px-3 py-2.5 rounded-xl text-xs font-nunito"
+            style={{
+              background: (checkResult.tone === 'bad' ? '#fb7185' : checkResult.tone === 'warn' ? '#f5a31a' : '#22d3ee') + '14',
+              border: `1px solid ${(checkResult.tone === 'bad' ? '#fb7185' : checkResult.tone === 'warn' ? '#f5a31a' : '#22d3ee')}40`,
+            }}
+            role="status"
+          >
+            <p className="font-bold mb-0.5" style={{ color: checkResult.tone === 'bad' ? '#fb7185' : checkResult.tone === 'warn' ? '#f5a31a' : '#22d3ee' }}>
+              {checkResult.title}
+            </p>
+            <p style={{ color: '#c0c0e0' }}>{checkResult.reason}</p>
+            {checkResult.evidence && checkResult.evidence !== evidenceType && (
+              <button type="button" onClick={() => setEvidenceType(checkResult.evidence)}
+                className="mt-1.5 px-2 py-1 rounded-lg font-bold"
+                style={{ background: 'rgba(19,19,58,0.7)', color: '#e2e2ff', border: '1px solid rgba(124,58,237,0.3)' }}>
+                Use {evidenceMeta(checkResult.evidence).emoji} {evidenceMeta(checkResult.evidence).label} as evidence
+              </button>
+            )}
+            <div className="flex justify-end">
+              <button type="button" onClick={() => setCheckResult(null)} className="mt-1 px-2 py-0.5 rounded-lg"
+                style={{ color: 'var(--text-muted)' }}>
+                {checkResult.tone === 'info' ? 'OK' : 'OK, I’ll revise'}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Phase 12: compact Mascot Idle loader while the server + AI check runs. */}
+      {checking && (
+        <div className="mb-4">
+          <MascotLoaderCompact petId={profile?.selected_pet_id || 'dragon'} level={profile?.pet_level || 1}
+            text={CHECK_STEPS[checking.step] + '…'} accent={cfg.color} />
+        </div>
+      )}
+
       {/* Add input */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-3" style={checking ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
         <input
           ref={inputRef}
           type="text"
@@ -428,48 +635,134 @@ export default function TaskList() {
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           maxLength={80}
-          disabled={atLimit}
+          disabled={atLimit || !!checking}
+          aria-label="Quest title"
         />
         <motion.button
           className="btn-gold px-4 py-2.5 flex items-center gap-1.5 text-sm font-nunito font-bold flex-shrink-0"
           onClick={handleAdd}
           whileTap={{ scale: 0.95 }}
           disabled={!canAdd}
+          title={!input.trim() ? 'Type a quest title' : !goalOk ? 'Add a goal statement (10+ characters)' : !planOk ? 'Pick a planned finish date' : revisingId ? 'Check the revised quest' : 'Check & add quest'}
         >
           <Plus size={16} />
-          Add
+          {revisingId ? 'Re-check' : 'Add'}
         </motion.button>
       </div>
 
-      {/* Planned finish — research: measures planning/scheduling behaviour.
-          Optional; left blank it saves null. min=now discourages back-dating a
-          plan, though the server does not reject it. */}
-      <div className="flex items-center gap-2 mb-4 -mt-1 px-1">
-        <CalendarClock size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-        <label htmlFor="planned-date" className="text-xs font-nunito flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
-          Plan to finish?
-        </label>
-        <input
-          id="planned-date"
-          type="datetime-local"
-          className="input-field text-xs py-1.5 flex-1"
-          value={plannedDate}
-          min={new Date().toISOString().slice(0, 16)}
-          onChange={e => setPlannedDate(e.target.value)}
-          disabled={atLimit}
-          title="Optional — when do you plan to finish this quest?"
-        />
-        {plannedDate && (
-          <button
-            onClick={() => setPlannedDate('')}
-            className="text-xs font-nunito px-2 py-1 rounded-lg flex-shrink-0"
-            style={{ color: 'var(--text-muted)', background: 'rgba(19,19,58,0.6)' }}
-            title="Clear planned date"
+      {/* Quest details — revealed once a title is being typed so the empty form
+          stays uncluttered. Goal + priority + evidence are research inputs the
+          validity check reads; the planned date is required on Medium/Hard. */}
+      <AnimatePresence initial={false}>
+        {showDetails && (
+          <motion.div
+            key="details"
+            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+            style={checking ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
           >
-            Clear
-          </button>
+            {revisingId && (
+              <div className="flex items-center justify-between mb-2 px-1 text-[10px] font-nunito" style={{ color: 'var(--text-muted)' }}>
+                <span>✏️ Revising a saved quest — the old version is replaced once this one is accepted.</span>
+                <button type="button" onClick={resetForm} style={{ color: '#a78bfa' }}>Cancel</button>
+              </div>
+            )}
+
+            {/* Goal statement (goal-setting construct) — required on every quest. */}
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <Target size={13} style={{ color: goalOk ? '#4ade80' : 'var(--text-muted)', flexShrink: 0 }} />
+              <input
+                type="text"
+                className="input-field text-xs py-1.5 flex-1"
+                placeholder="Goal — what does “done” look like? (e.g. all 10 problems solved & checked)"
+                value={goal}
+                onChange={e => setGoal(e.target.value)}
+                onKeyDown={handleKeyDown}
+                maxLength={140}
+                disabled={atLimit}
+                aria-label="Goal statement"
+              />
+              <span className="text-[10px] font-nunito flex-shrink-0 w-10 text-right"
+                style={{ color: goalOk ? '#4ade80' : 'var(--text-muted)' }}>
+                {goal.trim().length < 10 ? `${goal.trim().length}/10` : '✓'}
+              </span>
+            </div>
+
+            {/* Priority (prioritization construct) + evidence type (verifiability). */}
+            <div className="flex flex-wrap items-center gap-2 mb-2 px-1">
+              <span className="text-xs font-nunito flex-shrink-0" style={{ color: 'var(--text-muted)' }}>Priority</span>
+              {PRIORITIES.map(p => (
+                <button key={p.id} type="button" onClick={() => setPriority(p.id)}
+                  className="text-xs font-nunito font-bold px-2 py-1 rounded-lg"
+                  style={{
+                    background: priority === p.id ? p.color + '22' : 'rgba(19,19,58,0.5)',
+                    color: priority === p.id ? p.color : '#8080aa',
+                    border: `1px solid ${priority === p.id ? p.color + '66' : 'rgba(124,58,237,0.15)'}`,
+                  }}
+                  title={p.label} aria-pressed={priority === p.id}>
+                  {p.id}
+                </button>
+              ))}
+              <label htmlFor="evidence-type" className="text-xs font-nunito flex-shrink-0 ml-auto" style={{ color: 'var(--text-muted)' }}>
+                Evidence
+              </label>
+              <select
+                id="evidence-type"
+                className="input-field text-xs py-1 pr-6 flex-shrink-0"
+                style={{ width: 'auto', maxWidth: 190 }}
+                value={evidenceType}
+                onChange={e => setEvidenceType(e.target.value)}
+                disabled={atLimit}
+                title={evidenceMeta(evidenceType).desc}
+              >
+                {EVIDENCE_TYPES.map(e => (
+                  <option key={e.id} value={e.id}>{e.emoji} {e.label}</option>
+                ))}
+              </select>
+            </div>
+            <p className="text-[10px] font-nunito mb-2 px-1 text-right" style={{ color: 'var(--text-muted)' }}>
+              {evidenceMeta(evidenceType).desc}
+            </p>
+
+            {/* Planned finish — research: planning/scheduling behaviour. Required on
+                Medium/Hard; optional on Easy. min=now discourages back-dating (the
+                server rejects clearly past dates). */}
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <CalendarClock size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              <label htmlFor="planned-date" className="text-xs font-nunito flex-shrink-0"
+                style={{ color: needsPlan && !plannedDate ? '#fb7185' : 'var(--text-muted)' }}>
+                Plan to finish?{needsPlan ? ' *' : ''}
+              </label>
+              <input
+                id="planned-date"
+                type="datetime-local"
+                className="input-field text-xs py-1.5 flex-1"
+                value={plannedDate}
+                min={new Date().toISOString().slice(0, 16)}
+                onChange={e => setPlannedDate(e.target.value)}
+                disabled={atLimit}
+                title={needsPlan ? 'Required — when do you plan to finish this quest?' : 'Optional — when do you plan to finish this quest?'}
+              />
+              {plannedDate && (
+                <button
+                  onClick={() => setPlannedDate('')}
+                  className="text-xs font-nunito px-2 py-1 rounded-lg flex-shrink-0"
+                  style={{ color: 'var(--text-muted)', background: 'rgba(19,19,58,0.6)' }}
+                  title="Clear planned date"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            <p className="flex items-start gap-1.5 text-[10px] font-nunito mb-3 px-1" style={{ color: 'var(--text-soft)' }}>
+              <ShieldCheck size={12} style={{ color: '#a78bfa', flexShrink: 0, marginTop: 1 }} />
+              <span>{CHECK_EXPLAINER}</span>
+            </p>
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
 
       <div className="flex justify-end mb-2">
         <span className="text-xs font-nunito px-2 py-0.5 rounded-lg"
@@ -502,6 +795,8 @@ export default function TaskList() {
                 onVerify={setVerifyingTask}
                 onDelete={deleteTask}
                 onAddProgress={addProgressLog}
+                onRevise={handleRevise}
+                onRecheck={handleRecheck}
                 logs={progressLogs[task.id] || []}
                 canLog={canLog}
                 now={now}

@@ -17,6 +17,19 @@ replace`, `add column if not exists`), so re-running is safe.
 | 8 | `supabase-phase9-pet-evolution.sql` | `evolution_seen_level`, `hatched_pet_type`, `hatched_at`, `onboarding_complete` columns. |
 | 9 | `supabase-phase10-cooldown-anchoring.sql` | Removes the creation-anchored completion gate (starter quests instantly verifiable). **Full Phase 6 `complete_task` minus the time gate** — must stay in sync with the award economy. |
 | 10 | `supabase-phase11-dedupe-tasks.sql` | One-time cleanup: collapses duplicate quest rows from earlier non-dedupe inserts. |
+| 11 | `supabase-phase12-quest-validity.sql` | **AI quest validity check at creation.** `tasks.goal/priority/evidence_type` + participant-safe `validity_*` columns, `preset_quest_catalog` (starter quests exempt), admin-only `quest_validity_reviews`, the `tasks_validity_guard` trigger (browser can never set a validity status; un-accepted quests can't be completed), `admin_resolve_quest_validity()`. Does **not** touch any economy function. |
+
+## Phase 12 and the economy
+Phase 12 deliberately leaves `complete_task` / `submit_completion` /
+`rollback_completion` untouched. Completion eligibility for un-checked custom
+quests is enforced by a **BEFORE UPDATE trigger** on `tasks`
+(`tasks_validity_guard`) that raises `quest_not_eligible` when `completed` flips
+to true on a quest whose `validity_status` is not `accepted`/`exempt` — the whole
+`submit_completion` transaction aborts, so nothing is awarded. Starter quests
+and every pre-Phase-12 row are `exempt`, so their award path is byte-for-byte
+the same as before. Note: Postgres column-level `revoke` is ineffective while
+the role holds the table-level grant (Supabase's default), which is why the
+guard is a trigger keyed on `current_user`.
 
 ## Economy-critical files (edit with care)
 `complete_task`, `submit_completion`, and `rollback_completion` are the award /

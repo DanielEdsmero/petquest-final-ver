@@ -7,9 +7,10 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis,
   Cell,
 } from 'recharts'
-import { ArrowLeft, Users, CheckSquare, Clock, TrendingDown, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Users, CheckSquare, Clock, TrendingDown, RefreshCw, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useGame } from '../context/GameContext'
+import { evidenceMeta, VALIDITY_META } from '../data/questValidity'
 import { PETS } from '../data/pets'
 import { ACCESSORIES } from '../data/accessories'
 import { PET_LEVELS, levelFromPoints } from '../data/progression'
@@ -632,11 +633,195 @@ function VerificationQueue() {
   )
 }
 
+/* ────── Phase 12: quest validity queue (creation-time AI check) ────── */
+/* Two views: quests whose validity is unresolved (pending_ai_review when the AI
+   was down, or sent back as needs_clarification / rejected), with Run-AI /
+   Accept / Reject; and the admin-only decision log (quest_validity_reviews —
+   RLS admin-read-only, so the internal admin_reason / risk flags / model only
+   ever render here). */
+const DECISION_COLOR = {
+  accept: '#4ade80', clarify: '#f5a31a', reject: '#fb7185', pending: '#22d3ee',
+  admin_accept: '#4ade80', admin_reject: '#fb7185',
+}
+const UNRESOLVED = ['pending_ai_review', 'needs_clarification', 'rejected']
+
+function QuestValidityQueue() {
+  const { addNotification } = useGame()
+  const [quests, setQuests] = useState([])
+  const [log, setLog]       = useState([])
+  const [loading, setLoad]  = useState(true)
+  const [busy, setBusy]     = useState(null)
+  const [filter, setFilter] = useState('pending_ai_review')   // pending_ai_review | needs_clarification | rejected | all
+
+  const load = async () => {
+    setLoad(true)
+    const [{ data: q, error: qErr }, { data: l, error: lErr }] = await Promise.all([
+      supabase.from('tasks')
+        .select('id, user_id, text, goal, priority, difficulty, evidence_type, planned_completion_date, validity_status, validity_score, validity_reason, validity_checked_at, validity_reviewed_at, created_at, profiles(username)')
+        .in('validity_status', UNRESOLVED).eq('completed', false)
+        .order('created_at', { ascending: false }).limit(100),
+      supabase.from('quest_validity_reviews')
+        .select('*, profiles(username)')
+        .order('created_at', { ascending: false }).limit(60),
+    ])
+    if (qErr) addNotification(`Validity queue load failed: ${qErr.message}`, 'error')
+    if (lErr) addNotification(`Decision log load failed: ${lErr.message}`, 'error')
+    setQuests(q || []); setLog(l || [])
+    setLoad(false)
+  }
+  useEffect(() => { load() }, [])
+
+  /* Same endpoint the participant's "check again" uses; the server recognises
+     the admin token and skips the per-user cooldown for other people's quests. */
+  const rerunAI = async (id) => {
+    setBusy(id + 'ai')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const r = await fetch('/api/validate-quest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({ task_id: id }),
+      })
+      const d = await r.json().catch(() => ({}))
+      addNotification(r.ok ? `AI decision: ${d.decision}` : `AI re-check failed (${d.error || r.status})`, r.ok ? 'info' : 'error')
+    } catch (e) { addNotification(`AI re-check failed: ${e.message}`, 'error') }
+    setBusy(null)
+    load()
+  }
+
+  const resolve = async (id, status) => {
+    setBusy(id + status)
+    const { data, error } = await supabase.rpc('admin_resolve_quest_validity', { p_task_id: id, p_status: status, p_reason: null })
+    setBusy(null)
+    if (error || !data?.ok) return addNotification(`Resolve failed: ${error?.message || data?.error || 'unknown'}`, 'error')
+    addNotification(status === 'accepted' ? '✅ Quest accepted — participant can work on it.' : '❌ Quest rejected.', status === 'accepted' ? 'success' : 'error')
+    load()
+  }
+
+  const counts = Object.fromEntries(UNRESOLVED.map(k => [k, quests.filter(q => q.validity_status === k).length]))
+  const shown = filter === 'all' ? quests : quests.filter(q => q.validity_status === filter)
+
+  if (loading) {
+    return <div className="glass-card p-8 text-center">
+      <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="text-2xl inline-block">⚙️</motion.div>
+    </div>
+  }
+
+  return (
+    <div className="space-y-3">
+      <h3 className="font-cinzel font-bold text-base flex items-center gap-2">
+        <ShieldCheck size={16} style={{ color: '#f5a31a' }} /> Quest Validity
+        <span className="font-nunito font-normal text-sm" style={{ color: 'var(--text-muted)' }}>({quests.length} unresolved)</span>
+      </h3>
+
+      <div className="flex flex-wrap gap-2">
+        {[['pending_ai_review', 'Awaiting AI'], ['needs_clarification', 'Needs changes'], ['rejected', 'Rejected'], ['all', 'All']].map(([k, label]) => (
+          <button key={k} onClick={() => setFilter(k)}
+            className="px-3 py-1 rounded-lg text-xs font-nunito font-bold"
+            style={{
+              background: filter === k ? 'rgba(245,163,26,0.18)' : 'rgba(19,19,58,0.5)',
+              color: filter === k ? '#f5a31a' : '#8080aa',
+              border: `1px solid ${filter === k ? 'rgba(245,163,26,0.45)' : 'rgba(124,58,237,0.15)'}`,
+            }}>
+            {label} ({k === 'all' ? quests.length : counts[k]})
+          </button>
+        ))}
+        <button onClick={load} className="px-3 py-1 rounded-lg text-xs font-nunito font-bold ml-auto"
+          style={{ background: 'rgba(6,182,212,0.15)', color: '#22d3ee', border: '1px solid rgba(6,182,212,0.4)' }}>
+          ↻ Reload
+        </button>
+      </div>
+
+      {shown.length === 0 && (
+        <div className="glass-card p-10 text-center font-nunito" style={{ color: 'var(--text-muted)' }}>
+          <div className="text-3xl mb-2">✅</div>Nothing to resolve.
+        </div>
+      )}
+
+      {shown.map(q => {
+        const meta = VALIDITY_META[q.validity_status] || { label: q.validity_status, color: '#8080aa' }
+        const ev = evidenceMeta(q.evidence_type)
+        const lastReview = log.find(r => r.task_id === q.id)
+        return (
+          <div key={q.id} className="glass-card p-4">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+              <span className="font-nunito font-bold text-sm" style={{ color: '#e2e2ff' }}>
+                {q.profiles?.username || 'Unknown'}
+                <span style={{ color: '#6060aa', fontWeight: 400 }}> · {String(q.user_id || '').slice(0, 6)}</span>
+              </span>
+              <span className="text-xs font-nunito font-bold px-1.5 py-0.5 rounded" style={{ background: meta.color + '22', color: meta.color }}>{meta.label}</span>
+              <span className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
+                {q.difficulty} · {q.priority} · {ev.emoji} {ev.label}{q.validity_score != null ? ` · score ${q.validity_score}` : ''}
+              </span>
+            </div>
+            <p className="text-sm font-nunito" style={{ color: '#c0c0e0' }}>{q.text}</p>
+            {q.goal && <p className="text-xs font-nunito mt-0.5" style={{ color: '#8a9bb8' }}>🎯 {q.goal}</p>}
+            {q.validity_reason && <p className="text-xs font-nunito mt-1" style={{ color: 'var(--text-soft)' }}>Participant sees: “{q.validity_reason}”</p>}
+            {lastReview && (lastReview.admin_reason || lastReview.risk_flags?.length > 0) && (
+              <div className="text-xs font-nunito mt-2 px-2.5 py-2 rounded-lg" style={{ background: 'rgba(19,19,58,0.6)', color: '#c0c0e0' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Internal: </span>{lastReview.admin_reason || '—'}
+                {lastReview.risk_flags?.length > 0 && (
+                  <span className="ml-2">{lastReview.risk_flags.map(f => (
+                    <span key={f} className="inline-block mr-1 px-1.5 py-0.5 rounded text-[10px] font-bold"
+                      style={{ background: 'rgba(244,63,94,0.15)', color: '#fb7185' }}>{f}</span>
+                  ))}</span>
+                )}
+                {lastReview.model_version && <span className="ml-2" style={{ color: '#6060aa' }}>{lastReview.model_version}</span>}
+              </div>
+            )}
+            <div className="text-xs font-nunito mt-2 mb-3 grid grid-cols-2 gap-x-4 gap-y-0.5" style={{ color: 'var(--text-muted)' }}>
+              <div>Created: <span style={{ color: '#c0c0e0' }}>{qcAgo(q.created_at)}</span> · {qcAbs(q.created_at)}</div>
+              {q.validity_checked_at && <div>AI checked: {qcAbs(q.validity_checked_at)}</div>}
+              {q.planned_completion_date && <div>Planned finish: {qcAbs(q.planned_completion_date)}</div>}
+              {q.validity_reviewed_at && <div>Admin reviewed: {qcAbs(q.validity_reviewed_at)}</div>}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <CheatButton onClick={() => rerunAI(q.id)} busy={busy} color="#06b6d4">🔁 Run AI check</CheatButton>
+              <CheatButton onClick={() => resolve(q.id, 'accepted')} busy={busy} color="#22c55e">✅ Accept</CheatButton>
+              {q.validity_status !== 'rejected' && (
+                <CheatButton onClick={() => resolve(q.id, 'rejected')} busy={busy} color="#f43f5e">❌ Reject</CheatButton>
+              )}
+            </div>
+          </div>
+        )
+      })}
+
+      {/* Admin-only decision log */}
+      <h4 className="font-cinzel font-bold text-sm pt-2 flex items-center gap-2">
+        Recent AI decisions
+        <span className="font-nunito font-normal text-xs" style={{ color: 'var(--text-muted)' }}>(incl. drafts that were never saved)</span>
+      </h4>
+      {log.length === 0 && <p className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>No decisions logged yet.</p>}
+      {log.map(r => (
+        <div key={r.id} className="rounded-xl px-4 py-3 text-xs font-nunito" style={{ background: 'rgba(14,14,46,0.7)', border: '1px solid rgba(124,58,237,0.15)' }}>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="font-bold" style={{ color: DECISION_COLOR[r.decision] || '#8080aa' }}>{r.decision}</span>
+            {r.validity_score != null && <span style={{ color: '#c0c0e0' }}>score {r.validity_score}</span>}
+            <span style={{ color: '#e2e2ff' }}>{r.profiles?.username || String(r.user_id || '').slice(0, 6)}</span>
+            <span style={{ color: '#c0c0e0' }}>“{r.task_title}”</span>
+            <span style={{ color: 'var(--text-muted)' }}>{r.difficulty} · {evidenceMeta(r.evidence_type).emoji}</span>
+            {!r.task_id && <span style={{ color: '#6060aa' }}>(not saved)</span>}
+            <span className="ml-auto" style={{ color: 'var(--text-muted)' }}>{qcAgo(r.created_at)}</span>
+          </div>
+          {r.admin_reason && <p className="mt-1" style={{ color: '#c0c0e0' }}>{r.admin_reason}</p>}
+          <div className="mt-1 flex flex-wrap gap-1 items-center">
+            {(r.risk_flags || []).map(f => (
+              <span key={f} className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: 'rgba(244,63,94,0.15)', color: '#fb7185' }}>{f}</span>
+            ))}
+            {r.recommended_evidence_type && <span style={{ color: 'var(--text-muted)' }}>suggests {evidenceMeta(r.recommended_evidence_type).label}</span>}
+            {r.model_version && <span style={{ color: '#6060aa' }}>{r.model_version}</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function AdminPage() {
   const navigate  = useNavigate()
   const { profile } = useGame()
 
-  const [tab,      setTab]      = useState('overview')  // overview | queue
+  const [tab,      setTab]      = useState('overview')  // overview | queue | validity
   const [users,    setUsers]    = useState([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState('')
@@ -755,7 +940,7 @@ export default function AdminPage() {
 
         {/* ── Tab bar ── */}
         <div className="flex gap-2">
-          {[['overview', '📊 Overview'], ['queue', '🔍 Verification Queue']].map(([key, label]) => (
+          {[['overview', '📊 Overview'], ['queue', '🔍 Verification Queue'], ['validity', '🛡️ Quest Validity']].map(([key, label]) => (
             <button key={key} onClick={() => setTab(key)}
               className="px-4 py-2 rounded-xl text-sm font-nunito font-bold transition-all"
               style={{
@@ -769,6 +954,7 @@ export default function AdminPage() {
         </div>
 
         {tab === 'queue' && <VerificationQueue />}
+        {tab === 'validity' && <QuestValidityQueue />}
 
         {tab === 'overview' && (<>
         {/* ── Testing & cheats ── */}

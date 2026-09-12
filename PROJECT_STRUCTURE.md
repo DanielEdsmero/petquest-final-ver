@@ -12,7 +12,7 @@ A labeled map of every folder and file, grouped by what it's used for. Stack:
 |------|----------|
 | `index.html` | Vite HTML entry; mounts `src/main.jsx`. |
 | `package.json` / `package-lock.json` | Dependencies + scripts (`dev`, `build`, `preview`). |
-| `vite.config.js` | Vite build/dev config. |
+| `vite.config.js` | Vite build/dev config + a dev-only shim that runs `/api/*.js` functions under `npm run dev` (reads server keys from `.env.local`). |
 | `tailwind.config.js` | Tailwind theme (navy/gold palette, fonts). |
 | `postcss.config.js` | PostCSS (Tailwind/autoprefixer) pipeline. |
 | `vercel.json` | Vercel deploy config (SPA rewrites + `/api` functions). |
@@ -30,6 +30,9 @@ A labeled map of every folder and file, grouped by what it's used for. Stack:
 | Path | Used for |
 |------|----------|
 | `api/verify.js` | **Gemini AI proof verification.** Holds the Gemini + Supabase service-role keys server-side, signs the proof photo, asks Gemini pass/fail, writes the verdict, rolls back on fail. Model auto-discovery + fallback chain live here. |
+| `api/validate-quest.js` | **AI quest validity check at creation (Phase 12).** Verifies the caller's Supabase token, validates the quest fields server-side, asks Gemini for a structured accept/clarify/reject verdict, and saves the quest only per the final decision (service role). Thin entry — logic is in `_lib`. |
+| `api/_lib/quest-validity.js` | Pure, unit-tested validity logic: input validation, prompt, AI-JSON validation, server decision rules, rate limiting, handler factory. |
+| `api/_lib/gemini.js` | Shared Gemini text helper (model discovery + fallback chain) used by `validate-quest`. Underscore folder = not an endpoint. |
 
 ## `supabase/` — database migrations (run by hand)
 See `supabase/README.md` for the full run order. These define the tables, RLS,
@@ -57,7 +60,7 @@ and the award/verification RPCs (`complete_task`, `submit_completion`,
 | `DashboardPage.jsx` | Main screen: companion, stats, quest log, care actions, header metrics. |
 | `AccessoriesPage.jsx` | Cosmetic shop — buy/equip pet accessories. |
 | `LeaderboardPage.jsx` | Player rankings. |
-| `AdminPage.jsx` | Admin panel: overview, verification queue, cheat/targeting tools (admin-only). |
+| `AdminPage.jsx` | Admin panel: overview, verification queue, **quest validity queue + AI decision log**, cheat/targeting tools (admin-only). |
 
 ### `src/context/` — global state
 | Path | Used for |
@@ -67,7 +70,7 @@ and the award/verification RPCs (`complete_task`, `submit_completion`,
 ### `src/components/` — reusable UI
 | Path | Used for |
 |------|----------|
-| `TaskList.jsx` | Quest log: difficulty tabs, add/complete, cooldown/period display, opens the verification modal. |
+| `TaskList.jsx` | Quest log: difficulty tabs, the quest form (title, goal, priority, evidence type, planned date), the Phase 12 validity check flow (loader + result panel + revise/re-check), cooldown/period display, opens the verification modal. |
 | `VerificationModal.jsx` | Photo-proof capture (camera + upload), blank-frame block, progress-log, Gilded Waypoints stepper, verdict screen. |
 | `PetAvatar.jsx` | Renders the companion (glow/aura/accessories) — draws the sprite via `PetSprite`. |
 | `PetSprite.jsx` | Resolves + renders the stage sprite (`image-rendering: pixelated`), emoji fallback. |
@@ -88,6 +91,7 @@ and the award/verification RPCs (`complete_task`, `submit_completion`,
 | `CompletionFx.jsx`, `CheckDraw.jsx`, `FloatingText.jsx` | Quest-completion reward effects. |
 | `PageTransition.jsx` | Per-route enter animation wrapper. |
 | `PortalLoader.jsx` | Login/auth "portal" loader. |
+| `MascotLoader.jsx` | "Mascot Idle" loading screen (full-screen) + `MascotLoaderCompact` inline variant used by the quest check. |
 | `EmptyStatePet.jsx`, `TypingText.jsx` | Empty-state pet + typing text effects. |
 
 ### `src/components/reactbits/` — vendored [reactbits.dev] UI (MIT)
@@ -110,6 +114,7 @@ and the award/verification RPCs (`complete_task`, `submit_completion`,
 | `presetQuests.js` | Starter quest pools per mode/difficulty (fed to the picker). |
 | `accessories.js` | Cosmetic shop catalogue. |
 | `difficulty.js` | Single source of difficulty colors (easy/medium/hard/boss). |
+| `questValidity.js` | Phase 12 client constants: evidence types, priorities, validity badges, `isQuestEligible`, the check explainer + loading steps. |
 
 ### `src/hooks/` & `src/lib/`
 | Path | Used for |
@@ -125,4 +130,5 @@ and the award/verification RPCs (`complete_task`, `submit_completion`,
 - **Points/awards (server truth)** → `supabase/` RPCs (economy-critical — see that folder's README).
 - **Pet art / evolution stages** → `src/config/pets.js` + `public/pets/`.
 - **AI verification** → `api/verify.js` + `src/components/VerificationModal.jsx`.
+- **AI quest validity (creation)** → `api/validate-quest.js` + `api/_lib/quest-validity.js` + `src/components/TaskList.jsx`; tests in `tests/`.
 - **Starter quests** → `src/data/presetQuests.js`.

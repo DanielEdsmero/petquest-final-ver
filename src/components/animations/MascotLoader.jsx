@@ -21,6 +21,43 @@ const STUDY_TIPS = [
   '⚡ P1 tasks deserve your freshest energy.',
 ]
 
+/*
+ * Compact inline variant (Phase 12 quest check): the same sleeping/breathing
+ * companion at 56px, one status line, no tips, no full-screen wrapper. Used in
+ * place of a generic spinner wherever a short in-form wait happens. Mobile-safe:
+ * one already-cached sprite + two transform animations.
+ */
+export function MascotLoaderCompact({ petId = 'dragon', level = 1, text = 'Working…', accent }) {
+  const reduceMotion = useReducedMotion()
+  const [failed, setFailed] = useState(false)
+  const meta = petMeta(petId)
+  const color = accent || (PET_FX[meta.id] || PET_FX.dragon).accent
+  return (
+    <div className="flex items-center gap-3 px-3 py-2 rounded-xl"
+      style={{ background: 'rgba(19,19,58,0.6)', border: `1px solid ${color}33` }}
+      role="status" aria-live="polite">
+      <div className="relative flex-shrink-0 flex items-center justify-center" style={{ width: 56, height: 56 }}>
+        <motion.div className="absolute rounded-full pointer-events-none"
+          style={{ width: 48, height: 48, background: `radial-gradient(circle, ${color}66 0%, transparent 70%)`, filter: 'blur(8px)' }}
+          animate={reduceMotion ? { opacity: 0.5 } : { opacity: [0.35, 0.8, 0.35], scale: [1, 1.12, 1] }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }} />
+        <motion.div className="relative z-10"
+          animate={reduceMotion ? { opacity: 0.9 } : { opacity: [0.7, 1, 0.7], scale: [1, 1.05, 1], rotate: [-4, 0, -4] }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}>
+          {failed
+            ? <span style={{ fontSize: 34, lineHeight: 1 }}>{meta.emoji}</span>
+            : <img src={spriteFor(petId, level)} alt="" onError={() => setFailed(true)}
+                style={{ width: 44, height: 44, objectFit: 'contain', imageRendering: 'pixelated', display: 'block' }} />}
+        </motion.div>
+      </div>
+      <motion.p key={text} className="text-xs font-nunito font-semibold flex-1 min-w-0"
+        style={{ color }} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+        {text}
+      </motion.p>
+    </div>
+  )
+}
+
 export default function MascotLoader({ petId = 'dragon', level = 1, text = 'Loading Pet Quest…' }) {
   const reduceMotion = useReducedMotion()
   const [awake, setAwake] = useState(reduceMotion)     // reduced motion → straight to awake

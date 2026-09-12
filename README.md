@@ -87,6 +87,18 @@ vercel --prod
 
 Or via Vercel dashboard: import from GitHub, add your two env vars (`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`), and deploy. The `vercel.json` handles SPA routing automatically.
 
+The serverless functions in `api/` (photo verification and the creation-time
+quest validity check) also need **server-side** env vars in Vercel:
+`GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (optional
+`GEMINI_MODEL`). They are never exposed to the browser. If they are missing the
+app keeps working — new custom quests are saved as *Awaiting check* and an admin
+resolves them from **Admin → Quest Validity**.
+
+### Tests
+```bash
+npm test        # node --test — no extra dependencies
+```
+
 ---
 
 ## 5. Project Structure

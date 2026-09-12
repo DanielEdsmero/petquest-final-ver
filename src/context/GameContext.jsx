@@ -315,14 +315,61 @@ export function GameProvider({ children }) {
   }, [])
 
   /* ── tasks ── */
-  const addTask = useCallback(async (text, difficulty = 'easy', plannedCompletionDate = null) => {
-    if (!text.trim()) return false
+  /* Bearer header for the Vercel functions: the server verifies the token with
+     the service client, so the user id can never be spoofed from the body. */
+  const authHeaders = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
+  }, [])
+
+  /* POST to the quest-validity endpoint. Returns { status, body } where body is
+     null when the response isn't JSON (e.g. plain `vite` dev serving index.html
+     for /api/*), or { status: 0, aborted } on a network failure / timeout. */
+  const callValidateQuest = useCallback(async (payload) => {
+    const ctl = new AbortController()
+    const to = setTimeout(() => ctl.abort(), 45000)
+    try {
+      const r = await fetch('/api/validate-quest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify(payload),
+        signal: ctl.signal,
+      })
+      const isJson = (r.headers.get('content-type') || '').includes('application/json')
+      return { status: r.status, body: isJson ? await r.json().catch(() => null) : null }
+    } catch (e) {
+      return { status: 0, body: null, aborted: e?.name === 'AbortError' }
+    } finally { clearTimeout(to) }
+  }, [authHeaders])
+
+  const upsertLocalTask = useCallback((row) => {
+    setTasks(prev => {
+      const n = prev.some(t => t.id === row.id) ? prev.map(t => t.id === row.id ? row : t) : [...prev, row]
+      lsSet('tasks', n); return n
+    })
+  }, [])
+
+  /* Create a custom quest (Phase 12).
+     Flow: client required-field validation (TaskList) → period-cap rules below →
+     server-side validation + AI validity check (/api/validate-quest) → the
+     server saves ONLY on accept (or as pending_ai_review when the AI is down).
+     Resolves to { ok, decision, reason, recommendedEvidenceType, task }:
+       accept  → ok:true,  quest added, completable
+       pending → ok:true,  quest added as "Awaiting check" (not completable yet)
+       clarify / reject / invalid / rate_limited / timeout → ok:false, nothing
+                 saved; the form keeps the draft so the participant can revise. */
+  const addTask = useCallback(async (text, difficulty = 'easy', plannedCompletionDate = null, opts = {}) => {
+    if (!text.trim()) return { ok: false, decision: 'invalid', reason: 'Give your quest a title.' }
+    const goal         = (opts.goal || '').trim()                                               // [research] goal statement
+    const priority     = ['P1', 'P2', 'P3'].includes(opts.priority) ? opts.priority : 'P2'     // [research] prioritization
+    const evidenceType = opts.evidenceType || 'photo'                                           // Phase 12: how "done" is shown
 
     const now = Date.now()
     const hardStart  = new Date(profile?.hard_period_start  || 0).getTime()
     const medStart   = new Date(profile?.medium_period_start || 0).getTime()
     const hardExpired = now - hardStart  >= HARD_PERIOD_MS
     const medExpired  = now - medStart   >= MEDIUM_PERIOD_MS
+    const limitHit = (msg) => { addNotification(msg, 'error'); return { ok: false, decision: 'limit', reason: msg } }
 
     if (difficulty === 'hard') {
       if (!hardExpired) {
@@ -331,8 +378,7 @@ export function GameProvider({ children }) {
           new Date(t.created_at).getTime() >= hardStart
         )
         if (hardInPeriod.length >= 1) {
-          addNotification('Hard quest limit reached! 1 per week. Resets automatically or ask an admin. 🔥', 'error')
-          return false
+          return limitHit('Hard quest limit reached! 1 per week. Resets automatically or ask an admin. 🔥')
         }
       } else {
         const newStart = new Date().toISOString()
@@ -348,8 +394,7 @@ export function GameProvider({ children }) {
           new Date(t.created_at).getTime() >= medStart
         )
         if (medInPeriod.length >= 3) {
-          addNotification('Medium quest limit reached! 3 per 3 days. Resets automatically or ask an admin. ⚡', 'error')
-          return false
+          return limitHit('Medium quest limit reached! 3 per 3 days. Resets automatically or ask an admin. ⚡')
         }
       } else {
         const newStart = new Date().toISOString()
@@ -359,32 +404,69 @@ export function GameProvider({ children }) {
     }
 
     /* Research planning input — the user's intended finish time, or null if
-       they skipped the picker. Normalised to ISO for both the optimistic row
-       and the insert. */
+       they skipped the picker. Normalised to ISO for the request + fallback. */
     const plannedISO = plannedCompletionDate
       ? new Date(plannedCompletionDate).toISOString()
       : null
 
-    const tmp = {
-      id: 'tmp_' + Date.now(),
-      user_id: profile?.id,
-      text: text.trim(),
-      difficulty,
-      completed: false,
-      created_at: new Date().toISOString(),
-      started_at: new Date().toISOString(),
-      completed_at: null,
-      planned_completion_date: plannedISO,
-      completion_duration_minutes: null,
-      is_procrastinated: false,
+    const payload = {
+      text: text.trim(), goal, priority, difficulty,
+      evidence_type: evidenceType, planned_completion_date: plannedISO,
     }
-    setTasks(prev => { const n = [...prev, tmp]; lsSet('tasks', n); return n })
-    const { data } = await supabase.from('tasks')
-      .insert({ user_id: profile?.id, text: text.trim(), difficulty, planned_completion_date: plannedISO })
+    const res = await callValidateQuest(payload)
+    const b = res.body
+
+    if (b && res.status === 200 && b.decision) {
+      if (b.task) upsertLocalTask(b.task)
+      return {
+        ok: b.decision === 'accept' || b.decision === 'pending',
+        decision: b.decision, reason: b.reason || '',
+        score: b.validity_score ?? null,
+        recommendedEvidenceType: b.recommended_evidence_type || null,
+        task: b.task || null,
+      }
+    }
+    if (b && res.status === 400) return { ok: false, decision: 'invalid', field: b.field, reason: b.message || 'Please check the quest details.' }
+    if (b && res.status === 429) return { ok: false, decision: 'rate_limited', reason: b.message || 'Please wait a moment before checking another quest.' }
+    if (b && res.status === 401) return { ok: false, decision: 'unauthenticated', reason: 'Your session expired — please sign in again.' }
+    if (b && (res.status === 503 || res.status === 500) && b.message) return { ok: false, decision: 'unavailable', reason: b.message }
+    if (res.aborted) {
+      // The server may still finish and save — resync rather than double-insert.
+      if (profile?.id) fetchTasks(profile.id)
+      return { ok: false, decision: 'timeout', reason: 'The quest check is taking longer than expected. Check your quest log in a moment before trying again.' }
+    }
+
+    /* Endpoint unreachable (offline, local `vite` dev without /api, deploy
+       hiccup): save directly. The database trigger forces a browser insert to
+       pending_ai_review — never accepted — so nothing is silently approved. */
+    const { data, error } = await supabase.from('tasks')
+      .insert({ user_id: profile?.id, text: text.trim(), difficulty, planned_completion_date: plannedISO, goal, priority, evidence_type: evidenceType })
       .select().single()
-    if (data) setTasks(prev => { const n = prev.map(t => t.id === tmp.id ? data : t); lsSet('tasks', n); return n })
-    return true
-  }, [profile, tasks, addNotification])
+    if (error || !data) {
+      const reason = 'Could not save your quest right now. Please check your connection and try again.'
+      addNotification(reason, 'error')
+      return { ok: false, decision: 'unavailable', reason }
+    }
+    upsertLocalTask(data)
+    return {
+      ok: true, decision: 'pending', task: data,
+      reason: 'We couldn’t run the quest check right now. Your quest is saved and will be checked shortly — you can complete it once it’s accepted.',
+    }
+  }, [profile, tasks, addNotification, callValidateQuest, upsertLocalTask])
+
+  /* Re-run the validity check for a saved quest that is still awaiting one
+     (or was sent back). Owner-only from here; admins use the same endpoint. */
+  const recheckQuest = useCallback(async (taskId) => {
+    const res = await callValidateQuest({ task_id: taskId })
+    const b = res.body
+    if (b && res.status === 200 && b.decision) {
+      if (b.task) upsertLocalTask(b.task)
+      return { ok: b.decision === 'accept', decision: b.decision, reason: b.reason || '', recommendedEvidenceType: b.recommended_evidence_type || null }
+    }
+    if (b && res.status === 429) return { ok: false, decision: 'rate_limited', reason: b.message || 'Please wait a moment before checking again.' }
+    if (b && res.status === 409) return { ok: false, decision: 'not_recheckable', reason: 'This quest no longer needs a check.' }
+    return { ok: false, decision: 'unavailable', reason: 'The quest check is unavailable right now. Please try again later.' }
+  }, [callValidateQuest, upsertLocalTask])
 
   /* Apply a confirmed server completion to local state. Shared by the direct
      path and the offline-queue flush, so the two can never drift. `silent`
@@ -744,7 +826,7 @@ export function GameProvider({ children }) {
       user: profile, login, register, logout,
       selectedPet, selectPet, reserveHatch, commitHatch, markOnboardingComplete,
       petStats,
-      tasks, addTask, completeTask, submitCompletion, finalizeVerification, cancelVerification, deleteTask,
+      tasks, addTask, recheckQuest, completeTask, submitCompletion, finalizeVerification, cancelVerification, deleteTask,
       progressLogs, addProgressLog, bulkAddPresets,
       points, spendPoints,
       feedPet, showerPet, playWithPet,
