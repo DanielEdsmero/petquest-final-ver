@@ -27,7 +27,7 @@ export const RECHECKABLE = ['pending_ai_review', 'needs_clarification', 'rejecte
 
 export const LIMITS = {
   title: { min: 3, max: 80 },     // matches the input's maxLength
-  goal:  { min: 10, max: 140 },
+  goal:  { max: 140 },              // optional
   reason: 300, adminReason: 1000, summary: 200, flags: 8,
   pastPlanGraceMs: 10 * 60 * 1000,
   recentTasks: 40,
@@ -64,8 +64,8 @@ const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 
 /* ── 1. Server-side validation of what the browser sent ──
    Mirrors (and is the authority for) the client-side required-field rules:
-   title, goal statement, priority P1/P2/P3, difficulty, evidence type, and a
-   planned finish date for Medium and Hard quests. */
+   title, difficulty, evidence type, and a planned finish date for Medium and
+   Hard quests. Goal statement / priority are optional extras. */
 export function validateQuestInput(body = {}) {
   const fail = (field, message) => ({ ok: false, field, message })
 
@@ -74,11 +74,12 @@ export function validateQuestInput(body = {}) {
   if (text.length > LIMITS.title.max) return fail('text', `Keep the title under ${LIMITS.title.max} characters.`)
   if (!/[a-z]/i.test(text)) return fail('text', 'The title needs some words, not just symbols.')
 
+  // Goal statement and priority are optional (the form no longer collects
+  // them); when present they are still bounded and passed to the AI.
   const goal = str(body.goal, 500)
-  if (goal.length < LIMITS.goal.min) return fail('goal', 'Add a goal statement — what does “done” look like? (at least 10 characters)')
   if (goal.length > LIMITS.goal.max) return fail('goal', `Keep the goal under ${LIMITS.goal.max} characters.`)
 
-  const priority = String(body.priority || '')
+  const priority = body.priority == null || body.priority === '' ? 'P2' : String(body.priority)
   if (!PRIORITIES.includes(priority)) return fail('priority', 'Choose a priority: P1, P2 or P3.')
 
   const difficulty = String(body.difficulty || '')
@@ -99,7 +100,7 @@ export function validateQuestInput(body = {}) {
     return fail('planned_completion_date', `${difficulty === 'hard' ? 'Hard' : 'Medium'} quests need a planned finish date.`)
   }
 
-  return { ok: true, quest: { text, goal, priority, difficulty, evidence_type, planned_completion_date: planned } }
+  return { ok: true, quest: { text, goal: goal || null, priority, difficulty, evidence_type, planned_completion_date: planned } }
 }
 
 /* ── 2. Validate the model's JSON (untrusted) ──
@@ -169,7 +170,7 @@ export function buildPrompt(quest, { recent = [], createdLast24h = 0 } = {}) {
     '',
     'QUEST',
     `- Title: "${quest.text}"`,
-    `- Goal statement (what "done" looks like): "${quest.goal}"`,
+    `- Goal statement (what "done" looks like): ${quest.goal ? `"${quest.goal}"` : 'not provided'}`,
     `- Requested difficulty: ${DIFF_DESC[quest.difficulty]}`,
     `- Priority: ${quest.priority}`,
     `- Evidence the participant will provide on completion: ${quest.evidence_type} — ${EVIDENCE_DESC[quest.evidence_type]}`,
@@ -183,7 +184,7 @@ export function buildPrompt(quest, { recent = [], createdLast24h = 0 } = {}) {
     '1. Is the task specific and understandable?',
     '2. Is it a meaningful activity rather than a trivial action (e.g. "open a book", "click complete", "breathe")?',
     '3. Is it relevant to task management — studying, fitness, chores, work, personal projects, habits?',
-    '4. Are the title and the goal statement consistent with each other?',
+    '4. If a goal statement is provided, is it consistent with the title? (Skip if not provided — do not penalise its absence.)',
     '5. Is the requested difficulty reasonable for the described effort?',
     '6. Could completion reasonably be verified with the chosen evidence type? If a different type would work better, recommend it.',
     '7. Is it a duplicate or near-duplicate of an ACTIVE recent quest? (Repeating a completed daily quest on a new day is fine.)',
@@ -268,7 +269,7 @@ export function createQuestValidityHandler({ createClient, fetchImpl = fetch, en
       existing = row
       targetUid = row.user_id
       quest = {
-        text: row.text, goal: row.goal || '', priority: row.priority || 'P2', difficulty: row.difficulty,
+        text: row.text, goal: row.goal || null, priority: row.priority || 'P2', difficulty: row.difficulty,
         evidence_type: row.evidence_type || 'photo', planned_completion_date: row.planned_completion_date,
       }
     } else {

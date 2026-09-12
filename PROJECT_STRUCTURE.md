@@ -70,7 +70,7 @@ and the award/verification RPCs (`complete_task`, `submit_completion`,
 ### `src/components/` — reusable UI
 | Path | Used for |
 |------|----------|
-| `TaskList.jsx` | Quest log: difficulty tabs, the quest form (title, goal, priority, evidence type, planned date), the Phase 12 validity check flow (loader + result panel + revise/re-check), cooldown/period display, opens the verification modal. |
+| `TaskList.jsx` | Quest log: difficulty tabs, the quest form (title, evidence type, planned date), the Phase 12 validity check flow (loader + result panel + revise/re-check), cooldown/period display, opens the verification modal. |
 | `VerificationModal.jsx` | Photo-proof capture (camera + upload), blank-frame block, progress-log, Gilded Waypoints stepper, verdict screen. |
 | `PetAvatar.jsx` | Renders the companion (glow/aura/accessories) — draws the sprite via `PetSprite`. |
 | `PetSprite.jsx` | Resolves + renders the stage sprite (`image-rendering: pixelated`), emoji fallback. |

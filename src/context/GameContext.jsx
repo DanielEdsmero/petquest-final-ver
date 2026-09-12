@@ -350,7 +350,8 @@ export function GameProvider({ children }) {
   }, [])
 
   /* Create a custom quest (Phase 12).
-     Flow: client required-field validation (TaskList) → period-cap rules below →
+     Flow: client required-field validation (TaskList: title, evidence type,
+     planned date on Medium/Hard) → period-cap rules below →
      server-side validation + AI validity check (/api/validate-quest) → the
      server saves ONLY on accept (or as pending_ai_review when the AI is down).
      Resolves to { ok, decision, reason, recommendedEvidenceType, task }:
@@ -360,8 +361,8 @@ export function GameProvider({ children }) {
                  saved; the form keeps the draft so the participant can revise. */
   const addTask = useCallback(async (text, difficulty = 'easy', plannedCompletionDate = null, opts = {}) => {
     if (!text.trim()) return { ok: false, decision: 'invalid', reason: 'Give your quest a title.' }
-    const goal         = (opts.goal || '').trim()                                               // [research] goal statement
-    const priority     = ['P1', 'P2', 'P3'].includes(opts.priority) ? opts.priority : 'P2'     // [research] prioritization
+    const goal         = (opts.goal || '').trim() || null                                       // optional goal statement
+    const priority     = ['P1', 'P2', 'P3'].includes(opts.priority) ? opts.priority : 'P2'     // defaults to P2
     const evidenceType = opts.evidenceType || 'photo'                                           // Phase 12: how "done" is shown
 
     const now = Date.now()

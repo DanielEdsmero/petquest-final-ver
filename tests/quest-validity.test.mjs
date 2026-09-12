@@ -123,30 +123,34 @@ describe('3. duplicate and point-farming tasks are flagged', () => {
   })
 })
 
-describe('4. normal validation still blocks a missing goal', () => {
-  test('server: 400 on missing goal, AI never called', async () => {
+describe('4. normal validation still blocks a missing / invalid title', () => {
+  test('server: 400 on missing title, AI never called', async () => {
     const fetchImpl = geminiFetch(AI_ACCEPT)
     const { call, writes } = setup({ fetchImpl })
-    const res = await call({ ...VALID, goal: '' })
+    const res = await call({ ...VALID, text: '' })
     assert.equal(res.statusCode, 400)
     assert.equal(res.body.error, 'validation')
-    assert.equal(res.body.field, 'goal')
+    assert.equal(res.body.field, 'text')
     assert.equal(fetchImpl.calls.length, 0)
     assert.equal(writes.length, 0)
   })
-  test('pure validator: title / goal / priority / evidence rules', () => {
+  test('pure validator: title / evidence / difficulty rules; goal + priority optional', () => {
     assert.equal(validateQuestInput({ ...VALID, text: 'ab' }).field, 'text')
-    assert.equal(validateQuestInput({ ...VALID, goal: 'too short' }).field, 'goal')
+    assert.equal(validateQuestInput({ ...VALID, goal: 'x'.repeat(200) }).field, 'goal')
     assert.equal(validateQuestInput({ ...VALID, priority: 'P9' }).field, 'priority')
     assert.equal(validateQuestInput({ ...VALID, evidence_type: 'selfie' }).field, 'evidence_type')
     assert.equal(validateQuestInput({ ...VALID, difficulty: 'boss' }).field, 'difficulty')
     assert.equal(validateQuestInput(VALID).ok, true)
+    const bare = validateQuestInput({ ...VALID, goal: undefined, priority: undefined })
+    assert.equal(bare.ok, true)
+    assert.equal(bare.quest.goal, null)
+    assert.equal(bare.quest.priority, 'P2')
   })
-  test('client keeps the same gate (goal ≥ 10 chars, planned date on Medium/Hard)', () => {
+  test('client keeps the same gate (planned date on Medium/Hard; no goal/priority inputs)', () => {
     const src = read('src/components/TaskList.jsx')
-    assert.match(src, /const goalOk = goal\.trim\(\)\.length >= 10/)
     assert.match(src, /const needsPlan = activeDiff !== 'easy'/)
     assert.match(src, /const planOk = !needsPlan \|\| !!plannedDate/)
+    assert.doesNotMatch(src, /setGoal|setPriority|PRIORITIES/)
   })
 })
 

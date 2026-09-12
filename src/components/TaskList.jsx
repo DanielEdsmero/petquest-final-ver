@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trash2, Plus, Circle, BookOpen, Clock, ChevronUp, CalendarClock, RefreshCw, PencilLine, ShieldCheck, Target } from 'lucide-react'
+import { Trash2, Plus, Circle, BookOpen, Clock, ChevronUp, CalendarClock, RefreshCw, PencilLine, ShieldCheck } from 'lucide-react'
 import { useGame, HARD_PERIOD_MS, MEDIUM_PERIOD_MS, DIFF_MIN_COMPLETE_MS, DIFF_POINTS } from '../context/GameContext'
 import CompletionFx from './animations/CompletionFx'
 import CheckDraw from './animations/CheckDraw'
@@ -9,7 +9,7 @@ import { MascotLoaderCompact } from './animations/MascotLoader'
 import VerificationModal from './VerificationModal'
 import { DIFFICULTY_COLORS } from '../data/difficulty'
 import {
-  EVIDENCE_TYPES, evidenceMeta, PRIORITIES, VALIDITY_META, isQuestEligible, CHECK_STEPS, CHECK_EXPLAINER,
+  EVIDENCE_TYPES, evidenceMeta, VALIDITY_META, isQuestEligible, CHECK_STEPS, CHECK_EXPLAINER,
 } from '../data/questValidity'
 
 const DIFF_CONFIG = {
@@ -133,7 +133,6 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, onRevise, onRecheck
   const eligible = isQuestEligible(task)
   const validity = !task.completed && !eligible ? VALIDITY_META[task.validity_status] : null
   const ready = !task.completed && !pending && !verifying && !gated && eligible && stage === 'idle'
-  const pri = PRIORITIES.find(p => p.id === task.priority)
   const evidence = task.evidence_type ? evidenceMeta(task.evidence_type) : null
 
   const handleRecheck = async () => {
@@ -186,12 +185,6 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, onRevise, onRecheck
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            {pri && pri.id !== 'P2' && (
-              <span className="text-[9px] font-nunito font-black px-1 py-0.5 rounded flex-shrink-0"
-                style={{ background: pri.color + '22', color: pri.color }} title={`Priority ${pri.id} · ${pri.label}`}>
-                {pri.id}
-              </span>
-            )}
             <span
               className={`text-sm font-nunito font-medium truncate ${task.completed ? 'line-through' : ''}`}
               style={{ color: task.completed ? '#5050aa' : '#c0c0e0' }}
@@ -351,8 +344,6 @@ export default function TaskList() {
   const [activeDiff, setActiveDiff] = useState('easy')
   const [input, setInput] = useState('')
   const [plannedDate, setPlannedDate] = useState('')  // research: intended finish, required for medium/hard
-  const [goal, setGoal] = useState('')                // research: goal statement (what does "done" look like?)
-  const [priority, setPriority] = useState('P2')       // research: prioritization P1/P2/P3
   const [evidenceType, setEvidenceType] = useState('photo')  // Phase 12: how completion will be shown
   const [revisingId, setRevisingId] = useState(null)   // a saved quest being revised → deleted once the new one is accepted
   /* Phase 12 check state: null | { step } while checking; result = the last
@@ -416,14 +407,12 @@ export default function TaskList() {
     (activeDiff === 'hard'   && hardLeft > 0 && hardSlots >= 1) ||
     (activeDiff === 'medium' && medLeft  > 0 && medSlots  >= 3)
 
-  /* Required research inputs (client-side gate; the server re-validates):
-     a goal statement on every quest, a planned finish date on Medium/Hard,
-     a priority and an evidence type. Easy quests keep the date optional. */
+  /* Required inputs (client-side gate; the server re-validates): a planned
+     finish date on Medium/Hard and an evidence type. Easy keeps the date optional. */
   const needsPlan = activeDiff !== 'easy'
-  const goalOk = goal.trim().length >= 10
   const planOk = !needsPlan || !!plannedDate
-  const showDetails = !!input.trim() || !!goal || !!plannedDate || !!revisingId
-  const canAdd = !!input.trim() && goalOk && planOk && !atLimit && !checking
+  const showDetails = !!input.trim() || !!plannedDate || !!revisingId
+  const canAdd = !!input.trim() && planOk && !atLimit && !checking
 
   /* Advance the loading label on a gentle timer while the single server call is
      in flight; the final "Saving" step is set when the response lands. */
@@ -434,16 +423,15 @@ export default function TaskList() {
   }, [checking])
 
   const resetForm = () => {
-    setInput(''); setPlannedDate(''); setGoal(''); setPriority('P2'); setEvidenceType('photo'); setRevisingId(null)
+    setInput(''); setPlannedDate(''); setEvidenceType('photo'); setRevisingId(null)
   }
 
   const handleAdd = async () => {
     if (!input.trim() || checking) return
-    if (!goalOk) { addNotification('Add a goal statement — what does “done” look like? (at least 10 characters)', 'error'); return }
     if (!planOk) { addNotification(`${cfg.label} quests need a planned finish date.`, 'error'); return }
     setCheckResult(null)
     setChecking({ step: 0 })
-    const res = await addTask(input, activeDiff, plannedDate || null, { goal, priority, evidenceType })
+    const res = await addTask(input, activeDiff, plannedDate || null, { evidenceType })
     if (res.ok) {   // something was saved → show the last step briefly
       setChecking({ step: CHECK_STEPS.length - 1 })
       await new Promise(r => setTimeout(r, 400))
@@ -481,8 +469,6 @@ export default function TaskList() {
   const handleRevise = (task) => {
     setActiveDiff(task.difficulty || 'easy')
     setInput(task.text || '')
-    setGoal(task.goal || '')
-    setPriority(['P1', 'P2', 'P3'].includes(task.priority) ? task.priority : 'P2')
     setEvidenceType(task.evidence_type || 'photo')
     setPlannedDate(task.planned_completion_date ? toLocalInput(task.planned_completion_date) : '')
     setRevisingId(task.id)
@@ -643,7 +629,7 @@ export default function TaskList() {
           onClick={handleAdd}
           whileTap={{ scale: 0.95 }}
           disabled={!canAdd}
-          title={!input.trim() ? 'Type a quest title' : !goalOk ? 'Add a goal statement (10+ characters)' : !planOk ? 'Pick a planned finish date' : revisingId ? 'Check the revised quest' : 'Check & add quest'}
+          title={!input.trim() ? 'Type a quest title' : !planOk ? 'Pick a planned finish date' : revisingId ? 'Check the revised quest' : 'Check & add quest'}
         >
           <Plus size={16} />
           {revisingId ? 'Re-check' : 'Add'}
@@ -651,8 +637,8 @@ export default function TaskList() {
       </div>
 
       {/* Quest details — revealed once a title is being typed so the empty form
-          stays uncluttered. Goal + priority + evidence are research inputs the
-          validity check reads; the planned date is required on Medium/Hard. */}
+          stays uncluttered. The evidence type feeds the validity check; the
+          planned date is required on Medium/Hard. */}
       <AnimatePresence initial={false}>
         {showDetails && (
           <motion.div
@@ -669,42 +655,9 @@ export default function TaskList() {
               </div>
             )}
 
-            {/* Goal statement (goal-setting construct) — required on every quest. */}
-            <div className="flex items-center gap-2 mb-2 px-1">
-              <Target size={13} style={{ color: goalOk ? '#4ade80' : 'var(--text-muted)', flexShrink: 0 }} />
-              <input
-                type="text"
-                className="input-field text-xs py-1.5 flex-1"
-                placeholder="Goal — what does “done” look like? (e.g. all 10 problems solved & checked)"
-                value={goal}
-                onChange={e => setGoal(e.target.value)}
-                onKeyDown={handleKeyDown}
-                maxLength={140}
-                disabled={atLimit}
-                aria-label="Goal statement"
-              />
-              <span className="text-[10px] font-nunito flex-shrink-0 w-10 text-right"
-                style={{ color: goalOk ? '#4ade80' : 'var(--text-muted)' }}>
-                {goal.trim().length < 10 ? `${goal.trim().length}/10` : '✓'}
-              </span>
-            </div>
-
-            {/* Priority (prioritization construct) + evidence type (verifiability). */}
+            {/* Evidence type (verifiability) — how "done" will be shown. */}
             <div className="flex flex-wrap items-center gap-2 mb-2 px-1">
-              <span className="text-xs font-nunito flex-shrink-0" style={{ color: 'var(--text-muted)' }}>Priority</span>
-              {PRIORITIES.map(p => (
-                <button key={p.id} type="button" onClick={() => setPriority(p.id)}
-                  className="text-xs font-nunito font-bold px-2 py-1 rounded-lg"
-                  style={{
-                    background: priority === p.id ? p.color + '22' : 'rgba(19,19,58,0.5)',
-                    color: priority === p.id ? p.color : '#8080aa',
-                    border: `1px solid ${priority === p.id ? p.color + '66' : 'rgba(124,58,237,0.15)'}`,
-                  }}
-                  title={p.label} aria-pressed={priority === p.id}>
-                  {p.id}
-                </button>
-              ))}
-              <label htmlFor="evidence-type" className="text-xs font-nunito flex-shrink-0 ml-auto" style={{ color: 'var(--text-muted)' }}>
+              <label htmlFor="evidence-type" className="text-xs font-nunito flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
                 Evidence
               </label>
               <select
@@ -721,7 +674,7 @@ export default function TaskList() {
                 ))}
               </select>
             </div>
-            <p className="text-[10px] font-nunito mb-2 px-1 text-right" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-[10px] font-nunito mb-2 px-1" style={{ color: 'var(--text-muted)' }}>
               {evidenceMeta(evidenceType).desc}
             </p>
 
