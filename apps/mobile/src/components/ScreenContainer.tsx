@@ -1,10 +1,11 @@
-import { type ReactNode } from 'react';
+import { type ReactElement, type ReactNode } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
   View,
+  type RefreshControlProps,
   type ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,6 +29,12 @@ type Props = {
    * tab bar, so adding the inset again would double-pad.
    */
   insetBottom?: boolean;
+  /**
+   * Pull-to-refresh for the container's own ScrollView. Passing it here rather
+   * than having a screen build its own ScrollView keeps the safe-area and
+   * keyboard handling in exactly one place.
+   */
+  refreshControl?: ReactElement<RefreshControlProps>;
   contentStyle?: ViewStyle;
 };
 
@@ -47,6 +54,7 @@ export default function ScreenContainer({
   center = false,
   insetTop = true,
   insetBottom = true,
+  refreshControl,
   contentStyle,
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -74,6 +82,7 @@ export default function ScreenContainer({
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
+          refreshControl={refreshControl}
         >
           {inner}
         </ScrollView>

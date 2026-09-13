@@ -1,84 +1,162 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback } from 'react';
+import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/auth/AuthProvider';
 import ScreenContainer from '@/components/ScreenContainer';
-import { Card, LoadingState, PhaseNotice } from '@/components/states';
-import { Colors, FontSize, PetAccents, Radius, Spacing } from '@/theme';
-
-const MASCOT = require('@/assets/images/splash-icon.png');
+import { ErrorState } from '@/components/states';
+import { evolutionProgress, PET_CATALOG, petIdOf, stageName } from '@/data/petModel';
+import { spriteFor } from '@/data/petSprites';
+import { summariseTasks } from '@/data/taskModel';
+import { fetchTasks } from '@/data/tasks';
+import { useAsyncData } from '@/lib/useAsyncData';
+import { Colors, FontSize, Radius, Spacing } from '@/theme';
 
 /**
- * Home tab — the structural shell of the dashboard.
+ * Home — the live dashboard (Phase 4A).
  *
- * Phase 3 wires navigation only. The live figures (points, streak, quest
- * counts, the real companion and its evolution stage) come from Supabase in
- * Phase 4A; the placeholders below show a dash rather than a plausible-looking
- * number, so nothing here can be mistaken for real research data.
+ * Every figure comes from Supabase: points and streak from the `profiles` row
+ * the auth provider already holds, quest counts derived from the participant's
+ * own `tasks`. Nothing is hardcoded and nothing is estimated — a value that has
+ * not loaded shows as a dash rather than a zero, because "0 points" and "not
+ * loaded yet" mean very different things in a study.
+ *
+ * Pull-to-refresh goes through ScreenContainer's `refreshControl` prop rather
+ * than a second ScrollView, so the safe-area and keyboard handling stay in one
+ * place.
  */
 export default function HomeTab() {
-  const { profile, profileLoading } = useAuth();
+  const { session, profile, refreshProfile } = useAuth();
   const router = useRouter();
+  const userId = session?.user?.id ?? null;
 
-  const greeting = profile?.username ? `Welcome back, ${profile.username}` : 'Welcome back';
+  const tasks = useAsyncData(
+    useCallback(
+      () => (userId ? fetchTasks(userId) : Promise.resolve({ data: [], error: null })),
+      [userId],
+    ),
+    { enabled: !!userId },
+  );
+
+  const onRefresh = useCallback(async () => {
+    await Promise.all([refreshProfile(), tasks.refresh()]);
+  }, [refreshProfile, tasks]);
+
+  const summary = summariseTasks(tasks.data);
+  const petId = petIdOf(profile?.selected_pet_id);
+  const totalEarned = profile?.total_points_earned ?? null;
+  const progress = evolutionProgress(totalEarned);
+  // The server's stored level wins; the local computation is only a fallback
+  // for a profile row that predates the column.
+  const level = profile?.pet_level ?? progress.level;
+  const sprite = spriteFor(profile?.selected_pet_id, level);
+  const accent = petId ? PET_CATALOG[petId].accent : Colors.arcane;
 
   return (
-    <ScreenContainer insetBottom={false}>
-      <Text style={styles.greeting} numberOfLines={2}>
-        {greeting}
-      </Text>
+    <ScreenContainer
+      insetBottom={false}
+      refreshControl={
+        <RefreshControl refreshing={tasks.refreshing} onRefresh={onRefresh} tintColor={Colors.gold} />
+      }
+    >
+      <View>
+        <Text style={styles.greeting} numberOfLines={2}>
+          {profile?.username ? `Welcome back, ${profile.username}` : 'Welcome back'}
+        </Text>
 
-      <View style={styles.heroCard}>
-        <View style={styles.hero}>
-          <View style={styles.glow} />
-          <Image
-            source={MASCOT}
-            style={styles.mascot}
-            contentFit="contain"
-            allowDownscaling={false}
-            accessibilityLabel="Your companion"
+        {/* Companion */}
+        <View style={styles.heroCard}>
+          <View style={styles.hero}>
+            <View style={[styles.glow, { backgroundColor: accent }]} />
+            {sprite ? (
+              <Image
+                source={sprite}
+                style={styles.mascot}
+                contentFit="contain"
+                allowDownscaling={false}
+                transition={200}
+                accessibilityLabel={petId ? PET_CATALOG[petId].species : 'Your companion'}
+              />
+            ) : (
+              <Text style={styles.noPet}>🥚</Text>
+            )}
+          </View>
+
+          {petId ? (
+            <>
+              <Text style={styles.petName}>{PET_CATALOG[petId].name}</Text>
+              <Text style={styles.petStage}>
+                {PET_CATALOG[petId].species} · {stageName(level)}
+              </Text>
+
+              {progress.nextAt != null && totalEarned != null ? (
+                <View style={styles.progressWrap}>
+                  <View style={styles.progressTrack}>
+                    <View
+                      style={[styles.progressFill, { width: `${Math.round(progress.fraction * 100)}%` }]}
+                    />
+                  </View>
+                  <Text style={styles.progressLabel}>
+                    {progress.remaining} points to {stageName(level + 1)}
+                  </Text>
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <Text style={styles.petName}>No companion yet</Text>
+              <Text style={styles.petStage}>Hatch your egg on the PetQuest website</Text>
+            </>
+          )}
+        </View>
+
+        {/* Progression — server-authoritative values only */}
+        <View style={styles.statRow}>
+          <Stat icon="star" label="Points" value={fmt(profile?.points)} tint={Colors.gold} />
+          <Stat icon="flame" label="Streak" value={fmtStreak(profile?.current_streak)} tint={Colors.rose} />
+          <Stat
+            icon="checkmark-done"
+            label="Done"
+            value={tasks.loading ? '—' : String(summary.completed)}
+            tint={Colors.green}
           />
         </View>
-        {profileLoading && !profile ? (
-          <LoadingState label="Loading your companion…" />
+
+        {/* Quest summary */}
+        {tasks.error ? (
+          <View style={styles.card}>
+            <ErrorState body={tasks.error} onRetry={tasks.refetch} />
+          </View>
         ) : (
-          <>
-            <Text style={styles.petName}>{profile?.selected_pet_id ?? 'No companion yet'}</Text>
-            <Text style={styles.petStage}>
-              {profile?.pet_level ? `Level ${profile.pet_level}` : 'Not hatched'}
-            </Text>
-          </>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Your quests</Text>
+            <SummaryRow label="Active" value={tasks.loading ? '—' : String(summary.active)} />
+            <SummaryRow label="Completed" value={tasks.loading ? '—' : String(summary.completed)} />
+            {summary.awaitingCheck > 0 && (
+              <SummaryRow label="Awaiting check" value={String(summary.awaitingCheck)} tint="#22d3ee" />
+            )}
+            {summary.needsAttention > 0 && (
+              <SummaryRow label="Needs changes" value={String(summary.needsAttention)} tint={Colors.gold} />
+            )}
+          </View>
         )}
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Quick actions</Text>
+          <Action icon="add-circle-outline" label="Create a quest" onPress={() => router.push('/quest/create')} />
+          <Action icon="list-outline" label="View your quest log" onPress={() => router.push('/quests')} />
+        </View>
       </View>
-
-      <View style={styles.statRow}>
-        <Stat icon="star" label="Points" value="—" tint={Colors.gold} />
-        <Stat icon="flame" label="Streak" value="—" tint={Colors.rose} />
-        <Stat icon="checkmark-done" label="Done" value="—" tint={Colors.green} />
-      </View>
-
-      <Card title="Quick actions">
-        <Action
-          icon="add-circle-outline"
-          label="Create a quest"
-          onPress={() => router.push('/quest/create')}
-        />
-        <Action
-          icon="list-outline"
-          label="View your quest log"
-          onPress={() => router.push('/quests')}
-        />
-      </Card>
-
-      <PhaseNotice
-        phase="Phase 4A"
-        items={['Live points, streak and quest counts', 'Your real companion and evolution stage', 'Pet care actions']}
-      />
     </ScreenContainer>
   );
 }
+
+/** A number we have, or a dash we do not — never a placeholder zero. */
+const fmt = (n: number | null | undefined) => (typeof n === 'number' ? n.toLocaleString() : '—');
+const fmtStreak = (n: number | null | undefined) =>
+  typeof n === 'number' ? `${n}d` : '—';
 
 function Stat({
   icon,
@@ -94,8 +172,19 @@ function Stat({
   return (
     <View style={styles.stat} accessibilityLabel={`${label}: ${value}`}>
       <Ionicons name={icon} size={16} color={tint} />
-      <Text style={[styles.statValue, { color: tint }]}>{value}</Text>
+      <Text style={[styles.statValue, { color: tint }]} numberOfLines={1} adjustsFontSizeToFit>
+        {value}
+      </Text>
       <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function SummaryRow({ label, value, tint }: { label: string; value: string; tint?: string }) {
+  return (
+    <View style={styles.summaryRow}>
+      <Text style={styles.summaryLabel}>{label}</Text>
+      <Text style={[styles.summaryValue, tint ? { color: tint } : null]}>{value}</Text>
     </View>
   );
 }
@@ -138,25 +227,36 @@ const styles = StyleSheet.create({
     borderColor: Colors.cardBorder,
     alignItems: 'center',
     paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
     marginBottom: Spacing.md,
   },
-  hero: { alignItems: 'center', justifyContent: 'center', height: 120 },
+  hero: { alignItems: 'center', justifyContent: 'center', height: 132 },
   glow: {
     position: 'absolute',
-    width: 112,
-    height: 112,
+    width: 124,
+    height: 124,
     borderRadius: Radius.pill,
-    backgroundColor: PetAccents.dragon,
-    opacity: 0.13,
+    opacity: 0.14,
   },
-  mascot: { width: 104, height: 104 },
-  petName: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.md,
-    fontWeight: '700',
-    textTransform: 'capitalize',
-  },
+  mascot: { width: 124, height: 124 },
+  noPet: { fontSize: 72 },
+  petName: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' },
   petStage: { color: Colors.textMuted, fontSize: FontSize.xs, marginTop: 2 },
+
+  progressWrap: { width: '100%', marginTop: Spacing.sm },
+  progressTrack: {
+    height: 6,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.bgCard2,
+    overflow: 'hidden',
+  },
+  progressFill: { height: '100%', backgroundColor: Colors.gold, borderRadius: Radius.pill },
+  progressLabel: {
+    color: Colors.textMuted,
+    fontSize: FontSize.xs,
+    textAlign: 'center',
+    marginTop: Spacing.xs,
+  },
 
   statRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md },
   stat: {
@@ -168,9 +268,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.cardBorder,
     paddingVertical: Spacing.sm,
+    paddingHorizontal: 4,
   },
   statValue: { fontSize: FontSize.lg, fontWeight: '800' },
   statLabel: { color: Colors.textMuted, fontSize: FontSize.xs },
+
+  card: {
+    backgroundColor: Colors.cardBg,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  cardTitle: {
+    color: Colors.textMuted,
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.sm,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  summaryLabel: { color: Colors.textSoft, fontSize: FontSize.sm },
+  summaryValue: { color: Colors.textPrimary, fontSize: FontSize.sm, fontWeight: '700' },
 
   action: {
     flexDirection: 'row',

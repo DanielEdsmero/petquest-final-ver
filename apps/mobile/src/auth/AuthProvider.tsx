@@ -28,6 +28,16 @@ export type Profile = {
   role: 'user' | 'admin';
   selected_pet_id: string | null;
   pet_level: number | null;
+  /* Progression — all server-authoritative. The client never computes these;
+     `complete_task` is the only thing that moves them. */
+  points: number | null;
+  total_points_earned: number | null;
+  current_streak: number | null;
+  longest_streak: number | null;
+  game_mode: string | null;
+  /* Period anchors for the Medium / Hard quest caps. */
+  hard_period_start: string | null;
+  medium_period_start: string | null;
 };
 
 type AuthContextValue = {
@@ -44,7 +54,9 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const PROFILE_COLUMNS = 'id, username, role, selected_pet_id, pet_level';
+const PROFILE_COLUMNS =
+  'id, username, role, selected_pet_id, pet_level, points, total_points_earned, ' +
+  'current_streak, longest_streak, game_mode, hard_period_start, medium_period_start';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
@@ -84,7 +96,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(null);
       return;
     }
-    setProfile((data ?? null) as Profile | null);
+    // No generated Supabase schema types in this project, so the row shape
+    // cannot be inferred from the select string; `Profile` above is the
+    // hand-maintained mirror of PROFILE_COLUMNS.
+    setProfile((data ?? null) as unknown as Profile | null);
   }, []);
 
   /** Restore any stored session, then follow Supabase's auth events. */

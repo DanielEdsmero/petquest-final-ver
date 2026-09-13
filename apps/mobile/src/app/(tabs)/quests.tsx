@@ -1,65 +1,61 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
+import { useAuth } from '@/auth/AuthProvider';
 import ScreenContainer from '@/components/ScreenContainer';
 import { EmptyState, ErrorState, LoadingState } from '@/components/states';
-import { Colors, DifficultyColors, FontSize, Radius, Spacing } from '@/theme';
+import {
+  DIFFICULTIES,
+  DIFFICULTY_COLORS,
+  evidenceMeta,
+  isQuestEligible,
+  VALIDITY_META,
+  type Difficulty,
+} from '@/data/quests';
+import { type Task } from '@/data/taskModel';
+import { fetchTasks } from '@/data/tasks';
+import { useAsyncData } from '@/lib/useAsyncData';
+import { Colors, FontSize, Radius, Spacing } from '@/theme';
 
 /**
- * Quests tab — the list shell.
+ * Quest log (Phase 4B) — the participant's real `tasks`, filtered by difficulty.
  *
- * Built on FlatList from the start, not a mapped ScrollView: the quest log can
- * run to hundreds of rows for an active participant, and swapping the container
- * later would mean rewriting the screen. The renderer, key extractor, separator,
- * pull-to-refresh and the four states are all in place; Phase 4B replaces the
- * empty array with a Supabase query and the row with the real quest card.
+ * RLS restricts the query to the signed-in user's own rows; the `user_id`
+ * filter is for the index and for readability, not for safety.
  */
-
-type Quest = {
-  id: string;
-  text: string;
-  difficulty: keyof typeof DifficultyColors;
-  validity_status: string;
-};
-
-type ListState = 'loading' | 'ready' | 'error';
-
 export default function QuestsTab() {
+  const { session } = useAuth();
   const router = useRouter();
-  // Phase 4B swaps these for a real query. 'ready' + [] is the honest state
-  // today: nothing is fetched, so nothing can be shown.
-  const [state] = useState<ListState>('ready');
-  const [quests] = useState<Quest[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
+  const userId = session?.user?.id ?? null;
+  const [difficulty, setDifficulty] = useState<Difficulty>('easy');
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    // No query to re-run yet; end the spinner rather than leaving it stuck.
-    setRefreshing(false);
-  }, []);
+  const tasks = useAsyncData(
+    useCallback(
+      () => (userId ? fetchTasks(userId) : Promise.resolve({ data: [], error: null })),
+      [userId],
+    ),
+    { enabled: !!userId },
+  );
+
+  const visible = useMemo(() => {
+    const all = tasks.data ?? [];
+    return all.filter((t) => (t.difficulty ?? 'easy') === difficulty);
+  }, [tasks.data, difficulty]);
+
+  // Counts per tab come from the already-loaded list — no extra query.
+  const counts = useMemo(() => {
+    const all = tasks.data ?? [];
+    return {
+      easy: all.filter((t) => (t.difficulty ?? 'easy') === 'easy' && !t.completed).length,
+      medium: all.filter((t) => t.difficulty === 'medium' && !t.completed).length,
+      hard: all.filter((t) => t.difficulty === 'hard' && !t.completed).length,
+    };
+  }, [tasks.data]);
 
   const renderItem = useCallback(
-    ({ item }: { item: Quest }) => (
-      <Pressable
-        onPress={() => router.push({ pathname: '/quest/[id]', params: { id: item.id } })}
-        accessibilityRole="button"
-        accessibilityLabel={`Open quest: ${item.text}`}
-        style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-      >
-        <View
-          style={[styles.difficultyDot, { backgroundColor: DifficultyColors[item.difficulty] }]}
-        />
-        <View style={styles.rowBody}>
-          <Text style={styles.rowTitle} numberOfLines={2}>
-            {item.text}
-          </Text>
-          <Text style={styles.rowMeta}>{item.validity_status}</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
-      </Pressable>
-    ),
+    ({ item }: { item: Task }) => <QuestRow task={item} onPress={() => router.push({ pathname: '/quest/[id]', params: { id: item.id } })} />,
     [router],
   );
 
@@ -74,37 +70,62 @@ export default function QuestsTab() {
           hitSlop={8}
           style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
         >
-          <Ionicons name="add" size={20} color="#1a0d00" />
+          <Ionicons name="add" size={22} color="#1a0d00" />
         </Pressable>
       </View>
 
-      {state === 'loading' ? (
+      <View style={styles.tabs}>
+        {DIFFICULTIES.map((d) => {
+          const active = d.id === difficulty;
+          return (
+            <Pressable
+              key={d.id}
+              onPress={() => setDifficulty(d.id)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${d.label} quests, ${counts[d.id]} active`}
+              style={[
+                styles.tab,
+                {
+                  backgroundColor: active ? `${DIFFICULTY_COLORS[d.id]}22` : Colors.bgCard2,
+                  borderColor: active ? `${DIFFICULTY_COLORS[d.id]}88` : Colors.cardBorder,
+                },
+              ]}
+            >
+              <Text
+                style={[styles.tabText, { color: active ? DIFFICULTY_COLORS[d.id] : Colors.textMuted }]}
+                numberOfLines={1}
+              >
+                {d.emoji} {d.label}
+              </Text>
+              {counts[d.id] > 0 && (
+                <Text style={[styles.tabCount, { color: DIFFICULTY_COLORS[d.id] }]}>{counts[d.id]}</Text>
+              )}
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {tasks.loading ? (
         <LoadingState label="Loading your quests…" />
-      ) : state === 'error' ? (
-        <ErrorState
-          body="Your quest log could not be loaded."
-          onRetry={onRefresh}
-        />
+      ) : tasks.error ? (
+        <ErrorState body={tasks.error} onRetry={tasks.refetch} />
       ) : (
         <FlatList
-          data={quests}
+          data={visible}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
-          contentContainerStyle={quests.length === 0 ? styles.emptyContainer : styles.listContent}
+          contentContainerStyle={visible.length === 0 ? styles.emptyContainer : styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={Colors.gold}
-            />
+            <RefreshControl refreshing={tasks.refreshing} onRefresh={tasks.refresh} tintColor={Colors.gold} />
           }
           ListEmptyComponent={
             <EmptyState
               icon="reader-outline"
-              title="No quests yet"
-              body="Create your first quest and PetQuest will check that it is specific, meaningful and possible to verify."
+              title={`No ${difficulty} quests yet`}
+              body="Create one and PetQuest will check that it is specific, meaningful and possible to verify."
               actionLabel="Create a quest"
               onAction={() => router.push('/quest/create')}
             />
@@ -112,6 +133,65 @@ export default function QuestsTab() {
         />
       )}
     </ScreenContainer>
+  );
+}
+
+function QuestRow({ task, onPress }: { task: Task; onPress: () => void }) {
+  const badge = task.validity_status ? VALIDITY_META[task.validity_status] : undefined;
+  const evidence = evidenceMeta(task.evidence_type);
+  const eligible = isQuestEligible(task);
+  const planned = task.planned_completion_date ? new Date(task.planned_completion_date) : null;
+  const overdue = !task.completed && planned != null && planned.getTime() < Date.now();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Open quest: ${task.text}`}
+      style={({ pressed }) => [styles.row, pressed && styles.pressed, task.completed && styles.rowDone]}
+    >
+      <View
+        style={[
+          styles.statusDot,
+          {
+            backgroundColor: task.completed
+              ? Colors.green
+              : eligible
+                ? DIFFICULTY_COLORS[(task.difficulty ?? 'easy') as Difficulty]
+                : Colors.textMuted,
+          },
+        ]}
+      />
+
+      <View style={styles.rowBody}>
+        <Text style={[styles.rowTitle, task.completed && styles.rowTitleDone]} numberOfLines={2}>
+          {task.text}
+        </Text>
+
+        <View style={styles.metaRow}>
+          <Text style={styles.rowMeta}>
+            {evidence.emoji} {evidence.label}
+          </Text>
+          {planned && (
+            <Text style={[styles.rowMeta, overdue && styles.overdue]}>
+              {overdue ? 'Overdue' : `Due ${planned.toLocaleDateString()}`}
+            </Text>
+          )}
+        </View>
+
+        {badge && (
+          <View style={[styles.badge, { borderColor: `${badge.color}66`, backgroundColor: `${badge.color}18` }]}>
+            <Text style={[styles.badgeText, { color: badge.color }]}>{badge.label}</Text>
+          </View>
+        )}
+      </View>
+
+      {task.completed ? (
+        <Ionicons name="checkmark-circle" size={18} color={Colors.green} />
+      ) : (
+        <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+      )}
+    </Pressable>
   );
 }
 
@@ -124,13 +204,28 @@ const styles = StyleSheet.create({
   },
   title: { color: Colors.textPrimary, fontSize: FontSize.lg, fontWeight: '700' },
   addButton: {
-    width: 40,
-    height: 40,
+    width: 42,
+    height: 42,
     borderRadius: Radius.pill,
     backgroundColor: Colors.gold,
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  tabs: { flexDirection: 'row', gap: Spacing.xs, marginBottom: Spacing.md },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    minHeight: 40,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    paddingHorizontal: 4,
+  },
+  tabText: { fontSize: FontSize.xs, fontWeight: '700', flexShrink: 1 },
+  tabCount: { fontSize: FontSize.xs, fontWeight: '800' },
 
   listContent: { paddingBottom: Spacing.xl },
   emptyContainer: { flexGrow: 1 },
@@ -145,11 +240,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.cardBorder,
     padding: Spacing.md,
-    minHeight: 56,
+    minHeight: 60,
   },
-  difficultyDot: { width: 8, height: 8, borderRadius: Radius.pill },
-  rowBody: { flex: 1 },
+  rowDone: { opacity: 0.65 },
+  statusDot: { width: 8, height: 8, borderRadius: Radius.pill },
+  rowBody: { flex: 1, gap: 2 },
   rowTitle: { color: Colors.textPrimary, fontSize: FontSize.sm, fontWeight: '600' },
-  rowMeta: { color: Colors.textMuted, fontSize: FontSize.xs, marginTop: 2 },
+  rowTitleDone: { textDecorationLine: 'line-through', color: Colors.textMuted },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  rowMeta: { color: Colors.textMuted, fontSize: FontSize.xs },
+  overdue: { color: Colors.rose, fontWeight: '700' },
+
+  badge: {
+    alignSelf: 'flex-start',
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 2,
+  },
+  badgeText: { fontSize: FontSize.xs, fontWeight: '700' },
+
   pressed: { opacity: 0.8 },
 });

@@ -543,3 +543,176 @@ git checkout main && git branch -D mobile-expo-migration
 - [ ] Pull-to-refresh on the quest log spins and stops
 - [ ] Sign out from Profile still returns to login
 - [ ] Nothing scrolls sideways on the smallest device you have
+
+---
+
+## Phase 4A/4B — Dashboard, quest list and quest creation
+
+| | |
+|---|---|
+| **Branch** | `mobile-expo-migration` |
+| **Commit** | `git log --oneline --grep='mobile phase 4a/4b'` |
+| **Date** | 2026-09-13 |
+| **Status** | ✅ Complete on the dev machine — **on-device verification is user-required**. Phase 4C–4F not started. |
+
+Phase 3 was confirmed on a physical iPhone before this phase began.
+
+Phase 4 was split deliberately: **4A (dashboard) and 4B (quest list + creation)**
+are done and reviewable. 4C (quest detail + completion), 4D (evidence), 4E
+(verification progress) and 4F (pet) follow after review, because 4C onwards
+touch the award path and deserve their own pass.
+
+### ⚠️ One decision that changes what the study collects
+
+The Phase 4 brief asks the create form to collect a **goal statement** and a
+**P1/P2/P3 priority**. The mobile form does **not**, because the web form does
+not any more: they were removed in commit `fdf694d` ("Remove goal statement +
+priority inputs from the quest form") and are optional server-side.
+
+Collecting them on mobile would mean the two clients gather **different fields
+for the same study**, which is worse than either choice on its own. The columns
+still exist and the endpoint still accepts them, so adding them back is additive
+and non-breaking — **but it should be done on both clients at once.** Say the
+word and I will add them to web and mobile together.
+
+### Files added
+
+| Path | Purpose |
+|---|---|
+| `src/data/petModel.ts` | Evolution stages, thresholds, progress — **no imports**, so it is unit-testable |
+| `src/data/petSprites.ts` | The literal `require()` sprite table + `spriteFor()` |
+| `src/data/quests.ts` | Difficulties, evidence types, validity badges, period caps, draft validation |
+| `src/data/taskModel.ts` | The `Task` row shape + `summariseTasks()` — pure |
+| `src/data/tasks.ts` | Supabase reads over `tasks` |
+| `src/lib/questApi.ts` | `POST /api/validate-quest` with the bearer token |
+| `src/lib/useAsyncData.ts` | Loading / error / refetch-on-focus helper |
+| `assets/pets/*.png` | The 12 evolution sprites |
+| `tests/quests.test.ts` | 34 tests, including the parity block |
+
+Changed: `(tabs)/index.tsx` (live dashboard), `(tabs)/quests.tsx` (live log),
+`quest/create.tsx` (the real form), `ScreenContainer.tsx` (`refreshControl`
+prop), `AuthProvider.tsx` (progression columns).
+
+### Copied from the web app — the running list
+
+| Mobile file | Copied from | Guarded by |
+|---|---|---|
+| `src/theme.ts` | `src/index.css` + `tailwind.config.js` | (visual only) |
+| `src/data/quests.ts` | `src/data/questValidity.js`, `src/data/difficulty.js`, the caps inside `GameContext.addTask()` | parity tests |
+| `src/data/petModel.ts` | `src/config/pets.js`, `src/data/progression.js` | parity tests |
+| `assets/pets/*.png` | `public/pets/*_lv*.png` | asset-existence test |
+
+**The parity tests are the payoff of this phase.** They read the *web* files at
+test time and compare: difficulty colours, evidence-type ids (against both the
+web copy **and** the server enum in `api/_lib/quest-validity.js`), validity
+labels, the check explainer word-for-word, the check steps, the eligibility
+rule, the period windows, and the evolution thresholds — the last of these
+against `supabase-phase6-research-metrics.sql`, since the server's `pet_level`
+CASE is the real authority. If anyone edits a constant on one side only, mobile
+`npm test` fails.
+
+### Assets
+
+The 12 evolution sprites were trimmed, quantised to 320px PNG-8 and copied:
+**4.6 MB → 461 KB** (the largest on-screen use is ~140pt, and they are pixel art
+that upscales cleanly). Eggs were not copied — hatching stays on the web.
+
+### Architecture note
+
+Each data area is split into a **pure model** and a **thin IO layer**
+(`petModel` / `petSprites`, `taskModel` / `tasks`). That was forced by a real
+constraint: `node --test` cannot resolve Metro's `@/` alias or run an asset
+`require()`, so anything importing React Native is untestable here. Splitting
+made the rules testable and left the IO layer thin enough to read at a glance.
+
+No `@tanstack/react-query`. `useAsyncData` is ~60 lines and covers what a tabbed
+app needs — refetch on focus, drop responses that arrive after unmount or after
+a newer request, and keep old data on screen when a refresh fails rather than
+blanking the list. If the data layer grows past that, react-query slots in
+behind the same hook shape.
+
+### Server authority
+
+Nothing here decides an outcome:
+
+- Quest creation is **only** `POST /api/validate-quest` with the participant's
+  access token; the server derives the user id from the token and writes the row
+  with the service role. A direct insert would be forced to `pending_ai_review`
+  by the `tasks_validity_guard` trigger anyway.
+- The `tasks` module has **no insert or update path at all** — only reads and a
+  delete of the participant's own row.
+- Points, streak and level are rendered straight from the `profiles` row.
+- Admin-only validity columns (`validity_admin_reason`, risk flags, model
+  version) are never requested.
+- Tests assert each of these, including that an unloaded figure renders as a
+  **dash, never a zero** — "0 points" and "not loaded yet" mean very different
+  things in a study.
+
+### Commands run
+
+```bash
+npx expo install @react-native-community/datetimepicker
+npm test                                  # 100 passed, 0 failed
+npm run typecheck                         # app + tests, clean
+npx expo export --platform ios --clear    # 3.6 MB Hermes bundle
+```
+
+### Verification done here
+
+| Check | Result |
+|---|---|
+| Unit tests | ✅ 100/100 (36 auth + 29 navigation + 35 quest/parity) |
+| TypeScript | ✅ app and tests clean |
+| iOS bundle | ✅ compiles, 3.6 MB |
+| Secret scan | ✅ 0 hits for every private-key marker |
+| Sprite assets | ✅ all 12 referenced files exist and are bundled |
+
+### Web regression result
+
+✅ **Pass** — 131/131 tests, clean Vite build, **no** web files changed.
+
+### Migrations / server changes
+
+None. Phase 4A/4B only reads existing tables and calls the existing
+`/api/validate-quest`.
+
+> The `/api/verify` authentication gap recorded in Phase 0 is **still open**. It
+> is not reached by 4A/4B, but 4D/4E will call it — it must be fixed before then
+> (it is Phase 5's first item).
+
+### Environment variables required
+
+`EXPO_PUBLIC_API_BASE_URL` now genuinely matters: without it, quest creation
+reports "not configured on this device" instead of calling the endpoint.
+
+### Risk to the existing web application
+
+**None identified.** Read-only against shared tables, plus the same endpoint the
+web client already calls. Quests created on the phone are ordinary rows the web
+app shows without changes.
+
+### Rollback
+
+```bash
+git revert $(git log --format=%H --grep='mobile phase 4a/4b' -1)
+# or remove the client entirely:
+git rm -r apps/mobile && git commit -m "remove mobile client"
+```
+
+### User-required verification (cannot be done from this machine)
+
+**Use a non-production test account.** Creating a quest writes a real row and
+spends a real Gemini call.
+
+- [ ] Dashboard shows your real companion sprite, points and streak
+- [ ] The evolution bar shows "N points to <next stage>"
+- [ ] Pull-to-refresh updates both the profile and the quest counts
+- [ ] Quest log lists your real quests; the Easy/Medium/Hard tabs filter
+- [ ] A quest with a validity status shows its badge
+- [ ] Create a good Easy quest → accepted → appears in the log
+- [ ] Create a vague quest ("study a bit") → "Almost there", nothing saved, draft kept
+- [ ] Medium/Hard without a planned date → the submit button stays disabled
+- [ ] The date picker opens and the chosen date sticks
+- [ ] Create a second Hard quest in the same week → the cap message appears
+- [ ] Airplane mode → "Cannot reach the quest check", no crash, draft kept
+- [ ] A quest created on the phone is visible on the **web** app, and vice versa
