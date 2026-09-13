@@ -1,8 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { GameProvider, useGame } from './context/GameContext'
 import PageTransition from './components/animations/PageTransition'
-import PortalLoader from './components/animations/PortalLoader'
-import MascotLoader from './components/animations/MascotLoader'
+import { MascotWakeScreen } from './components/animations/MascotWakeLoader'
 import ErrorBoundary from './components/ErrorBoundary'
 import LoginPage          from './pages/LoginPage'
 import EggHatchingPage    from './pages/EggHatchingPage'
@@ -14,7 +13,9 @@ import AdminPage          from './pages/AdminPage'
 import Notifications      from './components/Notifications'
 
 function LoadingScreen({ petId, level }) {
-  return <MascotLoader petId={petId || 'dragon'} level={level || 1} text="Loading Pet Quest…" />
+  /* petId omitted (logged-out / first visit) → the loader picks a companion at
+     random for this instance. Returning users get their own pet. */
+  return <MascotWakeScreen petType={petId} evolutionStage={level || 1} />
 }
 
 function AppRoutes() {

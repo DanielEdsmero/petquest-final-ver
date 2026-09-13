@@ -17,7 +17,7 @@
  * 5 progression levels but only 4 art stages — Legendary (L5) reuses Elder.
  */
 
-import { levelFromPoints } from '../data/progression'
+import { levelFromPoints } from '../data/progression.js'
 
 /* ---- Stage table (matches the app's existing evolution thresholds) ---- */
 export const STAGES = [
@@ -95,3 +95,92 @@ export function petMeta(petId) {
 
 /** The three mystery eggs offered to brand-new users, in display order. */
 export const EGG_CHOICES = ['dragon', 'cat', 'wolf'].map(id => PET_CATALOG[id])
+
+
+/* ============================================================
+ * Wake-up loading animation (sleeping → awake)
+ *
+ * Four frames per companion, split from the supplied PetQuest wake-up sprite
+ * sheets, which were drawn from the real baby-stage mascot art — so the Dragon
+ * stays purple/gold-eyed, the Mystic Cat cream with its crescent + violet
+ * sparkles, and the Spirit Wolf white-blue with cyan wisps.
+ *
+ * The sheets exist for the BABY stage only. `wakeFramesFor` therefore takes an
+ * evolution stage but currently resolves every stage to the baby sheet of the
+ * SAME species — never a different companion (see WAKE_STAGE_SHEETS). When
+ * stage-specific sheets are added, list them there and the lookup picks them up.
+ * ============================================================ */
+
+/* app id / assetType / unknown → 'dragon' | 'cat' | 'wolf'. */
+export function petIdOf(petType) {
+  if (!petType) return 'dragon'
+  if (PET_CATALOG[petType]) return petType                      // already an app id
+  const hit = Object.values(PET_CATALOG).find(c => c.assetType === petType)
+  return hit ? hit.id : 'dragon'
+}
+
+/* The four wake poses, in play order. Frame 3 is the pet's own flourish. */
+export const WAKE_SEQUENCE = ['sleep', 'stir', 'action', 'awake']
+
+/* Per-species file suffixes + the loading caption. */
+export const WAKE_PETS = {
+  dragon: { action: 'spark',   accent: '#c4a2ff', message: 'Waking your Dragon…' },
+  cat:    { action: 'stretch', accent: '#f5d98a', message: 'The Mystic Cat is stretching awake…' },
+  wolf:   { action: 'listen',  accent: '#7dd3fc', message: 'The Spirit Wolf is listening for your next quest…' },
+}
+
+export const WAKE_FALLBACK_MESSAGE = 'Preparing your adventure…'
+
+/* Which sheet each evolution stage uses. Only the baby sheet exists today, so
+   every stage maps to it — deliberately keyed by stage so adding a juvenile /
+   adult / elder sheet is a one-line change and never falls back to a different
+   species. */
+export const WAKE_STAGE_SHEETS = { baby: 'baby', juvenile: 'baby', adult: 'baby', elder: 'baby' }
+
+/* How long each pose holds, in ms. 'awake' is open-ended — it stays on screen
+   until loading finishes, so a fast load never waits on a fake timer. */
+export const WAKE_TIMINGS = { sleep: 700, stir: 400, action: 500 }
+
+/** Total ms from the sleeping frame to the awake frame. */
+export const WAKE_TOTAL_MS = WAKE_TIMINGS.sleep + WAKE_TIMINGS.stir + WAKE_TIMINGS.action
+
+/** Which frame (0–3) should be showing `ms` into the sequence. */
+export function wakeFrameIndexAt(ms) {
+  const t = Number(ms) || 0
+  if (t < WAKE_TIMINGS.sleep) return 0
+  if (t < WAKE_TIMINGS.sleep + WAKE_TIMINGS.stir) return 1
+  if (t < WAKE_TOTAL_MS) return 2
+  return 3
+}
+
+/**
+ * The four wake frame paths for a companion, in play order.
+ * `petType` accepts an app id (dragon) or an assetType (arcane_dragon);
+ * `stage` is a STAGES key (baby/juvenile/adult/elder) or a 1–5 level.
+ */
+export function wakeFramesFor(petType, stage = 'baby') {
+  const id = petIdOf(petType)
+  const { action } = WAKE_PETS[id]
+  const key = typeof stage === 'number' ? artStage(stage).key : String(stage || 'baby')
+  const sheet = WAKE_STAGE_SHEETS[key] || 'baby'
+  const names = ['01_sleep', '02_stir', `03_${action}`, '04_awake']
+  // `sheet` selects the art set; today there is one, so it is not in the path.
+  return names.map(n => `/pets/wake/${id}_wake_${n}.png`)
+}
+
+/** The caption for a companion (or the neutral fallback when unknown). */
+export function wakeMessageFor(petType) {
+  if (!petType) return WAKE_FALLBACK_MESSAGE
+  return WAKE_PETS[petIdOf(petType)].message
+}
+
+/**
+ * Which companion a loading instance should show.
+ * Rule: the user's real pet when it is known; otherwise a random one, picked
+ * once per loading instance (the caller locks it for the whole animation).
+ */
+export function resolveWakePet(petType, rand = Math.random) {
+  if (petType) return { id: petIdOf(petType), random: false }
+  const ids = Object.keys(WAKE_PETS)
+  return { id: ids[Math.floor(rand() * ids.length) % ids.length], random: true }
+}

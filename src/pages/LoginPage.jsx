@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useGame } from '../context/GameContext'
-import PortalLoader from '../components/animations/PortalLoader'
+import MascotWakeLoader from '../components/animations/MascotWakeLoader'
 import CinematicBackground from '../components/CinematicBackground'
 import Magnet from '../components/reactbits/Magnet'
 
@@ -23,6 +23,7 @@ export default function LoginPage() {
   const [error,    setError]    = useState('')
   const [info,     setInfo]     = useState('')
   const [loading,  setLoading]  = useState(false)
+  const [attempt,  setAttempt]  = useState(0)   // bumped per sign-in attempt → replays the wake animation
 
   const { login, register, addNotification } = useGame()
   const navigate = useNavigate()
@@ -34,9 +35,10 @@ export default function LoginPage() {
     if (!password.trim()) { setError('Password is required'); return }
     if (password.length < 6) { setError('Password must be at least 6 characters'); return }
     if (tab === 'register' && !username.trim()) { setError('Adventurer name is required'); return }
+    setAttempt(n => n + 1)   // restart the mascot at the sleeping frame
     setLoading(true)
 
-    /* Hold the portal on screen for a random 800–1500ms so the animation has
+    /* Hold the loader on screen for a random 800–1500ms so the animation has
        time to read. This is a floor, not an added delay: a slower auth call
        simply outlasts it and nothing extra is waited. */
     const minMs = 800 + Math.random() * 700
@@ -71,7 +73,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden" style={{ background: 'var(--bg-deep)' }}>
-      {/* Portal overlay while authenticating */}
+      {/* Mascot wake-up overlay while authenticating */}
       <AnimatePresence>
         {loading && (
           <motion.div
@@ -82,9 +84,11 @@ export default function LoginPage() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
           >
-            <PortalLoader
-              text={tab === 'login' ? 'Opening the Portal...' : 'Creating your legend...'}
-            />
+            {/* No pet exists yet at sign-in, so the loader picks one at random,
+                keeps it for the whole attempt, and captions it with the neutral
+                fallback line. `restartToken` replays the wake sequence from the
+                sleeping frame on each new attempt. */}
+            <MascotWakeLoader size={128} restartToken={attempt} />
           </motion.div>
         )}
       </AnimatePresence>

@@ -5,7 +5,7 @@ import { useGame, HARD_PERIOD_MS, MEDIUM_PERIOD_MS, DIFF_MIN_COMPLETE_MS, DIFF_P
 import CompletionFx from './animations/CompletionFx'
 import CheckDraw from './animations/CheckDraw'
 import EmptyStatePet from './animations/EmptyStatePet'
-import { MascotLoaderCompact } from './animations/MascotLoader'
+import { MascotLoaderCompact } from './animations/MascotWakeLoader'
 import VerificationModal from './VerificationModal'
 import { DIFFICULTY_COLORS } from '../data/difficulty'
 import {

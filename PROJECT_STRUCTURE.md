@@ -25,6 +25,7 @@ A labeled map of every folder and file, grouped by what it's used for. Stack:
 | Path | Used for |
 |------|----------|
 | `public/pets/*.png` | Pet **evolution sprites** + **starter eggs** (512×512). Named `{type}_{lvN_stage}.png` and `egg_{type}.png`. Served at `/pets/…`. |
+| `public/pets/wake/*.png` | **Account-loading wake frames** (256×256, PNG-8) split from the supplied wake sprite sheets. Four per companion: `{dragon\|cat\|wolf}_wake_{01_sleep,02_stir,03_<action>,04_awake}.png`. |
 
 ## `api/` — Vercel serverless (the only server-side compute)
 | Path | Used for |
@@ -90,8 +91,7 @@ and the award/verification RPCs (`complete_task`, `submit_completion`,
 | `ParticleBurst.jsx` | Radial star burst (used by the hatch). |
 | `CompletionFx.jsx`, `CheckDraw.jsx`, `FloatingText.jsx` | Quest-completion reward effects. |
 | `PageTransition.jsx` | Per-route enter animation wrapper. |
-| `PortalLoader.jsx` | Login/auth "portal" loader. |
-| `MascotLoader.jsx` | "Mascot Idle" loading screen (full-screen) + `MascotLoaderCompact` inline variant used by the quest check. |
+| `MascotWakeLoader.jsx` | **Account-loading mascot wake-up animation** (sleep → stir → action → awake) — replaced the gold portal spinner. Exports the reusable loader, `MascotWakeScreen` (full-screen app boot) and `MascotLoaderCompact` (inline, used by the quest check). |
 | `EmptyStatePet.jsx`, `TypingText.jsx` | Empty-state pet + typing text effects. |
 
 ### `src/components/reactbits/` — vendored [reactbits.dev] UI (MIT)
@@ -129,6 +129,7 @@ and the award/verification RPCs (`complete_task`, `submit_completion`,
 - **Game rules / state** → `src/context/GameContext.jsx`.
 - **Points/awards (server truth)** → `supabase/` RPCs (economy-critical — see that folder's README).
 - **Pet art / evolution stages** → `src/config/pets.js` + `public/pets/`.
+- **Account-loading animation** → `src/components/animations/MascotWakeLoader.jsx` + the wake helpers in `src/config/pets.js` + `public/pets/wake/`.
 - **AI verification** → `api/verify.js` + `src/components/VerificationModal.jsx`.
 - **AI quest validity (creation)** → `api/validate-quest.js` + `api/_lib/quest-validity.js` + `src/components/TaskList.jsx`; tests in `tests/`.
 - **Starter quests** → `src/data/presetQuests.js`.

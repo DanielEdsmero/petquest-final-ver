@@ -411,30 +411,6 @@ select.input-field option { background: #13133a; color: #e2e2ff; }
   text-shadow: 0 0 10px currentColor;
 }
 
-/* Portal loader. */
-.portal-core {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.portal-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 2px solid rgba(var(--gold-rgb), 0.7);
-  box-shadow: 0 0 18px rgba(var(--gold-rgb), 0.45), inset 0 0 18px rgba(var(--gold-rgb), 0.25);
-  pointer-events: none;
-}
-.portal-eye {
-  position: absolute;
-  width: 38%;
-  height: 38%;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--gold-light) 0%, var(--gold) 55%, transparent 75%);
-  box-shadow: 0 0 26px rgba(var(--gold-rgb), 0.8);
-}
-
 /* Viewport-anchored origin for portalled reward effects. */
 .fx-anchor {
   position: fixed;
