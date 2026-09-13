@@ -1,93 +1,101 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/auth/AuthProvider';
 import ScreenContainer from '@/components/ScreenContainer';
+import { Card } from '@/components/states';
 import { Colors, FontSize, Radius, Spacing } from '@/theme';
 
 /**
- * Admin landing — a Phase 2 placeholder that exists to prove the role gate.
+ * Admin landing — the queue entry points.
  *
- * The real validity queue, verification queue and research views are Phase 7,
- * and they read admin-only tables that RLS already restricts to `is_admin()`.
+ * The queues themselves read admin-only tables that RLS already restricts to
+ * `is_admin()`, so a participant who somehow reached these routes would see
+ * empty lists and failed writes, not data.
  */
 export default function AdminHome() {
   const { profile } = useAuth();
   const router = useRouter();
 
   return (
-    <ScreenContainer>
-      <Text style={styles.title}>Admin</Text>
+    <ScreenContainer insetTop={false}>
       <Text style={styles.subtitle}>Signed in as {profile?.username ?? profile?.id ?? '—'}</Text>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Role gate</Text>
+      <View style={styles.queueList}>
+        <QueueLink
+          icon="shield-checkmark-outline"
+          title="Quest validity"
+          body="Quests awaiting an AI check, and the decision log."
+          onPress={() => router.push('/admin/validity')}
+        />
+        <QueueLink
+          icon="camera-outline"
+          title="Verification queue"
+          body="Submitted evidence, AI verdicts and admin review."
+          onPress={() => router.push('/admin/verification')}
+        />
+      </View>
+
+      <Card title="Role gate">
         <Text style={styles.body}>
-          You can see this screen because your <Text style={styles.code}>profiles.role</Text> row
-          says <Text style={styles.ok}>admin</Text>. A participant who reaches this route is
+          You can see this because your <Text style={styles.code}>profiles.role</Text> row says{' '}
+          <Text style={styles.ok}>admin</Text>. A participant who reaches this route is
           redirected home, and Row Level Security refuses the underlying tables regardless of
           which screen asks.
         </Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Coming in Phase 7</Text>
-        {['Quest validity queue', 'Verification queue', 'Research data views'].map((item) => (
-          <Text key={item} style={styles.listItem}>
-            • {item}
-          </Text>
-        ))}
-      </View>
-
-      <Pressable
-        onPress={() => router.back()}
-        accessibilityRole="button"
-        accessibilityLabel="Back to home"
-        style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-      >
-        <Text style={styles.buttonText}>← Back</Text>
-      </Pressable>
+      </Card>
     </ScreenContainer>
   );
 }
 
+function QueueLink({
+  icon,
+  title,
+  body,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  body: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      style={({ pressed }) => [styles.queueLink, pressed && styles.pressed]}
+    >
+      <Ionicons name={icon} size={22} color={Colors.gold} />
+      <View style={styles.queueBody}>
+        <Text style={styles.queueTitle}>{title}</Text>
+        <Text style={styles.queueText}>{body}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  title: {
-    color: Colors.goldLight,
-    fontSize: FontSize.xl,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-  },
-  subtitle: { color: Colors.textMuted, fontSize: FontSize.sm, marginBottom: Spacing.lg },
-  card: {
+  subtitle: { color: Colors.textMuted, fontSize: FontSize.sm, marginBottom: Spacing.md },
+  queueList: { gap: Spacing.sm, marginBottom: Spacing.md },
+  queueLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
     backgroundColor: Colors.cardBg,
-    borderRadius: Radius.lg,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.cardBorder,
     padding: Spacing.md,
-    marginBottom: Spacing.md,
+    minHeight: 64,
   },
-  cardTitle: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
-    fontWeight: '700',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    marginBottom: Spacing.sm,
-  },
+  queueBody: { flex: 1 },
+  queueTitle: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' },
+  queueText: { color: Colors.textMuted, fontSize: FontSize.xs, marginTop: 2, lineHeight: 16 },
   body: { color: Colors.textSoft, fontSize: FontSize.sm, lineHeight: 20 },
   code: { color: Colors.goldLight },
   ok: { color: Colors.green, fontWeight: '700' },
-  listItem: { color: Colors.textSoft, fontSize: FontSize.sm, paddingVertical: 2 },
-  button: {
-    marginTop: 'auto',
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.cardBorderHi,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonText: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' },
   pressed: { opacity: 0.8 },
 });

@@ -17,6 +17,17 @@ type Props = {
   scroll?: boolean;
   /** Centre the content vertically (loading and empty states). */
   center?: boolean;
+  /**
+   * Pad for the top safe area. Off when a navigation header already occupies
+   * that space — otherwise the content sits a header's height too low.
+   */
+  insetTop?: boolean;
+  /**
+   * Pad for the bottom safe area. Off inside the tab navigator: the tab bar
+   * already sits above the home indicator and the scene is laid out above the
+   * tab bar, so adding the inset again would double-pad.
+   */
+  insetBottom?: boolean;
   contentStyle?: ViewStyle;
 };
 
@@ -30,13 +41,20 @@ type Props = {
  * Long lists must pass `scroll={false}` and render their own FlatList — nesting
  * a list inside a ScrollView breaks virtualisation.
  */
-export default function ScreenContainer({ children, scroll = true, center = false, contentStyle }: Props) {
+export default function ScreenContainer({
+  children,
+  scroll = true,
+  center = false,
+  insetTop = true,
+  insetBottom = true,
+  contentStyle,
+}: Props) {
   const insets = useSafeAreaInsets();
 
   const padding: ViewStyle = {
-    paddingTop: insets.top + Spacing.md,
-    // Keep content clear of the home indicator.
-    paddingBottom: insets.bottom + Spacing.lg,
+    paddingTop: (insetTop ? insets.top : 0) + Spacing.md,
+    paddingBottom: (insetBottom ? insets.bottom : 0) + Spacing.lg,
+    // Side insets matter in landscape and on devices with a curved edge.
     paddingLeft: Math.max(insets.left, Spacing.md),
     paddingRight: Math.max(insets.right, Spacing.md),
   };
@@ -54,6 +72,7 @@ export default function ScreenContainer({ children, scroll = true, center = fals
         <ScrollView
           contentContainerStyle={[padding, styles.scrollContent, center && styles.center]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
           {inner}

@@ -2,7 +2,7 @@ import { Redirect, Stack } from 'expo-router';
 
 import { useAuth } from '@/auth/AuthProvider';
 import LoadingScreen from '@/components/LoadingScreen';
-import { Colors } from '@/theme';
+import { Colors, FontSize } from '@/theme';
 
 /**
  * Role gate for the admin group — a second check on top of the redirect in the
@@ -28,9 +28,17 @@ export default function AdminLayout() {
   return (
     <Stack
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        headerStyle: { backgroundColor: Colors.bgVoid },
+        headerTintColor: Colors.gold,
+        headerTitleStyle: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' },
+        headerShadowVisible: false,
         contentStyle: { backgroundColor: Colors.bgDeep },
       }}
-    />
+    >
+      <Stack.Screen name="index" options={{ title: 'Admin' }} />
+      <Stack.Screen name="validity" options={{ title: 'Quest validity' }} />
+      <Stack.Screen name="verification" options={{ title: 'Verification queue' }} />
+    </Stack>
   );
 }

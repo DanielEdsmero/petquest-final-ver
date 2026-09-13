@@ -383,3 +383,163 @@ Nothing to undo on the server.
 - [ ] As an admin, confirm the button appears and `/admin` opens
 - [ ] Wrong password shows "Invalid email or password." and does not crash
 - [ ] Airplane mode shows the connection message rather than hanging
+
+---
+
+## Phase 3 — Mobile shell and navigation
+
+| | |
+|---|---|
+| **Branch** | `mobile-expo-migration` |
+| **Commit** | `git log --oneline --grep='mobile phase 3'` |
+| **Date** | 2026-09-13 |
+| **Status** | ✅ Complete on the dev machine — **on-device navigation walk-through is user-required** |
+
+Phase 2 was confirmed on a physical iPhone before this phase began: sign-in,
+relaunch session restore, sign-out and the admin gate all worked.
+
+### Route tree
+
+```
+src/app/
+  _layout.tsx            root: SafeAreaProvider, AuthProvider, guard, Stack
+  (auth)/login.tsx       signed out only
+  (tabs)/                the signed-in app
+    _layout.tsx          bottom tabs: Home, Quests, Pet, Profile
+    index.tsx  quests.tsx  pet.tsx  profile.tsx
+  quest/                 pushed over the tabs, native header
+    _layout.tsx  create.tsx  [id].tsx  verify.tsx
+  admin/                 role-gated, deliberately NOT a tab
+    _layout.tsx  index.tsx  validity.tsx  verification.tsx
+```
+
+`src/app/index.tsx` was **moved** into `(tabs)/index.tsx`, not copied — two files
+claiming `/` would be an ambiguous route.
+
+### Files added
+
+`(tabs)/_layout.tsx`, `(tabs)/index.tsx`, `(tabs)/quests.tsx`, `(tabs)/pet.tsx`,
+`(tabs)/profile.tsx`, `quest/_layout.tsx`, `quest/create.tsx`, `quest/[id].tsx`,
+`quest/verify.tsx`, `admin/validity.tsx`, `admin/verification.tsx`,
+`src/components/states.tsx`, `tests/navigation.test.ts`.
+
+Changed: `src/app/_layout.tsx` (route groups declared), `src/app/admin/_layout.tsx`
+and `admin/index.tsx` (headers + queue links), `src/components/ScreenContainer.tsx`
+(per-edge inset control), `tests/auth.test.ts`, `README.md`.
+Removed: `src/app/index.tsx` (moved into the tab group).
+
+### Dependencies added
+
+`@expo/vector-icons` ~15.1.1 only, via `npx expo install`. The bottom-tab
+navigator comes from `expo-router` itself — no separate React Navigation install.
+
+### Design decisions
+
+- **Admin is not a tab.** It is a separate route group so an ordinary
+  participant never sees it in the chrome, and so the role gate has exactly one
+  entry point (`app/admin/_layout.tsx`).
+- **Native headers on the pushed stacks** rather than custom back buttons, so
+  the iOS swipe-back gesture and system back behaviour work without being
+  reimplemented.
+- **Per-edge safe-area control.** `ScreenContainer` gained `insetTop` and
+  `insetBottom`. Tab screens pass `insetBottom={false}` (the tab bar already
+  clears the home indicator and the scene sits above the bar — applying the
+  inset again pads twice); headered screens pass `insetTop={false}`.
+- **FlatList from the start** on the quest log and both admin queues, with
+  `scroll={false}` on the container. A mapped `ScrollView` would have to be
+  rewritten in Phase 4, and nesting a list inside a scroll view breaks
+  virtualisation.
+- **Four explicit states** in `src/components/states.tsx` (loading / empty /
+  error / card). An empty list and a failed load are separate components on
+  purpose: telling a participant "no quests yet" when the request actually
+  failed would send them to create a quest they may already have.
+- **Placeholders show a dash, never a plausible number.** Nothing on screen can
+  be mistaken for real research data before Phase 4 wires Supabase.
+
+### A trap worth recording
+
+Mid-phase, `tsc` reported a phantom route `/../components/states` and a missing
+`/`, which looked like an Expo Router bug. It was not. Two of my `expo start`
+invocations wrote their log to `$TMPDIR/...` with `TMPDIR` unset, so the
+redirect failed, **Metro never started**, and a partial `.expo/types/router.d.ts`
+was left behind. With Metro actually running and the cache cleared, the
+generated union is correct — `/` present, phantom gone.
+
+Lesson for later phases: `.expo/types/router.d.ts` is only trustworthy if the
+dev server is confirmed up. If typed-route errors look nonsensical, delete
+`.expo/`, run `npx expo start -c`, and verify `/status` returns 200 before
+believing `tsc`. Documented in the README.
+
+One real bug was found the same way: `"scroll-outline"` is not a valid Ionicons
+glyph (now `"reader-outline"`) — it would have rendered nothing on device.
+
+### Commands run
+
+```bash
+npx expo install @expo/vector-icons
+npm test                                  # 65 passed, 0 failed
+npm run typecheck                         # app + tests, clean
+npx expo start -c                         # /status 200, dev bundle 200
+npx expo export --platform ios --clear    # 3.5 MB Hermes bundle (was 3.0 MB)
+```
+
+### Verification done here
+
+| Check | Result |
+|---|---|
+| Unit tests | ✅ 65/65 (36 auth + 29 navigation) |
+| TypeScript | ✅ app and tests clean, against freshly generated typed routes |
+| Metro | ✅ `/status` 200 and the iOS dev bundle serves 200 |
+| iOS production bundle | ✅ compiles, 3.5 MB |
+| Secret scan of the bundle | ✅ `service_role`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `generativelanguage` → 0 hits each |
+
+The navigation tests assert the things that break silently and are tedious to
+catch by hand: the route tree, every screen having a default export, tab order,
+the safe-area contract per screen, FlatList + `scroll={false}` on list screens,
+that every pushed route is reachable from a tab, that both admin queues are
+linked, and that no screen declares a `minWidth` or a fixed width above 288pt
+(320 minus the gutters) which would force a horizontal scroll on an iPhone SE.
+
+### Web regression result
+
+✅ **Pass** — 131/131 tests, clean Vite build. `git diff main` lists **no** web
+files changed.
+
+### Migrations / server changes
+
+None. Phase 3 adds no query, no RPC call and no server request at all.
+
+### Environment variables required
+
+Unchanged — the same three public values in `apps/mobile/.env`.
+
+### Risk to the existing web application
+
+**None identified.** Nothing outside `apps/mobile/` was touched.
+
+### Rollback
+
+```bash
+# Undo just this phase, keeping phases 0-2:
+git revert $(git log --format=%H --grep='mobile phase 3' -1)
+
+# Remove the mobile app entirely:
+git rm -r apps/mobile && git commit -m "remove mobile client"
+
+# Or discard the whole effort — main is untouched:
+git checkout main && git branch -D mobile-expo-migration
+```
+
+### User-required verification (cannot be done from this machine)
+
+- [ ] All four tabs open, and the active tab is highlighted in gold
+- [ ] Tab labels and content sit **above** the home indicator, not under it
+- [ ] Quests → **+** → New quest, and the header back arrow returns to the list
+- [ ] The iOS swipe-from-left-edge gesture also goes back
+- [ ] Quest detail → Submit evidence → back, twice, returns to the tabs
+- [ ] Profile → Admin area (admins only) → each queue → back
+- [ ] As a non-admin, the Admin row is absent
+- [ ] The empty quest log shows "No quests yet" with a working Create button
+- [ ] Pull-to-refresh on the quest log spins and stops
+- [ ] Sign out from Profile still returns to login
+- [ ] Nothing scrolls sideways on the smallest device you have

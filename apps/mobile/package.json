@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
     "@supabase/supabase-js": "^2.116.0",
     "expo": "~57.0.22",
     "expo-constants": "~57.0.18",
@@ -45,5 +46,5 @@
     "export:check": "expo export --platform ios --output-dir .export-check"
   },
   "private": true,
-  "description": "PetQuest iOS/Android client (Expo Router). Isolated from the Vite web app \u2014 see MOBILE_MIGRATION_MAP.md."
+  "description": "PetQuest iOS/Android client (Expo Router). Isolated from the Vite web app — see MOBILE_MIGRATION_MAP.md."
 }

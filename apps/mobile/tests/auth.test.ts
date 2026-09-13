@@ -9,7 +9,7 @@
  */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -32,6 +32,17 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p: string) => readFileSync(path.join(ROOT, p), 'utf8');
+
+/** Every .ts/.tsx file under a directory, recursively. */
+function walk(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walk(full));
+    else if (/\.tsx?$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
 
 /** In-memory stand-in for SecureStore that enforces its 2048-byte limit. */
 function fakeStore(limit = 2048) {
@@ -282,15 +293,9 @@ describe('3. credential validation and error messages', () => {
 });
 
 describe('4. no private credentials in the mobile source', () => {
-  const sources = [
-    'src/lib/supabase.ts',
-    'src/lib/env.ts',
-    'src/auth/AuthProvider.tsx',
-    'src/auth/guards.ts',
-    'src/app/index.tsx',
-    'src/app/(auth)/login.tsx',
-    'src/app/admin/index.tsx',
-  ];
+  // Walk the whole tree rather than listing files: a hardcoded list goes stale
+  // the moment a screen moves, and a new file must be covered automatically.
+  const sources = walk(path.join(ROOT, 'src'));
 
   test('the client is built from the public URL and anon key only', () => {
     const src = read('src/lib/supabase.ts');
@@ -299,9 +304,10 @@ describe('4. no private credentials in the mobile source', () => {
     assert.doesNotMatch(src, /SERVICE_ROLE|service_role|GEMINI/i);
   });
 
-  test('no source file references a private key', () => {
+  test('every source file is free of private-key references', () => {
+    assert.ok(sources.length >= 10, 'expected the walk to find the source tree');
     for (const f of sources) {
-      const src = read(f);
+      const src = readFileSync(f, 'utf8');
       assert.doesNotMatch(src, /SUPABASE_SERVICE_ROLE_KEY\s*[:=]/, `${f} references the service key`);
       assert.doesNotMatch(src, /GEMINI_API_KEY\s*[:=]/, `${f} references the Gemini key`);
     }

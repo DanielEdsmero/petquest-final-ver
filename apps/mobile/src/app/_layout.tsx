@@ -14,6 +14,12 @@ import { Colors } from '@/theme';
  * Owns the safe-area provider, the dark chrome, the auth provider and the
  * navigation guard. Every screen renders underneath this, so there is exactly
  * one place that decides whether the participant may be where they are.
+ *
+ * Route groups:
+ *   (auth)  — signed out only
+ *   (tabs)  — the signed-in app: Home, Quests, Pet, Profile
+ *   quest   — pushed over the tabs (create, detail, verify)
+ *   admin   — role-gated, kept out of the tab bar entirely
  */
 export default function RootLayout() {
   return (
@@ -27,7 +33,14 @@ export default function RootLayout() {
               contentStyle: { backgroundColor: Colors.bgDeep },
               animation: 'fade',
             }}
-          />
+          >
+            {/* Declared so the group order is deterministic; each group owns
+                its own header behaviour. */}
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="quest" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="admin" options={{ animation: 'slide_from_right' }} />
+          </Stack>
         </AuthGate>
       </AuthProvider>
     </SafeAreaProvider>
@@ -38,8 +51,7 @@ export default function RootLayout() {
  * Applies `resolveRedirect` whenever the auth state or the route changes.
  *
  * The redirect runs in an effect rather than during render because Expo Router
- * cannot navigate mid-render — and it waits for the navigator to exist, which
- * `useSegments()` returning a value tells us.
+ * cannot navigate mid-render — and it waits for the navigator to exist.
  *
  * Reminder: this is UX, not security. Supabase RLS is what actually stops a
  * participant reading admin data (see src/auth/guards.ts).
