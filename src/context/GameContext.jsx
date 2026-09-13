@@ -43,6 +43,10 @@ export function GameProvider({ children }) {
   const [session,              setSession]              = useState(null)
   const [profile,              setProfile]              = useState(() => lsGet('profile', null))
   const [authReady,            setAuthReady]            = useState(false)
+  /* An account load is in flight (sign-in → profile fetched). Drives the
+     account-loading gate in App.jsx so the mascot mounts the moment the
+     request starts, and stays mounted until the profile lands. */
+  const [signingIn,            setSigningIn]            = useState(false)
   const [petStats,             setPetStats]             = useState(() => lsGet('stats',         INITIAL_STATS))
   const [tasks,                setTasks]                = useState(() => lsGet('tasks',         []))
   const [points,               setPoints]               = useState(() => lsGet('points',        0))
@@ -114,7 +118,7 @@ export function GameProvider({ children }) {
 
   async function fetchProfile(userId) {
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
-    if (error) { setAuthReady(true); return }
+    if (error) { setAuthReady(true); setSigningIn(false); return }
     setProfile(data); lsSet('profile', data)
     setPoints(data.points); lsSet('points', data.points)
     await Promise.all([
@@ -125,6 +129,7 @@ export function GameProvider({ children }) {
       checkStreak(),
     ])
     setAuthReady(true)
+    setSigningIn(false)   // the account is loaded; the gate may reveal it
   }
 
   /* Re-pull the caller's own profile + owned accessories and mirror them into
@@ -235,15 +240,23 @@ export function GameProvider({ children }) {
   const dismissNotification = useCallback((id) => setNotifications(prev => prev.filter(n => n.id !== id)), [])
 
   /* ── auth ── */
+  /* Both mark the account load as started BEFORE the network call, so the
+     wake-up animation and the request run in parallel. A failure clears the
+     flag immediately — nobody is held behind an animation with nothing to
+     reveal. On success the flag is cleared by fetchProfile(). */
   const login = useCallback(async (email, password) => {
+    setSigningIn(true)
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) return { error: error.message }
+    if (error) { setSigningIn(false); return { error: error.message } }
     return { data }
   }, [])
 
   const register = useCallback(async (email, password, username) => {
+    setSigningIn(true)
     const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { username } } })
-    if (error) return { error: error.message }
+    if (error) { setSigningIn(false); return { error: error.message } }
+    // Email-confirmation signups create no session, so no profile fetch follows.
+    if (!data?.session) setSigningIn(false)
     return { data }
   }, [])
 
@@ -252,7 +265,7 @@ export function GameProvider({ children }) {
        login on the same render — no flash of zeroed metrics over the stale
        dashboard — THEN tear down the Supabase session. */
     setProfile(null); setPetStats(INITIAL_STATS); setTasks([]); setPoints(0)
-    setOwnedAccessories([]); setEquippedAccessories({}); setProgressLogs({})
+    setOwnedAccessories([]); setEquippedAccessories({}); setProgressLogs({}); setSigningIn(false)
     Object.keys(localStorage).filter(k => k.startsWith(CACHE_PREFIX)).forEach(k => localStorage.removeItem(k))
     await supabase.auth.signOut()
   }, [])
@@ -823,7 +836,7 @@ export function GameProvider({ children }) {
 
   return (
     <GameContext.Provider value={{
-      session, profile, authReady,
+      session, profile, authReady, signingIn,
       user: profile, login, register, logout,
       selectedPet, selectPet, reserveHatch, commitHatch, markOnboardingComplete,
       petStats,

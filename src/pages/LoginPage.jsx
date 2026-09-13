@@ -1,8 +1,6 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useGame } from '../context/GameContext'
-import MascotWakeLoader from '../components/animations/MascotWakeLoader'
 import CinematicBackground from '../components/CinematicBackground'
 import Magnet from '../components/reactbits/Magnet'
 
@@ -23,10 +21,8 @@ export default function LoginPage() {
   const [error,    setError]    = useState('')
   const [info,     setInfo]     = useState('')
   const [loading,  setLoading]  = useState(false)
-  const [attempt,  setAttempt]  = useState(0)   // bumped per sign-in attempt → replays the wake animation
 
   const { login, register, addNotification } = useGame()
-  const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -35,64 +31,41 @@ export default function LoginPage() {
     if (!password.trim()) { setError('Password is required'); return }
     if (password.length < 6) { setError('Password must be at least 6 characters'); return }
     if (tab === 'register' && !username.trim()) { setError('Adventurer name is required'); return }
-    setAttempt(n => n + 1)   // restart the mascot at the sleeping frame
+    /* The request starts NOW. GameContext flips `signingIn` as it goes, which
+       mounts the account-loading mascot in App.jsx — animation and network run
+       in parallel, and the animation is never torn down by the redirect that
+       follows a successful sign-in. */
     setLoading(true)
 
-    /* Hold the loader on screen for a random 800–1500ms so the animation has
-       time to read. This is a floor, not an added delay: a slower auth call
-       simply outlasts it and nothing extra is waited. */
-    const minMs = 800 + Math.random() * 700
-    const startedAt = Date.now()
-    const settle = async () => {
-      const left = minMs - (Date.now() - startedAt)
-      if (left > 0) await new Promise(r => setTimeout(r, left))
+    /* Any failure drops the gate immediately — a participant is never held
+       behind the animation when there is nothing to reveal. */
+    const fail = (msg, toast = msg) => {
+      setError(msg); if (toast) addNotification(toast, 'error')
+      setLoading(false)
     }
 
     if (tab === 'login') {
       const { error } = await login(email.trim(), password)
-      await settle()
       if (error) {
         // Keep typed values; show both an inline message and a toast.
-        setError(error === 'Invalid login credentials' ? 'Invalid email or password' : error)
-        addNotification('Invalid email or password', 'error')
-        setLoading(false); return
+        return fail(error === 'Invalid login credentials' ? 'Invalid email or password' : error,
+                    'Invalid email or password')
       }
-      navigate('/select')
     } else {
       const { error, data } = await register(email.trim(), password, username.trim())
-      await settle()
-      if (error) { setError(error); addNotification(error, 'error'); setLoading(false); return }
+      if (error) return fail(error)
       if (data?.user && !data.session) {
         setInfo('Check your email to confirm your account, then log in.')
         setTab('login'); setLoading(false); return
       }
-      navigate('/select')
     }
-    setLoading(false)
+    /* Nothing to navigate: the account-loading gate is already on screen and,
+       once it reveals, the "/" route guard sends the user to /select (or
+       /mode-select, or /dashboard) based on how far they got. */
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden" style={{ background: 'var(--bg-deep)' }}>
-      {/* Mascot wake-up overlay while authenticating */}
-      <AnimatePresence>
-        {loading && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center"
-            style={{ background: 'rgba(6, 6, 26, 0.88)', backdropFilter: 'blur(6px)' }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
-          >
-            {/* No pet exists yet at sign-in, so the loader picks one at random,
-                keeps it for the whole attempt, and captions it with the neutral
-                fallback line. `restartToken` replays the wake sequence from the
-                sleeping frame on each new attempt. */}
-            <MascotWakeLoader size={128} restartToken={attempt} />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Cinematic video + Ken Burns + magical-dust backdrop */}
       <CinematicBackground />
 

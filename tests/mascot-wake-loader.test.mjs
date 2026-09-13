@@ -1,14 +1,16 @@
 /*
- * Mascot wake-up loader — the account-loading animation that replaced the gold
- * "portal" pulsing circle. Run with `npm test` (Node ≥ 20, no extra deps).
+ * Mascot wake-up loader — the mandatory-but-skippable account-loading buffer
+ * that replaced the gold "portal" pulsing circle.
+ * Run with `npm test` (Node ≥ 20, no extra deps).
  *
  * Three kinds of check:
- *   • pure logic from src/config/pets.js (frame order, timings, pet selection),
+ *   • pure logic from src/config/pets.js (phases, timings, reveal rule, pet
+ *     selection, per-phase captions),
  *   • the PNG assets themselves — decoded far enough to prove the frames really
  *     are the PetQuest mascots (palette hue signature), not a substitute,
  *   • static guards on the components for the properties that only exist at
- *     render time (restart, timer cleanup, reduced motion, fallbacks), matching
- *     how the rest of this suite tests client code.
+ *     render time (restart, timer cleanup, skip wiring, reduced motion),
+ *     matching how the rest of this suite tests client code.
  */
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
@@ -16,9 +18,10 @@ import { readFileSync, existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  wakeFramesFor, wakeMessageFor, resolveWakePet, petIdOf,
-  WAKE_SEQUENCE, WAKE_TIMINGS, WAKE_TOTAL_MS, WAKE_PETS, WAKE_STAGE_SHEETS,
-  WAKE_FALLBACK_MESSAGE, wakeFrameIndexAt, spriteFor,
+  wakeFramesFor, wakeMessageFor, resolveWakePet, petIdOf, spriteFor,
+  wakePhaseAt, wakePhaseStarts, wakeFrameForPhase, wakeFrameIndexAt, shouldRevealAccount,
+  WAKE_PHASES, WAKE_TERMINAL_PHASES, WAKE_TIMINGS, WAKE_PETS, WAKE_STAGE_SHEETS,
+  WAKE_PHASE_MESSAGES, WAKE_FALLBACK_MESSAGE, MIN_MASCOT_LOADER_MS,
 } from '../src/config/pets.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -74,7 +77,251 @@ function palette(file) {
   return { vivid: n, pct: Object.fromEntries(Object.entries(hits).map(([k, v]) => [k, (100 * v) / n])) }
 }
 
-describe('1–2. the frames are the real PetQuest mascots, not substitutes', () => {
+describe('1. the sleeping frame is what a participant sees first', () => {
+  test('the sequence opens on the sleeping phase / frame 0', () => {
+    assert.equal(WAKE_PHASES[0], 'sleeping')
+    assert.equal(wakePhaseAt(0), 'sleeping')
+    assert.equal(wakeFrameIndexAt(0), 0)
+    assert.equal(wakePhaseStarts().sleeping, 0)
+  })
+  test('the component initialises to sleeping and resets there on every run', () => {
+    assert.match(LOADER, /useState\('sleeping'\)/)
+    assert.match(LOADER, /setPhase\('sleeping'\)\s*\/\/ every \(re\)start begins asleep/)
+  })
+})
+
+describe('2. the sequence is long enough to notice (~4.2s)', () => {
+  test('per-phase timings are 1200 / 900 / 1200 / 900', () => {
+    assert.deepEqual(WAKE_TIMINGS, { sleeping: 1200, waking: 900, personalityAction: 1200, awake: 900 })
+  })
+  test('the configurable minimum is 4200ms and never under ~4s', () => {
+    assert.equal(MIN_MASCOT_LOADER_MS, 4200)
+    assert.ok(MIN_MASCOT_LOADER_MS >= 4000, 'the buffer must stay recognisable')
+    assert.match(read('src/config/pets.js'), /export const MIN_MASCOT_LOADER_MS/)
+  })
+  test('every phase is slow enough to read (no fast CSS loop)', () => {
+    for (const [phase, ms] of Object.entries(WAKE_TIMINGS)) {
+      assert.ok(ms >= 900, `${phase} holds only ${ms}ms`)
+    }
+  })
+})
+
+describe('3. all four frames play in the correct order', () => {
+  test('the phase order is sleeping → waking → personalityAction → awake', () => {
+    assert.deepEqual(WAKE_PHASES, ['sleeping', 'waking', 'personalityAction', 'awake'])
+  })
+  test('each phase maps to its own frame, in order', () => {
+    assert.deepEqual(WAKE_PHASES.map(wakeFrameForPhase), [0, 1, 2, 3])
+  })
+  test('the phase boundaries land where the timings say', () => {
+    const s = wakePhaseStarts()
+    assert.deepEqual(s, { sleeping: 0, waking: 1200, personalityAction: 2100, awake: 3300 })
+    assert.equal(wakePhaseAt(1199), 'sleeping')
+    assert.equal(wakePhaseAt(1200), 'waking')
+    assert.equal(wakePhaseAt(2099), 'waking')
+    assert.equal(wakePhaseAt(2100), 'personalityAction')
+    assert.equal(wakePhaseAt(3299), 'personalityAction')
+    assert.equal(wakePhaseAt(3300), 'awake')
+    assert.equal(wakePhaseAt(4200), 'awake')
+    assert.equal(wakePhaseAt(60000), 'awake')   // holds, never loops back
+  })
+  test('file names follow the documented pattern, action frame per species', () => {
+    assert.deepEqual(wakeFramesFor('dragon'), [
+      '/pets/wake/dragon_wake_01_sleep.png', '/pets/wake/dragon_wake_02_stir.png',
+      '/pets/wake/dragon_wake_03_spark.png', '/pets/wake/dragon_wake_04_awake.png',
+    ])
+    assert.match(wakeFramesFor('cat')[2], /cat_wake_03_stretch\.png$/)
+    assert.match(wakeFramesFor('wolf')[2], /wolf_wake_03_listen\.png$/)
+  })
+  test('every terminal state holds the awake frame', () => {
+    for (const p of WAKE_TERMINAL_PHASES) assert.equal(wakeFrameForPhase(p), 3)
+  })
+})
+
+describe('4. account data loads immediately, in parallel', () => {
+  test('the loader gates the reveal, never the request', () => {
+    // It has no fetching of its own and awaits nothing.
+    assert.doesNotMatch(LOADER, /supabase|fetch\(|await /)
+  })
+  test('GameContext still starts auth + data on mount, untouched by the gate', () => {
+    const ctx = read('src/context/GameContext.jsx')
+    assert.match(ctx, /supabase\.auth\.getSession\(\)\.then/)
+    assert.match(ctx, /fetchProfile\(session\.user\.id\)/)
+  })
+  test('App renders the loader without delaying the provider beneath it', () => {
+    // The gate lives inside AppRoutes, under GameProvider — so the provider (and
+    // its requests) mount regardless of whether the loader is on screen.
+    assert.ok(APP.indexOf('<GameProvider>') < APP.indexOf('<AppRoutes />'))
+    assert.match(APP, /const accountDataReady = authReady && !signingIn/)
+    assert.match(APP, /accountDataReady=\{accountDataReady\}/)
+  })
+  test('the loader mounts when the request starts, not when it finishes', () => {
+    // signingIn flips before the network call, so the two run in parallel.
+    const ctx = read('src/context/GameContext.jsx')
+    const loginBody = ctx.slice(ctx.indexOf('const login = useCallback'), ctx.indexOf('const logout = useCallback'))
+    assert.ok(loginBody.indexOf('setSigningIn(true)') < loginBody.indexOf('signInWithPassword'))
+    assert.ok(loginBody.indexOf('setSigningIn(true)') < loginBody.indexOf('signUp'))
+  })
+  test('login fires the request before awaiting anything animation-related', () => {
+    assert.match(LOGIN, /The request starts NOW/)
+    assert.doesNotMatch(LOGIN, /const minMs = 800/)   // the old blocking floor is gone
+  })
+})
+
+describe('5–6. the reveal waits for whichever finishes last', () => {
+  test('data early → still held until the minimum has played', () => {
+    assert.equal(shouldRevealAccount({ accountDataReady: true, minimumDone: false, skipped: false }), false)
+  })
+  test('animation early → still held until the data is ready', () => {
+    assert.equal(shouldRevealAccount({ accountDataReady: false, minimumDone: true, skipped: false }), false)
+  })
+  test('both done → reveal', () => {
+    assert.equal(shouldRevealAccount({ accountDataReady: true, minimumDone: true, skipped: false }), true)
+  })
+  test('neither done → no reveal', () => {
+    assert.equal(shouldRevealAccount({}), false)
+  })
+  test('the waiting state keeps the awake pet and says so', () => {
+    assert.equal(wakeFrameForPhase('waitingForAccount'), 3)
+    assert.equal(WAKE_PHASE_MESSAGES.waitingForAccount, 'Finishing your setup…')
+  })
+  test('the component derives minimumDone from the waiting phase', () => {
+    assert.match(LOADER, /const minimumDone = phase === 'waitingForAccount'/)
+    assert.match(LOADER, /shouldRevealAccount\(\{ accountDataReady, minimumDone, skipped, error \}\)/)
+  })
+})
+
+describe('7–8. Skip drops the duration requirement, from any stage', () => {
+  test('skip reveals as soon as the data is ready', () => {
+    assert.equal(shouldRevealAccount({ accountDataReady: true, minimumDone: false, skipped: true }), true)
+  })
+  test('skip before the data lands does not reveal early (never a blank account)', () => {
+    assert.equal(shouldRevealAccount({ accountDataReady: false, minimumDone: false, skipped: true }), false)
+  })
+  test('skip works from every animation stage — it is phase-independent', () => {
+    for (const phase of [...WAKE_PHASES, ...WAKE_TERMINAL_PHASES]) {
+      const minimumDone = phase === 'waitingForAccount'
+      assert.equal(
+        shouldRevealAccount({ accountDataReady: true, minimumDone, skipped: true, error: false }),
+        true, `skip failed from ${phase}`)
+    }
+  })
+  test('pressing skip more than once is harmless', () => {
+    // The state setter is idempotent and onSkip only fires on the first press.
+    assert.match(LOADER, /if \(!prev\) skipCbRef\.current\?\.\(\)/)
+    assert.match(LOADER, /const firedRef\s+= useRef\(false\)/)   // onComplete is a one-shot
+  })
+  test('skip stops further frame changes', () => {
+    assert.match(LOADER, /setPhase\('skipped'\)/)
+    // …and the minimum-reached timer must not clobber the skipped state.
+    assert.match(LOADER, /setPhase\(p => \(p === 'skipped' \? p : 'waitingForAccount'\)\)/)
+  })
+  test('no artificial delay is introduced after skipping', () => {
+    assert.doesNotMatch(LOADER, /setTimeout[^)]*skip/i)
+  })
+})
+
+describe('9–10. the Skip control is usable and accessible', () => {
+  test('it is a real button with the required accessible label', () => {
+    assert.match(LOADER, /type="button"/)
+    assert.match(LOADER, /aria-label="Skip pet wake-up animation"/)
+    assert.match(LOADER, /Skip animation →/)
+  })
+  test('a real <button> gives keyboard (Enter/Space) and touch support for free', () => {
+    assert.match(LOADER, /<button\s/)
+    assert.doesNotMatch(LOADER, /onMouseOver=\{handleSkip\}/)
+    assert.match(LOADER, /minHeight: 40/)          // comfortable touch target
+  })
+  test('it has a visible keyboard focus state', () => {
+    // The global rule paints a gold ring on any focused interactive element.
+    assert.match(CSS, /:focus-visible \{\s*\n\s*outline: 2px solid rgba\(var\(--gold-rgb\), 0\.9\)/)
+  })
+  test('it uses the existing secondary button styling, not the primary CTA', () => {
+    assert.match(LOADER, /className="btn-ghost/)
+    assert.ok(CSS.includes('.btn-ghost'))
+  })
+  test('it is never hidden behind hover, a menu, or a tiny icon', () => {
+    assert.doesNotMatch(LOADER, /group-hover|title="Skip|opacity-0/)
+    assert.match(LOADER, /\{showSkip && !error && \(/)   // only suppressed on error
+  })
+  test('it stays visible while the account request is still loading', () => {
+    // Its rendering depends on showSkip/error only — never on accountDataReady.
+    const btn = LOADER.slice(LOADER.indexOf('{showSkip && !error && ('), LOADER.indexOf('</button>'))
+    assert.doesNotMatch(btn, /accountDataReady/)
+  })
+  test('the inline quest-check variant has nothing to gate, so no Skip', () => {
+    assert.match(LOADER, /showMessage=\{false\} showSkip=\{false\}/)
+  })
+})
+
+describe('11. the sequence restarts on every new loading instance', () => {
+  test('the effect re-runs on restartToken (and therefore on mount)', () => {
+    assert.match(LOADER, /\}, \[restartToken, petId, error\]\)/)
+  })
+  test('App issues one token per loading instance', () => {
+    assert.match(APP, /if \(gated && !wasGated\.current\) setLoadId\(n => n \+ 1\)/)
+    assert.match(APP, /restartToken=\{loadId\}/)
+  })
+  test('the token does not change while the loader is up', () => {
+    // Keying it off the account id would restart the animation the moment the
+    // profile lands, mid-sequence.
+    assert.doesNotMatch(APP, /restartToken=\{accountId/)
+    assert.match(APP, /It must NOT change while the loader is up/)
+  })
+  test('the one-shot reveal guard is re-armed on each run', () => {
+    assert.match(LOADER, /firedRef\.current = false\s*\n\s*setSkip\(false\)/)
+  })
+})
+
+describe('12. timers are cleaned up on unmount, restart and skip', () => {
+  test('every timeout is cleared in the effect cleanup', () => {
+    assert.match(LOADER, /return \(\) => timers\.forEach\(clearTimeout\)/)
+  })
+  test('the tip rotator clears its interval too', () => {
+    assert.match(LOADER, /return \(\) => clearInterval\(id\)/)
+  })
+  test('a stale timer cannot reveal a previous account', () => {
+    // onComplete goes through a ref + one-shot guard, re-armed per run.
+    assert.match(LOADER, /if \(firedRef\.current\) return/)
+    assert.match(LOADER, /completeRef\.current\?\.\(\)/)
+  })
+  test('revealing is idempotent at the App level too', () => {
+    // setRevealedFor stores the account id; a repeat call is the same write.
+    assert.match(APP, /onComplete=\{\(\) => setRevealedFor\(accountId \|\| 'none'\)\}/)
+  })
+})
+
+describe('13. errors never trap the participant behind the animation', () => {
+  test('the reveal rule refuses to fire on error', () => {
+    assert.equal(shouldRevealAccount({ accountDataReady: true, minimumDone: true, skipped: true, error: true }), false)
+    assert.equal(shouldRevealAccount({ accountDataReady: true, minimumDone: true, error: true }), false)
+  })
+  test('an error stops the sequence instead of running timers', () => {
+    assert.match(LOADER, /if \(error\) return\n/)
+    assert.match(LOADER, /const shownPhase = error \? 'error' : phase/)
+  })
+  test('a failed sign-in drops the gate immediately', () => {
+    assert.match(LOGIN, /const fail = \(msg, toast = msg\) => \{/)
+    assert.match(LOGIN, /return fail\(error === 'Invalid login credentials' \? 'Invalid email or password' : error,/)
+    // GameContext clears signingIn on every failure path, which ungates the app.
+    const ctx = read('src/context/GameContext.jsx')
+    assert.equal((ctx.match(/setSigningIn\(false\)/g) || []).length >= 4, true)
+  })
+  test('the login form stays mounted through a failed sign-in, keeping its values', () => {
+    // Routes keep rendering while a sign-in has produced no account yet — the
+    // login page must not be unmounted, or the typed email would be lost.
+    assert.match(APP, /const showRoutes = authReady && \(!gated \|\| !accountId\)/)
+  })
+  test('the email-confirmation path also exits the overlay', () => {
+    assert.match(LOGIN, /setTab\('login'\); setLoading\(false\); return/)
+  })
+  test('existing retry behaviour is intact — the form keeps its values', () => {
+    assert.match(LOGIN, /Keep typed values/)
+    assert.doesNotMatch(LOGIN, /setEmail\(''\)/)
+  })
+})
+
+describe('14. the frames are the real PetQuest mascots, not substitutes', () => {
   test('every wake frame exists, is a 256×256 PNG, and is optimized', () => {
     for (const pet of PETS) {
       const frames = wakeFramesFor(pet)
@@ -85,7 +332,6 @@ describe('1–2. the frames are the real PetQuest mascots, not substitutes', () 
         const { width, height } = pngInfo(file)
         assert.equal(width, 256)
         assert.equal(height, 256)
-        // Optimized: PNG-8 output, comfortably under 40 KB per frame.
         assert.ok(statSync(file).size < 40 * 1024, `${f} is ${statSync(file).size} bytes — not optimized`)
       }
     }
@@ -105,8 +351,6 @@ describe('1–2. the frames are the real PetQuest mascots, not substitutes', () 
     for (const f of wakeFramesFor('cat')) {
       const { pct } = palette(abs(f))
       assert.ok(pct.warm >= 55, `${f}: warm ${pct.warm.toFixed(0)}% — not the cream/golden kitten`)
-      // The crescent marking, purple collar and violet sparkles: a plain orange
-      // tabby would be warm but carry no violet at all.
       assert.ok(pct.violet >= 15, `${f}: violet ${pct.violet.toFixed(0)}% — the mystic magic is missing`)
       assert.ok(pct.blue < 10, `${f}: reads as the wolf palette`)
     }
@@ -118,7 +362,6 @@ describe('1–2. the frames are the real PetQuest mascots, not substitutes', () 
       assert.ok(pct.blue >= 80, `${f}: blue ${pct.blue.toFixed(0)}% — not the cyan spirit wolf`)
       assert.ok(pct.warm < 15, `${f}: warm ${pct.warm.toFixed(0)}% — wrong wolf`)
       assert.ok(pct.green < 5)
-      // A desaturated "realistic" wolf would have almost no vivid entries.
       assert.ok(vivid > 60, `${f}: only ${vivid} vivid colours — the cyan wisps are gone`)
     }
   })
@@ -128,81 +371,21 @@ describe('1–2. the frames are the real PetQuest mascots, not substitutes', () 
       for (let lvl = 1; lvl <= 4; lvl++) assert.ok(existsSync(abs(spriteFor(pet, lvl))))
     }
   })
-})
 
-describe('3–4. the sequence starts asleep and plays all four frames in order', () => {
-  test('frame order is sleep → stir → action → awake', () => {
-    assert.deepEqual(WAKE_SEQUENCE, ['sleep', 'stir', 'action', 'awake'])
-  })
-
-  test('file names follow the documented pattern, action frame per species', () => {
-    assert.deepEqual(wakeFramesFor('dragon'), [
-      '/pets/wake/dragon_wake_01_sleep.png', '/pets/wake/dragon_wake_02_stir.png',
-      '/pets/wake/dragon_wake_03_spark.png', '/pets/wake/dragon_wake_04_awake.png',
-    ])
-    assert.match(wakeFramesFor('cat')[2], /cat_wake_03_stretch\.png$/)
-    assert.match(wakeFramesFor('wolf')[2], /wolf_wake_03_listen\.png$/)
-  })
-
-  test('timings: 700 / 400 / 500, awake open-ended', () => {
-    assert.deepEqual(WAKE_TIMINGS, { sleep: 700, stir: 400, action: 500 })
-    assert.equal(WAKE_TOTAL_MS, 1600)
-    assert.equal(WAKE_TIMINGS.awake, undefined, 'awake must not be on a timer')
-  })
-
-  test('the right frame is showing at each point in the sequence', () => {
-    assert.equal(wakeFrameIndexAt(0), 0)       // starts asleep
-    assert.equal(wakeFrameIndexAt(699), 0)
-    assert.equal(wakeFrameIndexAt(700), 1)     // stir
-    assert.equal(wakeFrameIndexAt(1099), 1)
-    assert.equal(wakeFrameIndexAt(1100), 2)    // personality action
-    assert.equal(wakeFrameIndexAt(1599), 2)
-    assert.equal(wakeFrameIndexAt(1600), 3)    // awake
-    assert.equal(wakeFrameIndexAt(60000), 3)   // …and holds there
-  })
-
-  test('the component starts each run at frame 0 and animates every frame', () => {
-    assert.match(LOADER, /setFrame\(0\)\s*\/\/ every \(re\)start begins asleep/)
-    assert.match(LOADER, /for \(let i = 1; i < WAKE_SEQUENCE\.length; i\+\+\)/)
-  })
-})
-
-describe('5. the sequence restarts on every new loading instance', () => {
-  test('the effect re-runs on restartToken (and therefore on mount)', () => {
-    assert.match(LOADER, /\}, \[restartToken, petId, reduceMotion\]\)/)
-  })
-  test('login bumps restartToken for each sign-in attempt', () => {
-    assert.match(LOGIN, /setAttempt\(n => n \+ 1\)/)
-    assert.match(LOGIN, /restartToken=\{attempt\}/)
-  })
-})
-
-describe('6–7. pet selection: real pet when known, random only when not', () => {
-  test('the authenticated pet is used, in app-id or assetType form', () => {
+  test('the authenticated pet is used; random only when it is unavailable', () => {
     assert.deepEqual(resolveWakePet('wolf'), { id: 'wolf', random: false })
     assert.deepEqual(resolveWakePet('mystic_cat'), { id: 'cat', random: false })
     assert.equal(petIdOf('arcane_dragon'), 'dragon')
-  })
-
-  test('random selection happens only when the pet is unavailable', () => {
     for (const known of ['dragon', 'cat', 'wolf', 'spirit_wolf']) {
       assert.equal(resolveWakePet(known, () => 0.99).random, false)
     }
     assert.equal(resolveWakePet(null, () => 0).id, 'dragon')
     assert.equal(resolveWakePet(undefined, () => 0.5).id, 'cat')
-    assert.equal(resolveWakePet('', () => 0.99).id, 'wolf')
     assert.equal(resolveWakePet(null, () => 0.99).random, true)
-  })
-
-  test('random picks stay inside the three real companions', () => {
-    for (let i = 0; i < 50; i++) {
-      assert.ok(PETS.includes(resolveWakePet(null, () => i / 50).id))
-    }
+    for (let i = 0; i < 50; i++) assert.ok(PETS.includes(resolveWakePet(null, () => i / 50).id))
   })
 
   test('the pet is locked for the whole animation (no mid-sequence swap)', () => {
-    // Re-picked only when restartToken changes — a late-arriving profile cannot
-    // replace the companion halfway through.
     assert.match(LOADER, /if \(lockRef\.current === null \|\| tokenRef\.current !== restartToken\)/)
     assert.match(LOADER, /const \{ id: petId, random: isRandomPet \} = lockRef\.current/)
   })
@@ -220,46 +403,31 @@ describe('6–7. pet selection: real pet when known, random only when not', () =
   })
 })
 
-describe('8–9. awake frame holds; fast loads are not delayed', () => {
-  test('only the first three poses are on timers — awake has none', () => {
-    const timed = Object.keys(WAKE_TIMINGS)
-    assert.deepEqual(timed, ['sleep', 'stir', 'action'])
-    assert.ok(WAKE_TOTAL_MS <= 1600, 'the whole intro must stay short')
+describe('15. the old yellow pulsing circle is gone from account loading', () => {
+  test('PortalLoader no longer exists and is imported nowhere', () => {
+    assert.ok(!existsSync(path.join(ROOT, 'src/components/animations/PortalLoader.jsx')))
+    assert.doesNotMatch(APP, /PortalLoader/)
+    assert.doesNotMatch(LOGIN, /PortalLoader/)
   })
-
-  test('the loader itself never blocks or delays the caller', () => {
-    // It is presentational: no timeout that gates unmounting, and the parent
-    // decides when loading is over (it simply unmounts the loader).
-    assert.doesNotMatch(LOADER, /onDone|onComplete|minDuration|await /)
+  test('its gold ring/pulse CSS is removed', () => {
+    for (const cls of ['.portal-core', '.portal-ring', '.portal-eye']) {
+      assert.ok(!CSS.includes(cls), `${cls} is still in index.css`)
+    }
   })
-
-  test('login keeps its own pre-existing settle floor, unchanged', () => {
-    assert.match(LOGIN, /const minMs = 800 \+ Math\.random\(\) \* 700/)
-    assert.match(LOGIN, /This is a floor, not an added delay/)
+  test('the account-loading view renders the mascot instead', () => {
+    assert.match(APP, /<MascotWakeScreen/)
+    // The login page no longer owns a loader of its own — one gate, one animation.
+    assert.doesNotMatch(LOGIN, /MascotWake/)
   })
-})
-
-describe('10. timers are cleaned up on unmount', () => {
-  test('every timeout is cleared in the effect cleanup', () => {
-    assert.match(LOADER, /return \(\) => timers\.forEach\(clearTimeout\)/)
-    // The tip rotator in the full-screen wrapper clears its interval too.
-    assert.match(LOADER, /return \(\) => clearInterval\(id\)/)
+  test('unrelated loaders are left alone', () => {
+    assert.match(LOGIN, /⚙️/)                                       // submit-button spinner
+    assert.match(read('src/components/VerificationModal.jsx'), /GildedWaypoints/)
+    assert.match(read('src/pages/AdminPage.jsx'), /⚙️/)
+    assert.match(read('src/pages/LeaderboardPage.jsx'), /⚙️/)
   })
 })
 
-describe('11. reduced motion', () => {
-  test('jumps straight to the awake frame and sets no timers', () => {
-    assert.match(LOADER, /if \(reduceMotion\) \{ setFrame\(3\); return \}/)
-    assert.match(LOADER, /useReducedMotion/)
-  })
-  test('the caption still renders when motion is reduced', () => {
-    // showMessage is independent of reduceMotion — no gating between them.
-    assert.match(LOADER, /\{showMessage && \(/)
-    assert.doesNotMatch(LOADER, /showMessage && !reduceMotion/)
-  })
-})
-
-describe('12. layout: mobile widths, no shift, no horizontal scroll', () => {
+describe('16. layout: mobile widths, no shift, no horizontal scroll', () => {
   test('the mascot box is a fixed square within the mobile range', () => {
     assert.match(LOADER, /size = 112/)                       // default
     assert.match(LOADER, /size=\{128\}/)                     // full-screen wrapper
@@ -274,92 +442,115 @@ describe('12. layout: mobile widths, no shift, no horizontal scroll', () => {
   test('frames are absolutely stacked, so swapping one cannot reflow the page', () => {
     assert.match(LOADER, /position: 'absolute', inset: 0, width: '100%', height: '100%'/)
   })
+  test('the caption is width-capped so long messages wrap instead of scrolling', () => {
+    assert.match(LOADER, /maxWidth: 320/)
+    assert.ok(WAKE_PETS.cat.waking.length > 30)   // the longest caption
+  })
   test('no text glyph is overlaid on the mascot (the art carries its own Zzz)', () => {
     assert.doesNotMatch(LOADER, /fontSize: Math\.round\(size \* 0\.17\)/)
   })
-  test('the caption is width-capped so long messages wrap instead of scrolling', () => {
-    assert.match(LOADER, /maxWidth: 320/)
-    assert.ok(WAKE_PETS.wolf.message.length > 30)   // the longest caption
+})
+
+describe('17. reduced motion', () => {
+  test('the mandatory sequence still runs — only the movement is dropped', () => {
+    // The timers do NOT depend on reduceMotion: every state is still shown for
+    // its readable minimum, as required.
+    assert.doesNotMatch(LOADER, /if \(reduceMotion\) \{ setFrame\(3\); return \}/)
+    assert.match(LOADER, /\}, \[restartToken, petId, error\]\)/)
+  })
+  test('no pulsing or repeating effects when motion is reduced', () => {
+    assert.match(LOADER, /reduceMotion\s*\n?\s*\? \{ opacity: awake \? 0\.6 : 0\.3 \}/)
+    assert.match(LOADER, /animate=\{reduceMotion \|\| !awake \? \{ scale: 1 \}/)
+    assert.match(LOADER, /transition=\{reduceMotion \? \{ duration: 0 \}/)
+  })
+  test('the rotating tip stops rotating when motion is reduced', () => {
+    assert.match(LOADER, /if \(reduceMotion\) return\s*\/\/ no rotating text/)
+  })
+  test('the Skip button stays fully available', () => {
+    const btn = LOADER.slice(LOADER.indexOf('{showSkip && !error && ('), LOADER.indexOf('</button>'))
+    assert.doesNotMatch(btn, /reduceMotion/)
   })
 })
 
-describe('13. the old yellow pulsing circle is gone from account loading', () => {
-  test('PortalLoader no longer exists and is imported nowhere', () => {
-    assert.ok(!existsSync(path.join(ROOT, 'src/components/animations/PortalLoader.jsx')))
-    assert.doesNotMatch(APP, /PortalLoader/)
-    assert.doesNotMatch(LOGIN, /PortalLoader/)
+describe('18. captions and accessibility', () => {
+  test('each phase has its specified message', () => {
+    assert.equal(wakeMessageFor('dragon', 'sleeping'), 'Your pet is resting…')
+    assert.equal(wakeMessageFor('dragon', 'waking'), 'Waking your Dragon…')
+    assert.equal(wakeMessageFor('cat', 'waking'), 'The Mystic Cat is stretching awake…')
+    assert.equal(wakeMessageFor('wolf', 'waking'), 'The Spirit Wolf is listening…')
+    assert.equal(wakeMessageFor('wolf', 'personalityAction'), 'Getting ready for your quests…')
+    assert.equal(wakeMessageFor('wolf', 'awake'), 'Finishing your setup…')
+    assert.equal(wakeMessageFor('wolf', 'waitingForAccount'), 'Finishing your setup…')
   })
-  test('its gold ring/pulse CSS is removed', () => {
-    for (const cls of ['.portal-core', '.portal-ring', '.portal-eye']) {
-      assert.ok(!CSS.includes(cls), `${cls} is still in index.css`)
-    }
-  })
-  test('both account-loading views render the mascot instead', () => {
-    assert.match(APP, /<MascotWakeScreen petType=\{petId\}/)
-    assert.match(LOGIN, /<MascotWakeLoader/)
-  })
-  test('unrelated loaders are left alone', () => {
-    // Login button spinner, the AI verification waypoints, admin/leaderboard.
-    assert.match(LOGIN, /⚙️/)
-    assert.match(read('src/components/VerificationModal.jsx'), /GildedWaypoints/)
-    assert.match(read('src/pages/AdminPage.jsx'), /⚙️/)
-    assert.match(read('src/pages/LeaderboardPage.jsx'), /⚙️/)
-  })
-})
-
-describe('14. missing assets fall back to the static mascot', () => {
-  test('a failed wake frame shows the static baby sprite, then the emoji', () => {
-    assert.match(LOADER, /onError=\{\(\) => setBroken\(true\)\}/)
-    assert.match(LOADER, /broken\s*\n?\s*\? <StaticFallback/)
-    assert.match(LOADER, /src=\{spriteFor\(petId, 1\)\}/)   // the existing baby asset
-    assert.match(LOADER, /\{emoji\}/)                        // last-resort
-  })
-  test('the static fallback target exists for every companion', () => {
-    for (const pet of PETS) assert.ok(existsSync(abs(spriteFor(pet, 1))))
-  })
-})
-
-describe('15. captions and accessibility', () => {
-  test('each companion has its specified message', () => {
-    assert.equal(wakeMessageFor('dragon'), 'Waking your Dragon…')
-    assert.equal(wakeMessageFor('cat'), 'The Mystic Cat is stretching awake…')
-    assert.equal(wakeMessageFor('wolf'), 'The Spirit Wolf is listening for your next quest…')
-    assert.equal(wakeMessageFor(null), WAKE_FALLBACK_MESSAGE)
+  test('an unknown or randomly-picked companion uses the neutral fallback', () => {
+    assert.equal(wakeMessageFor(null, 'waking'), WAKE_FALLBACK_MESSAGE)
+    assert.equal(wakeMessageFor('dragon', 'waking', false), WAKE_FALLBACK_MESSAGE)
     assert.equal(WAKE_FALLBACK_MESSAGE, 'Preparing your adventure…')
-  })
-  test('a randomly picked stand-in uses the neutral fallback caption', () => {
-    // It would be wrong to tell a brand-new user we are "waking your Dragon".
-    assert.match(LOADER, /isRandomPet \? WAKE_FALLBACK_MESSAGE : wakeMessageFor\(petId\)/)
-    // The overlay passes no caption override, so the rule above decides it.
-    assert.match(LOGIN, /<MascotWakeLoader size=\{128\} restartToken=\{attempt\} \/>/)
+    assert.match(LOADER, /wakeMessageFor\(petId, shownPhase, !isRandomPet\)/)
   })
   test('an accessible live status describes the wait', () => {
     assert.match(LOADER, /role="status" aria-live="polite"/)
     assert.match(LOADER, /Loading your PetQuest account\. Your pet is waking up\./)
     assert.match(LOADER, /className="sr-only"/)
   })
+  test('the Skip button sits outside the live region, so it is not re-announced', () => {
+    assert.ok(LOADER.indexOf('{/* Skip') > LOADER.indexOf('aria-live="polite"'))
+    assert.ok(LOADER.indexOf('{/* Skip') > LOADER.indexOf('{showMessage && ('))
+  })
   test('decorative layers are hidden from screen readers', () => {
-    // The glow layer is purely decorative…
     assert.match(LOADER, /<motion\.span aria-hidden="true"/)
-    // …and only the frame currently on screen is exposed; the three stacked
-    // behind it are hidden, so the pet is announced once, not four times.
-    assert.match(LOADER, /aria-hidden=\{i === frame \? undefined : 'true'\}/)
-    assert.match(LOADER, /alt=\{i === frame \? `\$\{meta\.species\} waking up` : ''\}/)
+    assert.match(LOADER, /aria-hidden=\{i === frameIndex \? undefined : 'true'\}/)
+    assert.match(LOADER, /alt=\{i === frameIndex \? `\$\{meta\.species\} waking up` : ''\}/)
   })
 })
 
-describe('16. existing flows are untouched', () => {
+describe('19. missing assets fall back without stalling the sequence', () => {
+  test('a failed wake frame shows the static baby sprite, then the emoji', () => {
+    assert.match(LOADER, /onError=\{\(\) => setBroken\(true\)\}/)
+    assert.match(LOADER, /broken\s*\n?\s*\? <StaticFallback/)
+    assert.match(LOADER, /src=\{spriteFor\(petId, 1\)\}/)
+    assert.match(LOADER, /\{emoji\}/)
+  })
+  test('the timing sequence is independent of asset loading', () => {
+    // `broken` is not in the sequence effect's deps, so a failed image neither
+    // restarts nor halts the phases.
+    assert.doesNotMatch(LOADER, /\[restartToken, petId, error, broken\]/)
+  })
+  test('the static fallback target exists for every companion', () => {
+    for (const pet of PETS) assert.ok(existsSync(abs(spriteFor(pet, 1))))
+  })
+})
+
+describe('20. existing flows are untouched', () => {
   test('login/registration logic is unchanged', () => {
     assert.match(LOGIN, /await login\(email\.trim\(\), password\)/)
     assert.match(LOGIN, /await register\(email\.trim\(\), password, username\.trim\(\)\)/)
-    assert.match(LOGIN, /navigate\('\/select'\)/)
     assert.match(LOGIN, /Invalid email or password/)
+    assert.match(LOGIN, /Check your email to confirm your account/)
   })
-  test('the route guards and dashboard initialisation are unchanged', () => {
-    assert.match(APP, /if \(!authReady\) return <LoadingScreen/)
+  test('post-login routing is left to the existing route guards', () => {
+    // LoginPage used to navigate('/select'); the guard already does exactly that
+    // once the gate lifts, and calling it from behind the gate is redundant.
+    assert.match(APP, /!hasPet\s+\? <Navigate to="\/select"/)
+  })
+  test('the route guards are unchanged', () => {
     for (const route of ['/select', '/mode-select', '/dashboard', '/admin']) {
       assert.ok(APP.includes(`path="${route}"`), `route ${route} missing`)
     }
+  })
+  test('a logged-out visitor is never held behind the animation', () => {
+    // authReady with no account → not gated → the login page renders straight away.
+    assert.match(APP, /const gated = !accountDataReady \|\| \(!!accountId && revealedFor !== accountId\)/)
+  })
+  test('each account is gated once — revealing is remembered per account', () => {
+    assert.match(APP, /const \[revealedFor, setRevealedFor\] = useState\(null\)/)
+    assert.match(APP, /revealedFor !== accountId/)
+  })
+  test('the dashboard is not mounted behind the loader', () => {
+    // Its evolution celebration auto-dismisses after 9s; running it behind a
+    // loading screen would burn it unseen.
+    assert.match(APP, /\{showRoutes && <Routes>/)
+    assert.match(read('src/components/animations/EvolutionOverlay.jsx'), /setTimeout\(\(\) => onDone\?\.\(\), 9000\)/)
   })
   test('quest verification and the validity check still have their own loaders', () => {
     assert.match(read('src/components/TaskList.jsx'), /MascotLoaderCompact/)

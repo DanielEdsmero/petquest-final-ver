@@ -48,7 +48,7 @@ and the award/verification RPCs (`complete_task`, `submit_completion`,
 | Path | Used for |
 |------|----------|
 | `src/main.jsx` | React entry; renders `<App>` inside providers. |
-| `src/App.jsx` | **Router + route guards.** Defines `/`, `/select`, `/mode-select`, `/dashboard`, `/accessories`, `/leaderboard`, `/admin` and the onboarding/auth redirects. |
+| `src/App.jsx` | **Router + route guards + the account-loading gate.** Defines `/`, `/select`, `/mode-select`, `/dashboard`, `/accessories`, `/leaderboard`, `/admin` and the onboarding/auth redirects, and holds the reveal behind the mascot wake-up animation. |
 | `src/index.css` | Global styles, design tokens, keyframes (glass cards, gold shimmer, evolution overlay, gilded bar…). |
 
 ### `src/pages/` — one file per route/screen
@@ -91,7 +91,7 @@ and the award/verification RPCs (`complete_task`, `submit_completion`,
 | `ParticleBurst.jsx` | Radial star burst (used by the hatch). |
 | `CompletionFx.jsx`, `CheckDraw.jsx`, `FloatingText.jsx` | Quest-completion reward effects. |
 | `PageTransition.jsx` | Per-route enter animation wrapper. |
-| `MascotWakeLoader.jsx` | **Account-loading mascot wake-up animation** (sleep → stir → action → awake) — replaced the gold portal spinner. Exports the reusable loader, `MascotWakeScreen` (full-screen app boot) and `MascotLoaderCompact` (inline, used by the quest check). |
+| `MascotWakeLoader.jsx` | **Account-loading mascot wake-up animation** — a mandatory ~4.2s sleep → stir → action → awake sequence with an always-visible **Skip animation** button; replaced the gold portal spinner. State machine + reveal rule live in `src/config/pets.js`. Exports the reusable loader, `MascotWakeScreen` (the full-screen overlay used by the gate in `App.jsx`) and `MascotLoaderCompact` (inline, used by the quest check). |
 | `EmptyStatePet.jsx`, `TypingText.jsx` | Empty-state pet + typing text effects. |
 
 ### `src/components/reactbits/` — vendored [reactbits.dev] UI (MIT)
@@ -129,7 +129,7 @@ and the award/verification RPCs (`complete_task`, `submit_completion`,
 - **Game rules / state** → `src/context/GameContext.jsx`.
 - **Points/awards (server truth)** → `supabase/` RPCs (economy-critical — see that folder's README).
 - **Pet art / evolution stages** → `src/config/pets.js` + `public/pets/`.
-- **Account-loading animation** → `src/components/animations/MascotWakeLoader.jsx` + the wake helpers in `src/config/pets.js` + `public/pets/wake/`.
+- **Account-loading animation** → the gate in `src/App.jsx` + `src/components/animations/MascotWakeLoader.jsx` + the wake helpers in `src/config/pets.js` (`MIN_MASCOT_LOADER_MS`, `shouldRevealAccount`) + `public/pets/wake/`.
 - **AI verification** → `api/verify.js` + `src/components/VerificationModal.jsx`.
 - **AI quest validity (creation)** → `api/validate-quest.js` + `api/_lib/quest-validity.js` + `src/components/TaskList.jsx`; tests in `tests/`.
 - **Starter quests** → `src/data/presetQuests.js`.

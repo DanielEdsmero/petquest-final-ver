@@ -119,16 +119,30 @@ export function petIdOf(petType) {
   return hit ? hit.id : 'dragon'
 }
 
-/* The four wake poses, in play order. Frame 3 is the pet's own flourish. */
-export const WAKE_SEQUENCE = ['sleep', 'stir', 'action', 'awake']
+/* The state machine the loader walks through. The first four are the drawn
+   poses (one frame each, in this order); the rest are terminal states that all
+   hold the awake frame. */
+export const WAKE_PHASES = ['sleeping', 'waking', 'personalityAction', 'awake']
+export const WAKE_TERMINAL_PHASES = ['waitingForAccount', 'skipped', 'error']
 
-/* Per-species file suffixes + the loading caption. */
+/* Per-species file suffix for the personality-action frame, accent colour, and
+   the line shown while the companion is waking. */
 export const WAKE_PETS = {
-  dragon: { action: 'spark',   accent: '#c4a2ff', message: 'Waking your Dragon…' },
-  cat:    { action: 'stretch', accent: '#f5d98a', message: 'The Mystic Cat is stretching awake…' },
-  wolf:   { action: 'listen',  accent: '#7dd3fc', message: 'The Spirit Wolf is listening for your next quest…' },
+  dragon: { action: 'spark',   accent: '#c4a2ff', waking: 'Waking your Dragon…' },
+  cat:    { action: 'stretch', accent: '#f5d98a', waking: 'The Mystic Cat is stretching awake…' },
+  wolf:   { action: 'listen',  accent: '#7dd3fc', waking: 'The Spirit Wolf is listening…' },
 }
 
+/* Lines that are the same whichever companion is on screen. */
+export const WAKE_PHASE_MESSAGES = {
+  sleeping:          'Your pet is resting…',
+  personalityAction: 'Getting ready for your quests…',
+  awake:             'Finishing your setup…',
+  waitingForAccount: 'Finishing your setup…',
+  skipped:           'Finishing your setup…',
+}
+
+/* Shown while waking when we do not know which companion this is. */
 export const WAKE_FALLBACK_MESSAGE = 'Preparing your adventure…'
 
 /* Which sheet each evolution stage uses. Only the baby sheet exists today, so
@@ -137,20 +151,55 @@ export const WAKE_FALLBACK_MESSAGE = 'Preparing your adventure…'
    species. */
 export const WAKE_STAGE_SHEETS = { baby: 'baby', juvenile: 'baby', adult: 'baby', elder: 'baby' }
 
-/* How long each pose holds, in ms. 'awake' is open-ended — it stays on screen
-   until loading finishes, so a fast load never waits on a fake timer. */
-export const WAKE_TIMINGS = { sleep: 700, stir: 400, action: 500 }
+/* How long each pose holds, in ms. Deliberately slow: the wake-up is a
+   loading BUFFER the participant is meant to notice, not a spinner. The awake
+   pose is part of the minimum too, so the companion is seen fully awake before
+   the account is revealed. Past the minimum the awake frame simply holds. */
+export const WAKE_TIMINGS = { sleeping: 1200, waking: 900, personalityAction: 1200, awake: 900 }
 
-/** Total ms from the sleeping frame to the awake frame. */
-export const WAKE_TOTAL_MS = WAKE_TIMINGS.sleep + WAKE_TIMINGS.stir + WAKE_TIMINGS.action
+/** Minimum time the loader is shown before the account may be revealed. */
+export const MIN_MASCOT_LOADER_MS =
+  WAKE_PHASES.reduce((total, phase) => total + WAKE_TIMINGS[phase], 0)   // 4200
+
+/** Start offset of each phase, in ms. */
+export function wakePhaseStarts() {
+  const out = {}
+  let t = 0
+  for (const phase of WAKE_PHASES) { out[phase] = t; t += WAKE_TIMINGS[phase] }
+  return out
+}
+
+/** Which phase the sequence is in `ms` after it started. */
+export function wakePhaseAt(ms) {
+  const t = Number(ms) || 0
+  let acc = 0
+  for (const phase of WAKE_PHASES) {
+    acc += WAKE_TIMINGS[phase]
+    if (t < acc) return phase
+  }
+  return 'awake'          // past the minimum: hold the awake pose
+}
+
+/** Which frame (0–3) a phase shows. Every terminal phase holds the awake frame. */
+export function wakeFrameForPhase(phase) {
+  const i = WAKE_PHASES.indexOf(phase)
+  return i === -1 ? WAKE_PHASES.length - 1 : i
+}
+
+/**
+ * The reveal rule, in one place so it can be reasoned about and tested.
+ * The account may be revealed once its data is ready AND either the minimum
+ * animation has played or the participant skipped. An error never reveals —
+ * the caller swaps in its own error state instead.
+ */
+export function shouldRevealAccount({ accountDataReady, minimumDone, skipped, error } = {}) {
+  if (error) return false
+  return !!accountDataReady && (!!minimumDone || !!skipped)
+}
 
 /** Which frame (0–3) should be showing `ms` into the sequence. */
 export function wakeFrameIndexAt(ms) {
-  const t = Number(ms) || 0
-  if (t < WAKE_TIMINGS.sleep) return 0
-  if (t < WAKE_TIMINGS.sleep + WAKE_TIMINGS.stir) return 1
-  if (t < WAKE_TOTAL_MS) return 2
-  return 3
+  return wakeFrameForPhase(wakePhaseAt(ms))
 }
 
 /**
@@ -168,10 +217,16 @@ export function wakeFramesFor(petType, stage = 'baby') {
   return names.map(n => `/pets/wake/${id}_wake_${n}.png`)
 }
 
-/** The caption for a companion (or the neutral fallback when unknown). */
-export function wakeMessageFor(petType) {
-  if (!petType) return WAKE_FALLBACK_MESSAGE
-  return WAKE_PETS[petIdOf(petType)].message
+/**
+ * The caption for a phase. Only the waking phase is species-specific — the
+ * others describe what the app is doing, so they read the same for every pet.
+ * `known` false (the companion is a random stand-in) falls back to the neutral
+ * line rather than claiming a dragon the participant may not own.
+ */
+export function wakeMessageFor(petType, phase = 'waking', known = true) {
+  if (WAKE_PHASE_MESSAGES[phase]) return WAKE_PHASE_MESSAGES[phase]
+  if (!petType || !known) return WAKE_FALLBACK_MESSAGE
+  return WAKE_PETS[petIdOf(petType)].waking
 }
 
 /**
