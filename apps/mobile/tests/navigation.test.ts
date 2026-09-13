@@ -183,9 +183,22 @@ describe('6. no dead ends', () => {
     }
   });
 
-  test('quest detail is reachable from the quest list, and verify from detail', () => {
+  test('quest detail is reachable from the quest list', () => {
     assert.match(app('(tabs)/quests.tsx'), /pathname: '\/quest\/\[id\]'/);
-    assert.match(app('quest/[id].tsx'), /pathname: '\/quest\/verify'/);
+  });
+
+  test('the evidence screen is not linked yet, and says so rather than pretending', () => {
+    // Phase 4C is read-only: submit_completion needs a photo path, so
+    // completing a quest is inseparable from evidence capture (4D), which in
+    // turn needs the /api/verify auth fix in Phase 5. The button explains that
+    // instead of navigating to a screen that cannot finish the job.
+    //
+    // WHEN 4D LANDS: re-link detail → /quest/verify and restore the assertion
+    // that this test replaced.
+    const detail = app('quest/[id].tsx');
+    assert.doesNotMatch(detail, /pathname: '\/quest\/verify'/);
+    assert.match(detail, /Not available yet/);
+    assert.ok(existsSync(path.join(APP, 'quest', 'verify.tsx')), 'the route should still exist');
   });
 
   test('both admin queues are reachable from the admin landing', () => {

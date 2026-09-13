@@ -716,3 +716,170 @@ spends a real Gemini call.
 - [ ] Create a second Hard quest in the same week → the cap message appears
 - [ ] Airplane mode → "Cannot reach the quest check", no crash, draft kept
 - [ ] A quest created on the phone is visible on the **web** app, and vice versa
+
+---
+
+## Phase 4C — Quest detail and verification state
+
+| | |
+|---|---|
+| **Branch** | `mobile-expo-migration` |
+| **Commit** | `git log --oneline --grep='mobile phase 4c'` |
+| **Date** | 2026-09-13 |
+| **Status** | ✅ Complete on the dev machine — **on-device verification is user-required**. 4D/4E are **blocked**, see below. |
+
+Phase 4A/4B was confirmed on a physical iPhone before this phase began,
+including the cross-client check (a quest created on the phone appears on the
+web app and vice versa).
+
+### 🚧 Why this phase stops where it does
+
+4C was scoped to "quest detail and completion". **Completion cannot be built
+yet**, and the reason is structural rather than a matter of effort:
+
+1. `complete_task` is revoked from clients (supabase-phase8), so the only way to
+   complete a quest is `submit_completion()`.
+2. `submit_completion()` **requires a photo path and a ≥20-character progress
+   log**. Completion is therefore inseparable from evidence capture, which is
+   4D.
+3. 4D's flow ends by calling `/api/verify` — and that endpoint still accepts
+   `{ completion_id }` with **no bearer token and no ownership check** (the
+   Phase 0 finding). Anyone who learns a completion id can force a verdict,
+   including a `fail`, which triggers `rollback_completion` against another
+   participant's points.
+
+So the order has to be: **fix `/api/verify` (Phase 5) → then 4D/4E**. Shipping
+evidence submission against the unauthenticated endpoint would mean building on
+a known hole.
+
+Note that fixing it is **not** a mobile-only change: all three web callers
+(`VerificationModal.jsx` and two in `AdminPage.jsx`) currently send no auth
+header, so they must be updated in the same pass. That is a web change with
+real regression risk and belongs in its own reviewed phase — which is exactly
+what Phase 5 is for.
+
+The detail screen's "Submit evidence" button therefore **explains that it is not
+available yet and points at the website**, rather than navigating to a screen
+that cannot finish the job.
+
+### What this phase delivers
+
+A complete, read-only quest detail screen driven entirely by server data:
+
+- The quest row: title, difficulty and its award, evidence type, created and
+  planned dates (overdue highlighted), completion time and measured duration.
+- The validity badge plus the check's own participant-safe words.
+- **The verification pipeline for the latest submission**, from the real
+  `quest_completions` row: Submitted → AI check → Admin review → Outcome.
+- Eligibility and cooldown messaging.
+- Delete, with a confirmation.
+
+### Files added
+
+| Path | Purpose |
+|---|---|
+| `src/data/completionModel.ts` | The stage machine — pure, unit-tested |
+| `src/data/completions.ts` | The `quest_completions` read |
+| `tests/completion.test.ts` | 21 tests |
+
+Changed: `src/app/quest/[id].tsx` (the real screen), `src/data/quests.ts`
+(`DIFF_POINTS`, `DIFF_MIN_COMPLETE_MS`, `cooldownRemainingMs`),
+`tests/navigation.test.ts` (one stale assertion, see below).
+
+### The distinction the stage machine exists to get right
+
+Points land **provisionally** at submission and are reversed by
+`rollback_completion` on an AI fail or an admin rejection. "AI passed" is
+therefore *not* "your points are safe". The screen says
+*"Points for this attempt are provisional until a study admin confirms them"*
+until `status = 'verified'`, and `pointsAreProvisional()` is tested for each
+state.
+
+Two related decisions:
+
+- **An AI error is not a failure.** `ai_verdict = 'error'` means the check could
+  not run; the award stands and a human decides. It renders as "Awaiting admin
+  review", never as a rejection.
+- **`admin_reason` is never read.** RLS would return it — a participant owns the
+  row — but it holds internal reviewer notes. The participant-facing text is
+  `ai_reason`, which `api/verify.js` deliberately writes in friendly language
+  ("AI service busy — queued for manual review") and never with a model name or
+  HTTP code. A test asserts the column is absent from the select string.
+
+### A test that was deliberately changed, not deleted
+
+`navigation.test.ts` asserted that quest detail links to `/quest/verify`. It no
+longer does, on purpose. The assertion was replaced with one that pins the
+current intent — the button must say "Not available yet" and the route must
+still exist — and carries an explicit note:
+
+> **WHEN 4D LANDS: re-link detail → /quest/verify and restore the assertion that
+> this test replaced.**
+
+### Commands run
+
+```bash
+npm test                                  # 125 passed, 0 failed
+npm run typecheck                         # app + tests, clean
+npx expo export --platform ios --clear    # 3.6 MB Hermes bundle
+```
+
+### Verification done here
+
+| Check | Result |
+|---|---|
+| Unit tests | ✅ 125/125 (36 auth + 30 navigation + 38 quest/parity + 21 completion) |
+| TypeScript | ✅ app and tests clean |
+| iOS bundle | ✅ compiles, 3.6 MB |
+| Secret scan | ✅ private-key markers **and `admin_reason`** → 0 hits each |
+
+The completion tests also assert the constraints this phase depends on, read
+from the migrations themselves: that `submit_completion` demands a photo and a
+20-character log, that `complete_task` is revoked, that `quest_completions` is
+client-read-only, and that the award amounts match
+`supabase-phase10-cooldown-anchoring.sql`.
+
+### Web regression result
+
+✅ **Pass** — 131/131 tests, clean Vite build, **no** web files changed.
+
+### Migrations / server changes
+
+None.
+
+### Environment variables required
+
+Unchanged.
+
+### Risk to the existing web application
+
+**None identified.** Read-only against shared tables.
+
+### Rollback
+
+```bash
+git revert $(git log --format=%H --grep='mobile phase 4c' -1)
+```
+
+### User-required verification (cannot be done from this machine)
+
+Use a **non-production test account**. Open a quest that has been submitted on
+the web, so there is a `quest_completions` row to render.
+
+- [ ] Tapping a quest in the log opens its detail
+- [ ] Title, difficulty + award, evidence type and dates are correct
+- [ ] An overdue planned date is highlighted
+- [ ] A quest with a validity badge shows the check's reason
+- [ ] A submitted quest shows the four stages with the right one marked active
+- [ ] An approved quest reads "Approved" and drops the provisional note
+- [ ] A rejected quest reads "Not approved" and says the points were reversed
+- [ ] **No internal admin note appears anywhere on the screen**
+- [ ] "Submit evidence" explains it is not available yet
+- [ ] A not-yet-accepted quest says it cannot be completed
+- [ ] Delete asks for confirmation and returns to the log
+- [ ] Pull-to-refresh updates both the quest and its verification state
+
+### Recommended next step
+
+**Phase 5 — server integration**, starting with the `/api/verify`
+authentication fix (web callers included), then 4D/4E on top of it.

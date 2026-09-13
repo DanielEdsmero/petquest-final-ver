@@ -91,6 +91,39 @@ export const CHECK_STEPS = [
 export const CHECK_EXPLAINER =
   'PetQuest checks whether your quest is specific, meaningful, and possible to verify. This helps keep the study fair.';
 
+/* ── Completion timing ──
+   Points per difficulty and the client-side cooldown between completions of the
+   same quest, both mirroring GameContext on the web.
+
+   NOTE: since supabase-phase10 the server no longer enforces a time gate in
+   `complete_task` — the burst rate-limit (3 completions in 60s → a 5-minute
+   lock) is the real anti-farm control. This cooldown is presentation only: it
+   stops a participant hammering a just-completed quest, and the server would
+   allow it. Do not describe it to a participant as a rule the server enforces. */
+
+export const DIFF_POINTS: Record<Difficulty, number> = { easy: 10, medium: 25, hard: 50 };
+
+export const DIFF_MIN_COMPLETE_MS: Record<Difficulty, number> = {
+  easy: 300_000,
+  medium: 1_800_000,
+  hard: 7_200_000,
+};
+
+/**
+ * How long until this quest may be completed again, anchored to its LAST
+ * completion. A quest that has never been completed has no cooldown — that is
+ * what makes a freshly created quest immediately actionable.
+ */
+export function cooldownRemainingMs(
+  task: { difficulty?: string | null; completed_at?: string | null },
+  now: number = Date.now(),
+): number {
+  if (!task.completed_at) return 0;
+  const difficulty = (task.difficulty ?? 'easy') as Difficulty;
+  const window = DIFF_MIN_COMPLETE_MS[difficulty] ?? DIFF_MIN_COMPLETE_MS.easy;
+  return Math.max(0, new Date(task.completed_at).getTime() + window - now);
+}
+
 /* ── Period caps ──
    Mirrors GameContext.addTask() on the web: Hard is 1 per week and Medium is
    3 per 3 days, counted from the anchor stored on the profile. This is a
