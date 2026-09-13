@@ -1,133 +1,154 @@
 import { Image } from 'expo-image';
-import { StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useAuth } from '@/auth/AuthProvider';
 import ScreenContainer from '@/components/ScreenContainer';
-import { Env, missingEnvKeys, supabaseProjectRef } from '@/lib/env';
+import { Env, supabaseProjectRef } from '@/lib/env';
 import { Colors, FontSize, PetAccents, Radius, Spacing } from '@/theme';
 
 const MASCOT = require('@/assets/images/splash-icon.png');
 
 /**
- * Phase 1 home screen — the branded shell.
+ * Signed-in home — a Phase 2 placeholder.
  *
- * It deliberately does nothing but prove the app boots, the theme renders and
- * the public configuration is wired. No Supabase client, no auth, no quest data
- * yet; those are Phases 2 and 4.
+ * It proves the session survived, shows who the server says you are, and offers
+ * sign-out plus the admin entry point so the role gate can be exercised. The
+ * real dashboard (pet, points, streak, quest summary) is Phase 4A.
  */
 export default function HomeScreen() {
-  const missing = missingEnvKeys();
-  const ref = supabaseProjectRef();
+  const { session, profile, profileLoading, isAdmin, signOut } = useAuth();
+  const router = useRouter();
+  const [signingOut, setSigningOut] = useState(false);
+
+  const onSignOut = async () => {
+    setSigningOut(true);
+    await signOut();
+    // The guard redirects to login; no navigation needed here.
+  };
 
   return (
-    <ScreenContainer center>
-      <View style={styles.hero}>
-        <View style={styles.glow} />
-        <Image
-          source={MASCOT}
-          style={styles.mascot}
-          contentFit="contain"
-          // Pixel art: keep the hard edges instead of smoothing them.
-          allowDownscaling={false}
-          transition={250}
-          accessibilityLabel="Arcane Dragon"
-        />
-      </View>
-
-      <Text style={styles.title}>PetQuest</Text>
-      <Text style={styles.tagline}>Companion Chronicles</Text>
-
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>Mobile shell · Phase 1</Text>
+    <ScreenContainer>
+      <View style={styles.header}>
+        <View style={styles.hero}>
+          <View style={styles.glow} />
+          <Image
+            source={MASCOT}
+            style={styles.mascot}
+            contentFit="contain"
+            allowDownscaling={false}
+            accessibilityLabel="Arcane Dragon"
+          />
+        </View>
+        <Text style={styles.title}>PetQuest</Text>
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>Mobile · Phase 2</Text>
+        </View>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Configuration</Text>
-
-        {missing.length === 0 ? (
-          <>
-            <Row label="Supabase project" value={ref ?? 'custom host'} ok />
-            <Row label="API base" value={hostOf(Env.apiBaseUrl)} ok />
-            <Text style={styles.note}>
-              Public values only. The service-role and Gemini keys stay on the server.
-            </Text>
-          </>
+        <Text style={styles.cardTitle}>Signed in</Text>
+        {profileLoading && !profile ? (
+          <View style={styles.row}>
+            <ActivityIndicator color={Colors.gold} size="small" />
+            <Text style={styles.rowValue}>Loading your profile…</Text>
+          </View>
         ) : (
           <>
-            <Text style={styles.warn}>Missing public environment values:</Text>
-            {missing.map((k) => (
-              <Text key={k} style={styles.missing}>
-                • {k}
-              </Text>
-            ))}
-            <Text style={styles.note}>
-              Copy .env.example to .env, fill in the public values, then restart with
-              {' '}
-              <Text style={styles.code}>npx expo start -c</Text>.
-            </Text>
+            <Row label="Account" value={session?.user?.email ?? '—'} />
+            <Row label="Username" value={profile?.username ?? 'not set'} />
+            <Row
+              label="Role"
+              value={profile?.role ?? 'unknown'}
+              tint={isAdmin ? Colors.gold : Colors.green}
+            />
+            <Row label="Companion" value={profile?.selected_pet_id ?? 'not hatched'} />
           </>
         )}
       </View>
 
-      <Text style={styles.footer}>Sign-in arrives in Phase 2.</Text>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Connection</Text>
+        <Row label="Supabase" value={supabaseProjectRef() ?? '—'} tint={Colors.green} />
+        <Row label="API" value={hostOf(Env.apiBaseUrl)} tint={Colors.green} />
+        <Text style={styles.note}>
+          Session stored in the device keychain. Quests, evidence and verification arrive in
+          Phase 4.
+        </Text>
+      </View>
+
+      {isAdmin && (
+        <Pressable
+          onPress={() => router.push('/admin')}
+          accessibilityRole="button"
+          accessibilityLabel="Open admin area"
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.secondaryButtonText}>Admin area →</Text>
+        </Pressable>
+      )}
+
+      <Pressable
+        onPress={onSignOut}
+        disabled={signingOut}
+        accessibilityRole="button"
+        accessibilityLabel="Sign out"
+        accessibilityState={{ busy: signingOut }}
+        style={({ pressed }) => [
+          styles.signOutButton,
+          pressed && styles.pressed,
+          signingOut && styles.disabled,
+        ]}
+      >
+        {signingOut ? (
+          <ActivityIndicator color="#fb7185" />
+        ) : (
+          <Text style={styles.signOutText}>Sign out</Text>
+        )}
+      </Pressable>
     </ScreenContainer>
   );
 }
 
-function Row({ label, value, ok }: { label: string; value: string; ok?: boolean }) {
+function Row({ label, value, tint }: { label: string; value: string; tint?: string }) {
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={[styles.rowValue, ok && styles.rowValueOk]} numberOfLines={1}>
+      <Text style={[styles.rowValue, tint ? { color: tint } : null]} numberOfLines={1}>
         {value}
       </Text>
     </View>
   );
 }
 
-/** Show only the host, never a full URL with a query string. */
 function hostOf(url: string): string {
   const m = /^https?:\/\/([^/?#]+)/i.exec(url);
   return m ? m[1] : url || '—';
 }
 
 const styles = StyleSheet.create({
-  hero: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 168,
-    marginBottom: Spacing.sm,
-  },
+  header: { alignItems: 'center', marginBottom: Spacing.lg },
+  hero: { alignItems: 'center', justifyContent: 'center', height: 120 },
   glow: {
     position: 'absolute',
-    width: 150,
-    height: 150,
+    width: 112,
+    height: 112,
     borderRadius: Radius.pill,
     backgroundColor: PetAccents.dragon,
-    opacity: 0.14,
+    opacity: 0.13,
   },
-  mascot: { width: 148, height: 148 },
-
+  mascot: { width: 100, height: 100 },
   title: {
     color: Colors.goldLight,
-    fontSize: FontSize.display,
+    fontSize: FontSize.xl,
     fontWeight: '800',
-    textAlign: 'center',
-    letterSpacing: 1.5,
+    letterSpacing: 1.4,
   },
-  tagline: {
-    color: Colors.textMuted,
-    fontSize: FontSize.sm,
-    textAlign: 'center',
-    marginTop: Spacing.xs,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-  },
-
   badge: {
-    alignSelf: 'center',
-    marginTop: Spacing.md,
+    marginTop: Spacing.sm,
     paddingHorizontal: Spacing.md,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderRadius: Radius.pill,
     backgroundColor: 'rgba(124,58,237,0.16)',
     borderWidth: 1,
@@ -136,42 +157,56 @@ const styles = StyleSheet.create({
   badgeText: { color: '#a78bfa', fontSize: FontSize.xs, fontWeight: '700' },
 
   card: {
-    marginTop: Spacing.xl,
-    padding: Spacing.md,
-    borderRadius: Radius.lg,
     backgroundColor: Colors.cardBg,
+    borderRadius: Radius.lg,
     borderWidth: 1,
     borderColor: Colors.cardBorder,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
   },
   cardTitle: {
     color: Colors.textMuted,
     fontSize: FontSize.xs,
     fontWeight: '700',
-    letterSpacing: 1.5,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
     marginBottom: Spacing.sm,
   },
-
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: Spacing.sm,
-    paddingVertical: 3,
+    paddingVertical: 4,
   },
   rowLabel: { color: Colors.textSoft, fontSize: FontSize.sm },
   rowValue: { color: Colors.textPrimary, fontSize: FontSize.sm, flexShrink: 1 },
-  rowValueOk: { color: Colors.green },
-
-  warn: { color: Colors.gold, fontSize: FontSize.sm, fontWeight: '700' },
-  missing: { color: Colors.textSoft, fontSize: FontSize.sm, marginTop: 2 },
   note: { color: Colors.textMuted, fontSize: FontSize.xs, marginTop: Spacing.sm, lineHeight: 16 },
-  code: { color: Colors.goldLight },
 
-  footer: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
-    textAlign: 'center',
-    marginTop: Spacing.lg,
+  secondaryButton: {
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(245,163,26,0.45)',
+    backgroundColor: 'rgba(245,163,26,0.10)',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
   },
+  secondaryButtonText: { color: Colors.gold, fontSize: FontSize.md, fontWeight: '700' },
+
+  signOutButton: {
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(244,63,94,0.40)',
+    backgroundColor: 'rgba(244,63,94,0.08)',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 'auto',
+  },
+  signOutText: { color: '#fb7185', fontSize: FontSize.md, fontWeight: '700' },
+
+  pressed: { opacity: 0.8 },
+  disabled: { opacity: 0.5 },
 });

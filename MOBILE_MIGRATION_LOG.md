@@ -234,3 +234,152 @@ git checkout main && git branch -D mobile-expo-migration
 - [ ] Confirm the PetQuest home screen renders, with the dragon, the navy theme and the gold title
 - [ ] Confirm the layout clears the notch and the home indicator
 - [ ] Confirm the config card reads the project ref after `.env` is filled in
+
+---
+
+## Phase 2 — Supabase authentication and session foundation
+
+| | |
+|---|---|
+| **Branch** | `mobile-expo-migration` |
+| **Commit** | `git log --oneline --grep='mobile phase 2'` |
+| **Date** | 2026-09-13 |
+| **Status** | ✅ Complete on the dev machine — **on-device sign-in / relaunch / sign-out is user-required** |
+
+Phase 1 was confirmed on a physical iPhone before this phase began: the home
+screen rendered, safe areas cleared the notch and home indicator, and the config
+card showed the right Supabase ref and API host.
+
+### Files added
+
+| Path | Purpose |
+|---|---|
+| `src/lib/chunkedStorage.ts` | Byte-aware chunking over a key/value store; pure, no RN imports |
+| `src/lib/supabase.ts` | The client — public URL + anon key, SecureStore session storage, foreground-driven auto-refresh |
+| `src/auth/AuthProvider.tsx` | The single source of auth truth: session, profile, role, sign-in/out |
+| `src/auth/guards.ts` | Pure route-guard decisions, error mapping and credential validation |
+| `src/components/LoadingScreen.tsx` | Session-restoring screen (the Phase 6 mascot loader replaces it) |
+| `src/app/(auth)/login.tsx` | Email + password sign-in |
+| `src/app/admin/_layout.tsx` | Role gate for the admin group |
+| `src/app/admin/index.tsx` | Admin placeholder that exists to exercise the gate |
+| `tests/auth.test.ts` | 36 unit tests |
+| `tsconfig.tests.json` | Node-flavoured typecheck, kept out of the app's type space |
+
+Changed: `src/app/_layout.tsx` (AuthProvider + guard), `src/app/index.tsx`
+(signed-in placeholder), `package.json`, `tsconfig.json`, `README.md`.
+
+### Dependencies added
+
+`@supabase/supabase-js` ^2.116.0 · `expo-secure-store` ~57.0.4 ·
+`react-native-url-polyfill` ^4.0.0 · dev: `@types/node`.
+Installed with `npx expo install` so the versions match SDK 57. The
+`expo-secure-store` config plugin was added to `app.json` automatically.
+
+### The one non-obvious engineering problem
+
+**A Supabase session does not fit in SecureStore.** SecureStore warns above 2048
+bytes and a future SDK will throw; a real session (access JWT + refresh token +
+serialised user) runs 2–4 KB. Stored naively the write is dropped and the
+participant is silently logged out on every relaunch.
+
+`createChunkedStorage` splits the value across `<key>.0`, `<key>.1`, … with a
+manifest under the caller's own key. Specifics that matter:
+
+- **Byte-aware, not character-aware** — the limit is on encoded bytes, and a
+  username may be non-ASCII. Slices are measured with `TextEncoder` and never
+  cut a multi-byte character or a surrogate pair in half.
+- **Chunks written before the manifest** — an interrupted write leaves a stale
+  or absent manifest, never one pointing at slices that do not exist.
+- **A torn entry reads as `null`**, not as a truncated session, so a corrupted
+  keychain lands on the login screen instead of a confusing auth error.
+- **Old chunks are cleared before a rewrite**, so a shorter session cannot leave
+  a stale tail behind.
+
+### Security posture
+
+- Client built from `EXPO_PUBLIC_SUPABASE_URL` + anon key only; a test asserts
+  the file never references a service-role or Gemini key.
+- `detectSessionInUrl: false` — there is no `window.location` in React Native.
+- Admin access is decided by the server-sent `profiles.role`. No profile, a
+  failed fetch, or an unexpected value all mean **not admin** — it fails closed.
+- Route guards are documented in code as **UX, not security**: RLS and the
+  server-side role checks are the actual control.
+- A slow profile fetch cannot apply to a different user — the result is
+  discarded unless it still matches the active user id.
+
+### Commands run
+
+```bash
+npx expo install @supabase/supabase-js expo-secure-store react-native-url-polyfill
+npm install --save-dev @types/node
+npm test                                  # 36 passed, 0 failed
+npm run typecheck                         # app + tests, clean
+npx expo export --platform ios --clear    # 3.0 MB Hermes bundle (was 2.4 MB)
+npx expo start                            # /status 200; generated .expo/types
+```
+
+### Verification done here
+
+| Check | Result |
+|---|---|
+| Unit tests | ✅ 36/36 — chunking round-trip, torn entries, unicode, guards, error mapping |
+| TypeScript | ✅ app and tests both clean |
+| iOS bundle | ✅ compiles, 3.0 MB |
+| Secret scan of the shipped bundle | ✅ `service_role`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `gemini`, `generativelanguage` → **0 hits each**; the public project ref is present, as expected |
+| Live auth endpoint probe | ✅ one bogus-credential POST to the real project returned HTTP 400 `invalid_credentials` / "Invalid login credentials" — confirms the URL and anon key work and that `friendlyAuthError` maps the real message |
+
+### Web regression result
+
+✅ **Pass** — 131/131 tests, clean Vite build. `git diff main` lists **no** web
+files changed (`src`, `api`, `supabase`, `public`, root configs).
+
+### Migrations / server changes
+
+None. No SQL, no RPC, no RLS policy, no Supabase Auth setting (no redirect URL
+was added), no Vercel change. Phase 2 only *reads* `profiles` through existing
+policies.
+
+### Environment variables required
+
+Unchanged from Phase 1 — the same three public values in `apps/mobile/.env`.
+
+### Risk to the existing web application
+
+**None identified.** Nothing outside `apps/mobile/` was touched. The mobile app
+authenticates as an ordinary Supabase user against the same RLS the web client
+already obeys.
+
+### Notes for later phases
+
+- `.expo/types/router.d.ts` (typed routes) is generated by the dev server and is
+  git-ignored, so a fresh clone must run `npx expo start` once before
+  `npm run typecheck` compiles typed `href` values. Documented in the README.
+- The tests run TypeScript directly under `node --test` (Node 24 strips types),
+  so the project still carries no test framework. Anything importing React
+  Native needs the Phase 8 device/integration suite.
+- `LoadingScreen` is the placeholder the Phase 6 mascot wake-up loader replaces.
+
+### Rollback
+
+```bash
+# Undo just this phase, keeping the Phase 1 shell:
+git revert $(git log --format=%H --grep='mobile phase 2' -1)
+
+# Remove the mobile app entirely:
+git rm -r apps/mobile && git commit -m "remove mobile client"
+
+# Or discard the whole effort — main is untouched:
+git checkout main && git branch -D mobile-expo-migration
+```
+
+Nothing to undo on the server.
+
+### User-required verification (cannot be done from this machine)
+
+- [ ] Sign in on the iPhone with a **non-production test account**
+- [ ] Force-quit and reopen Expo Go — the session restores without a re-login
+- [ ] Sign out — the app returns to login and does not restore on relaunch
+- [ ] As an ordinary user, confirm no "Admin area" button appears
+- [ ] As an admin, confirm the button appears and `/admin` opens
+- [ ] Wrong password shows "Invalid email or password." and does not crash
+- [ ] Airplane mode shows the connection message rather than hanging

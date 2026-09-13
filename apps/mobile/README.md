@@ -7,9 +7,10 @@ the same Vercel functions** as the Vite web app in the repository root.
 > client. This folder is developed on `mobile-expo-migration` and is not merged
 > to `main` until it passes the Phase 8 regression gates.
 
-**Current phase: 1 — isolated shell.** The app boots, renders a branded home
-screen and reports its public configuration. There is no Supabase client, no
-authentication and no quest data yet (Phases 2 and 4).
+**Current phase: 2 — authentication.** The app signs in against the same Supabase
+project as the web client, keeps the session in the device keychain, restores it
+on relaunch, signs out, and gates an admin route on `profiles.role`. There is no
+quest, evidence or verification UI yet (Phase 4).
 
 ---
 
@@ -88,10 +89,49 @@ which verify the caller's Supabase access token.
 ## Checks
 
 ```bash
-npm run typecheck    # tsc --noEmit
+npm test             # pure-logic unit tests (node --test, no extra tooling)
+npm run typecheck    # app types, then test types
 npm run lint         # expo lint
 npm run doctor       # expo-doctor: dependency/config sanity
 ```
+
+`npm test` runs TypeScript directly — Node 24 strips types natively, so the
+project carries no test framework or transpiler. Only dependency-free modules
+are covered (`src/lib/chunkedStorage.ts`, `src/auth/guards.ts`); anything that
+imports React Native is device/integration territory in Phase 8.
+
+> **Run `npx expo start` once before `npm run typecheck` on a fresh clone.**
+> Expo generates `.expo/types/router.d.ts` (the typed-routes union) at dev-server
+> start, and it is git-ignored. Without it, typed `href` values fail to compile.
+
+## Authentication
+
+- Email + password, the same flow as the web client. No OAuth provider is
+  configured, so no deep link is involved in signing in.
+- The session lives in the iOS keychain / Android keystore via
+  `expo-secure-store`. SecureStore rejects values over 2048 bytes and a Supabase
+  session is larger than that, so `src/lib/chunkedStorage.ts` splits it across
+  entries — byte-aware, so multi-byte characters are never cut in half, and a
+  torn entry reads back as absent rather than as a truncated session.
+- Token auto-refresh follows the app's foreground state (`AppState`), so a phone
+  that has been locked comes back with a fresh token instead of a stale one.
+- `src/auth/AuthProvider.tsx` is the single source of auth truth; screens use
+  `useAuth()`.
+- Route guards live in `src/auth/guards.ts` (pure and unit-tested) and are
+  applied once, in the root layout.
+
+> **Guards are UX, not security.** They stop a participant *reaching* an admin
+> screen. What actually protects admin data is Supabase RLS (`is_admin()` on
+> `quest_validity_reviews`, `user_snapshots`, `cheat_events`) plus the role
+> checks inside the Vercel functions.
+
+### Registration and email confirmation
+
+Sign-up stays on the **web** for now, per the Phase 1 decision: a new
+participant registers in a browser, confirms by email there, then signs in on
+the phone. The `petquest` scheme is declared in `app.json` but **no Supabase Auth
+redirect URL has been added**, and the web confirmation flow is untouched. Native
+deep-link confirmation is deferred to a later phase.
 
 ## Conventions
 
@@ -108,12 +148,10 @@ npm run doctor       # expo-doctor: dependency/config sanity
 
 ## Not yet implemented
 
-Phase 2 auth · Phase 3 tabs + admin group · Phase 4 dashboard, quests, evidence ·
-Phase 5 server integration · Phase 6 mascot wake-up loader · Phase 7 admin and
-research views · Phase 8 tests and EAS build.
+Phase 3 tabs (Home / Quests / Pet / Profile) · Phase 4 dashboard, quests,
+evidence · Phase 5 server integration · Phase 6 mascot wake-up loader · Phase 7
+admin and research views · Phase 8 tests and EAS build.
 
-Email confirmation for new accounts stays on the **existing web flow** for now —
-the confirmation link opens in a browser. Native deep-link confirmation
-(`petquest://`) is deliberately deferred until login, session restoration and
-logout are proven on device. The `petquest` scheme is declared in `app.json` but
-**no Supabase Auth redirect URL has been added**.
+The screens that exist today (`/`, `/(auth)/login`, `/admin`) are deliberately
+minimal — they prove the session and the role gate, and Phases 3–4 replace them
+with the real navigation and dashboard.

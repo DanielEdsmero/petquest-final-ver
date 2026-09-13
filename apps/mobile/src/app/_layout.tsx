@@ -1,28 +1,66 @@
-import { Stack } from 'expo-router';
+import { Stack, useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect, type ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AuthProvider, useAuth } from '@/auth/AuthProvider';
+import { resolveRedirect, shouldShowRestoring } from '@/auth/guards';
+import LoadingScreen from '@/components/LoadingScreen';
 import { Colors } from '@/theme';
 
 /**
- * Root layout for the PetQuest mobile shell.
+ * Root layout.
  *
- * Phase 1 is a single screen. The tab navigator, the auth group and the
- * role-gated admin group arrive in Phases 2–3; this stays the one place that
- * owns the safe-area provider, the status-bar style and the dark chrome.
+ * Owns the safe-area provider, the dark chrome, the auth provider and the
+ * navigation guard. Every screen renders underneath this, so there is exactly
+ * one place that decides whether the participant may be where they are.
  */
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      {/* The app is dark-only, so the status bar is always light-on-dark. */}
       <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: Colors.bgDeep },
-          animation: 'fade',
-        }}
-      />
+      <AuthProvider>
+        <AuthGate>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: Colors.bgDeep },
+              animation: 'fade',
+            }}
+          />
+        </AuthGate>
+      </AuthProvider>
     </SafeAreaProvider>
   );
+}
+
+/**
+ * Applies `resolveRedirect` whenever the auth state or the route changes.
+ *
+ * The redirect runs in an effect rather than during render because Expo Router
+ * cannot navigate mid-render — and it waits for the navigator to exist, which
+ * `useSegments()` returning a value tells us.
+ *
+ * Reminder: this is UX, not security. Supabase RLS is what actually stops a
+ * participant reading admin data (see src/auth/guards.ts).
+ */
+function AuthGate({ children }: { children: ReactNode }) {
+  const { status, isAdmin } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+  // Navigating before the root navigator has mounted throws. The state gets a
+  // `key` once it is ready; until then we hold the redirect.
+  const navigationReady = useRootNavigationState()?.key != null;
+
+  useEffect(() => {
+    if (!navigationReady) return;
+    const target = resolveRedirect({ status, isAdmin, segments: segments as string[] });
+    if (target) router.replace(target);
+  }, [navigationReady, status, isAdmin, segments, router]);
+
+  // Cover the app while the keychain is being read, so a protected screen never
+  // flashes before we know who is signed in.
+  if (shouldShowRestoring(status)) return <LoadingScreen />;
+
+  return <>{children}</>;
 }
