@@ -91,3 +91,146 @@ git branch -D mobile-expo-migration
 4. 🟢 **No CORS work needed.** React Native `fetch` is not CORS-constrained, so the
    existing same-origin functions work unchanged from Expo Go. CORS would only matter
    if Expo Web became a target.
+
+---
+
+## Phase 1 — Isolated Expo shell
+
+| | |
+|---|---|
+| **Branch** | `mobile-expo-migration` |
+| **Commit** | `git log --oneline --grep='mobile phase 1'` |
+| **Date** | 2026-09-13 |
+| **Status** | ✅ Complete on the dev machine — **Expo Go / physical iPhone check is user-required** |
+
+### What was added
+
+`apps/mobile/` — an Expo Router + TypeScript app, scaffolded from
+`create-expo-app@latest` (**Expo SDK 57**, React Native 0.86.3, React 19.2.3,
+expo-router 57) and then stripped back to a PetQuest shell.
+
+| Path | Purpose |
+|---|---|
+| `apps/mobile/package.json` | **Own** manifest, `name: petquest-mobile`. No workspaces. |
+| `apps/mobile/app.json` | Name **PetQuest**, slug `petquest`, scheme `petquest`, bundle id `com.yourresearchgroup.petquest`, dark UI, `#06061a` splash |
+| `apps/mobile/tsconfig.json` | From the template, `strict: true`, `@/*` path alias |
+| `apps/mobile/src/app/_layout.tsx` | Root Stack + SafeAreaProvider + light status bar |
+| `apps/mobile/src/app/index.tsx` | Branded home screen + public-config report |
+| `apps/mobile/src/components/ScreenContainer.tsx` | Safe area, keyboard avoidance, gutters, max width |
+| `apps/mobile/src/theme.ts` | PetQuest palette/spacing/type, **ported** from the web tokens |
+| `apps/mobile/src/lib/env.ts` | Public env accessor + the written security contract |
+| `apps/mobile/assets/images/*` | Icon, splash, adaptive icon, favicon — generated from the dragon art |
+| `apps/mobile/.env.example` | The three public values, with an explicit never-add list |
+| `apps/mobile/README.md` | Setup, isolation and **how to remove the folder** |
+
+Template demo content removed: `explore.tsx`, all demo components/hooks/constants,
+`global.css`, `scripts/reset-project.js`, `AGENTS.md`, `CLAUDE.md`, `.claude/`,
+`.vscode/`, `LICENSE`, and the Expo/React logo and tab-icon assets. Four demo-only
+dependencies were dropped from the template manifest (`@expo/ui`,
+`expo-glass-effect`, `expo-symbols`, `expo-device`).
+
+### Copied / duplicated from the web app, and why
+
+Per the Phase 1 decision, isolation beats sharing: no workspaces, no shared
+package. So far **no web JavaScript module has been copied verbatim**. One file is
+a hand port:
+
+| Mobile file | Derived from | Why |
+|---|---|---|
+| `src/theme.ts` | `src/index.css` (`:root` tokens) + `tailwind.config.js` (`theme.extend.colors`) | CSS custom properties cannot be consumed by React Native; the values are retyped as TS constants so both clients look like one product |
+
+`config/pets.js` and `data/*.js` are **not** copied yet — they are only needed once
+quest and pet screens land (Phase 4). They will be copied then, and each copy
+recorded here.
+
+> **Drift risk:** `theme.ts` now duplicates the brand palette, and Phase 4 will
+> duplicate the evolution thresholds, difficulty colours and pet metadata. The
+> Phase 8 parity test must assert these against the web originals so they cannot
+> silently diverge.
+
+### Styling decision (needs a nod)
+
+React Native `StyleSheet` + `src/theme.ts`, **not NativeWind**. NativeWind needs a
+Babel plugin, a Metro config and its own Tailwind config — extra moving parts in an
+experimental shell — and it can be adopted later without touching screen logic.
+
+### Email confirmation (as decided)
+
+Unchanged and web-based. The `petquest` scheme is declared in `app.json`, but **no
+Supabase Auth redirect URL was added** and the web confirmation flow was not
+touched. Native deep-link confirmation is deferred until login, session
+restoration and logout are proven on device.
+
+### Commands run
+
+```bash
+npx create-expo-app@latest apps/mobile --template default --no-install
+cd apps/mobile && npm install          # 605 packages
+npx tsc --noEmit                       # exit 0
+npx expo export --platform ios --clear # bundled: 2.4 MB Hermes bytecode
+npx expo start                         # /status 200; iOS dev bundle 200, 4.2 MB
+```
+
+### Secret-leak verification (negative test)
+
+A temporary `.env` was created containing the three public values **and** two
+deliberately-marked fake private keys, then the app was exported and the shipped
+Hermes bundle scanned. The temporary `.env` was deleted afterwards.
+
+| Marker | In `.env` | In bundle |
+|---|---|---|
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` value | yes | ✅ 1 hit (expected — public by design) |
+| `EXPO_PUBLIC_SUPABASE_URL` project ref | yes | ✅ 1 hit (expected) |
+| `EXPO_PUBLIC_API_BASE_URL` host | yes | ✅ 1 hit (expected) |
+| `GEMINI_API_KEY` value | yes | **0 hits** |
+| `SUPABASE_SERVICE_ROLE_KEY` value | yes | **0 hits** |
+| the literal `service_role` | — | **0 hits** |
+
+Un-prefixed variables are not inlined by the Expo bundler, so a private key placed
+in the mobile `.env` by mistake still cannot reach the app.
+
+### Web regression result
+
+✅ **Pass** — 131/131 tests, clean Vite build, both before and after the phase.
+
+| Isolation check | Result |
+|---|---|
+| Web files changed (`src`, `api`, `supabase`, `public`, configs) | **none** — `git diff main` is empty for those paths |
+| Root `package.json` / `package-lock.json` | untouched |
+| `workspaces` field at root | absent |
+| `apps/mobile/node_modules` | git-ignored |
+
+### Migrations / server changes
+
+None. No SQL, no Supabase function, no RLS policy, no Vercel setting.
+
+### Environment variables required
+
+`apps/mobile/.env` (git-ignored), created from `.env.example` — public only:
+`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`,
+`EXPO_PUBLIC_API_BASE_URL`.
+
+### Risk to the existing web application
+
+**None identified.** The mobile app is a sibling folder with its own manifest and
+lockfile; nothing at the root resolves into it and nothing in it resolves out.
+
+### Rollback
+
+```bash
+# Remove the mobile app, keep everything else:
+git rm -r apps/mobile && git commit -m "remove mobile shell"
+
+# Or revert the phase commit:
+git revert $(git log --format=%H --grep='mobile phase 1' -1)
+
+# Or discard the whole effort — main is untouched:
+git checkout main && git branch -D mobile-expo-migration
+```
+
+### User-required verification (cannot be done from this machine)
+
+- [ ] Scan the QR code from `npx expo start` with the iPhone camera and open in Expo Go
+- [ ] Confirm the PetQuest home screen renders, with the dragon, the navy theme and the gold title
+- [ ] Confirm the layout clears the notch and the home indicator
+- [ ] Confirm the config card reads the project ref after `.env` is filled in
