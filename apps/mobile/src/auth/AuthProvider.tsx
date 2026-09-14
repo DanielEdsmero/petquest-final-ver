@@ -47,6 +47,12 @@ type AuthContextValue = {
   isAdmin: boolean;
   /** A profile fetch is in flight after a session was restored. */
   profileLoading: boolean;
+  /**
+   * A sign-in is in flight — from the moment the request starts until the
+   * profile has loaded (or the request failed). Drives the account-loading
+   * gate so the wake-up animation and the network run in parallel.
+   */
+  signingIn: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -63,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
 
   /** Guards against a slow profile fetch resolving after sign-out. */
   const activeUserId = useRef<string | null>(null);
@@ -88,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!mounted.current || activeUserId.current !== userId) return;
 
     setProfileLoading(false);
+    setSigningIn(false); // the account is loaded (or failed to); the gate may reveal
     if (error) {
       // A missing or unreadable profile must not crash the app or strand the
       // participant on a loading screen. They stay signed in with no role,
@@ -142,6 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // renewed — an expired session lands on the login screen.
         setProfile(null);
         setProfileLoading(false);
+        setSigningIn(false);
         return;
       }
 
@@ -162,12 +171,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadProfile]);
 
   const signIn = useCallback(async (email: string, password: string) => {
+    // Flip BEFORE the network call so the wake-up loader mounts at request
+    // start and the two run in parallel. A failure clears it immediately —
+    // nobody is held behind an animation with nothing to reveal. On success
+    // loadProfile() clears it once the account has actually arrived.
+    setSigningIn(true);
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
-    // On success `onAuthStateChange` sets the session and loads the profile.
-    return { error: error ? friendlyAuthError(error.message) : null };
+    if (error) {
+      setSigningIn(false);
+      return { error: friendlyAuthError(error.message) };
+    }
+    return { error: null };
   }, []);
 
   const signOut = useCallback(async () => {
@@ -176,6 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
     setSession(null);
     setStatus('signedOut');
+    setSigningIn(false);
     activeUserId.current = null;
     const { error } = await supabase.auth.signOut();
     if (error) console.warn('[auth] signOut failed:', error.message);
@@ -195,11 +213,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // a failed fetch, an unexpected value — is not an admin.
       isAdmin: profile?.role === 'admin',
       profileLoading,
+      signingIn,
       signIn,
       signOut,
       refreshProfile,
     }),
-    [status, session, profile, profileLoading, signIn, signOut, refreshProfile],
+    [status, session, profile, profileLoading, signingIn, signIn, signOut, refreshProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

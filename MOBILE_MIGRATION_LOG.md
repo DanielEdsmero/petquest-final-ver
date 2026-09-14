@@ -1220,3 +1220,185 @@ completion row and spends a real Gemini call.
 
 **Phase 4F** — the pet screen with the real sprite and evolution progress, then
 **Phase 6** (the mandatory-but-skippable wake-up loader).
+
+---
+
+## Phase 4F — Pet tab: real sprite, evolution stage, stats
+
+| | |
+|---|---|
+| **Commit** | `git log --oneline --grep='mobile phase 4f'` |
+| **Date** | 2026-09-15 |
+| **Status** | ✅ Complete — on-device check user-required |
+
+The companion tab shows the actual PetQuest sprite for the stored `pet_level`,
+the four evolution stages with the current one marked, a progress bar to the
+next stage from `total_points_earned` (same thresholds as the server's
+`pet_level` CASE), current/longest streak, and the care stats from `pet_stats`.
+Every value is server-sourced; an unloaded one renders as a dash.
+
+### Care actions were deliberately NOT ported — decision needed
+
+On the web, feed / wash / play raise a stat **and debit 10 points by writing
+`profiles.points` directly from the browser**. `supabase-schema.sql` documents
+this as a known hole:
+
+> *profiles.points is deliberately still client-writable because spendPoints()
+> debits it directly. Until that is also moved into an RPC, a determined user
+> can still award themselves points by writing profiles.points… Closing that
+> hole requires a matching spend_points() RPC plus
+> `revoke update (points) on profiles from authenticated, anon;`*
+
+Reproducing that client-side write on a second client would double the surface
+of a known weakness, and the fix is a **migration**, which the policy says needs
+approval first. So mobile shows the stats read-only with a note sending care to
+the website, and tests assert no mobile file writes `profiles` or `pet_stats`
+or debits points locally.
+
+**Recommendation:** approve a small migration adding `spend_points(p_amount)`
+(SECURITY DEFINER, checks balance, debits atomically) and revoking client
+update on `profiles.points`. It closes the web hole *and* unblocks mobile care
+actions and the accessories shop. Not economy-award logic — it is the missing
+half of the economy. Reversible: drop the function, re-grant the column.
+
+Also recorded: the web decays `pet_stats` client-side on a 30-minute timer
+while logged in; mobile does not run that timer.
+
+Files: `src/data/petStats.ts` (new), `(tabs)/pet.tsx` (real screen),
+`tests/quests.test.ts` (+5). No web files, no SQL.
+
+---
+
+## Phase 6 — Mandatory, skippable mascot wake-up loader
+
+| | |
+|---|---|
+| **Commit** | `git log --oneline --grep='mobile phase 6'` |
+| **Date** | 2026-09-15 |
+| **Status** | ✅ Complete on the dev machine — **on-device verification is user-required**, especially timing and Skip |
+
+The mobile port of the web's account-loading buffer. The participant's
+companion sleeps → stirs → performs its flourish → settles awake, for a
+mandatory **4.2 s** minimum (1200 / 900 / 1200 / 900), with an always-visible
+**Skip animation →** button. The account is revealed only when the data is
+ready AND the minimum has played, or straight away on Skip.
+
+### Files added
+
+| Path | Purpose |
+|---|---|
+| `src/data/wakeModel.ts` | Phases, timings, captions, reveal rule, pet lock — pure, tested for parity with the web |
+| `src/data/wakeSprites.ts` | The 12 frame `require`s |
+| `src/hooks/useReducedMotion.ts` | `AccessibilityInfo.isReduceMotionEnabled` + change listener |
+| `src/components/MascotWakeLoader.tsx` | The component |
+| `assets/pets/wake/*.png` | The 12 frames, **byte-identical** to the web's (a test compares them) |
+| `tests/wake.test.ts` | 34 tests |
+
+Changed: `src/app/_layout.tsx` (the gate), `src/auth/AuthProvider.tsx`
+(`signingIn`), `tsconfig.json` (see below).
+
+### How the gate works (mirrors `App.jsx` on the web, formula asserted equal)
+
+```
+accountDataReady = status settled && !signingIn && !(signedIn && profile still loading)
+accountId        = signedIn ? profile.id : null
+gated            = !accountDataReady || (accountId && revealedFor !== accountId)
+```
+
+- `signingIn` flips **before** `signInWithPassword` is called, so the loader
+  mounts at request start and the two run in parallel. A failure clears it
+  immediately — nobody is held behind an animation with nothing to reveal.
+- A signed-out visitor has no `accountId`, so the login screen is never held.
+- A failed profile load drops the gate: the participant lands in the app with no
+  role (no admin) — degraded, not stuck.
+- Sign-out forgets `revealedFor`, so the same account signing back in gets the
+  full sequence rather than an instant reveal (a case the web version misses).
+- `loadId` bumps only when the gate turns on, never while it is up — keying off
+  the account id would restart the animation right as the profile lands.
+
+The loader is an **absolute overlay above the Stack**, not a replacement for
+it. That keeps the navigator mounted, so `router.replace` never fires before a
+navigator exists and a redirect underneath can never tear the animation down —
+the same lesson the web version learned in its Phase 5.
+
+### Reduced motion
+
+Keeps the **full mandatory sequence** — every state is still shown for its
+readable minimum — and drops only the glow pulse and the cross-fade. Read from
+`AccessibilityInfo` on mount and kept in sync with the system setting.
+
+### Skip
+
+A real `Pressable` with `accessibilityRole="button"`,
+`accessibilityLabel="Skip pet wake-up animation"`, a hint, 44 pt minimum height
+and hit-slop. Rendered outside the live region so it is not re-announced.
+Idempotent: `onSkip` fires once; `onComplete` is a one-shot. It drops only the
+*duration* requirement — a skip before the data lands still waits for the data.
+Keyboard: not applicable on iOS touch; the button is fully reachable by
+VoiceOver.
+
+### A build-tooling detail worth knowing
+
+`wakeModel.ts` imports `petModel.ts` with an **explicit `.ts` extension** and a
+relative path. `node --test` has no Metro alias and uses strict ESM resolution,
+so `@/data/petModel` cannot load there. Metro resolves the explicit extension
+fine; `tsc` needed `allowImportingTsExtensions` (+ `noEmit`) in `tsconfig.json`.
+Rule going forward, now written into the file: **pure models under `src/data/`
+that a test imports use relative `.ts` imports, never `@/`.** The bundle was
+exported afterwards to prove Metro accepts it.
+
+### Commands run
+
+```bash
+npm test                                  # 194 passed (+34)
+npm run typecheck                         # clean
+npx expo export --platform ios --clear    # 3.7 MB Hermes; 67 assets
+```
+
+### Verification done here
+
+| Check | Result |
+|---|---|
+| Mobile unit tests | ✅ 194/194 |
+| TypeScript | ✅ clean |
+| iOS bundle | ✅ compiles with the explicit `.ts` import, 3.7 MB |
+| Secret scan | ✅ 0 hits |
+| Wake frames | ✅ 12/12 present and byte-identical to the web copies |
+| Web regression | ✅ 165/165, clean build, **no web files changed** |
+
+### Migrations / server changes
+
+None (the `spend_points` proposal above is a recommendation, not done).
+
+### Rollback
+
+```bash
+git revert $(git log --format=%H --grep='mobile phase 6' -1)     # loader
+git revert $(git log --format=%H --grep='mobile phase 4f' -1)    # pet tab
+```
+
+### User-required verification (cannot be done from this machine)
+
+**Pet tab (4F)**
+- [ ] Your real companion sprite at the right stage; species and stage named
+- [ ] Evolution row marks the current stage; bar and "N to <next>" match your lifetime points
+- [ ] Streak current/longest match the web
+- [ ] Stats show percentages (or dashes for a brand-new account)
+- [ ] The care note points at the website; no feed/wash/play buttons
+
+**Wake-up loader (6)** — the one to test carefully
+- [ ] **Cold open, signed in:** your own pet sleeps → stirs → flourish → awake, captions change, about **4 s** before the tabs appear
+- [ ] **Cold open, signed out:** the login screen appears almost immediately — no 4 s hold
+- [ ] **Sign in:** the loader appears the moment you tap Sign in, plays the full sequence, then the tabs
+- [ ] **Skip** during the sleeping frame → tabs as soon as the account has loaded (typically instant)
+- [ ] **Skip** while airplane mode is on mid-sign-in → the loader stays on "Finishing your setup…" until the data arrives; it never reveals a blank app
+- [ ] **Wrong password:** the loader drops straight back to the form with the error — no 4 s trap
+- [ ] **Sign out, sign back in as the same account:** the full sequence plays again
+- [ ] **Reduce Motion on** (Settings → Accessibility → Motion): all four frames still play for the same ~4 s; no pulsing glow
+- [ ] VoiceOver reads "Loading your PetQuest account. Your pet is waking up." and can reach Skip
+- [ ] Nothing behind the loader flashes before it appears; nothing sideways-scrolls at 320 pt
+
+### Next
+
+**Phase 7** — admin queues (validity + verification) on mobile, role-gated and
+RLS-backed. Then **Phase 8** — tests, performance, EAS build configuration.
