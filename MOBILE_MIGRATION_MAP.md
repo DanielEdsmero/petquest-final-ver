@@ -50,7 +50,7 @@ app passes the regression gates in Phase 8.
 | Progress logs | `GameContext.jsx` → `addProgressLog()` → `task_progress` | Medium/Hard only |
 | Evidence capture | `src/components/VerificationModal.jsx` | **Most browser-coupled file in the repo** — see §5 |
 | Completion + award | `submit_completion()` RPC → internally calls `complete_task()` | `complete_task` is **revoked from `authenticated`** (Phase 8) |
-| AI verdict | `POST /api/verify` | Writes the verdict service-side; rolls back on fail |
+| AI verdict | `POST /api/verify` → `api/_lib/verify.js` | Writes the verdict service-side; rolls back on fail |
 | Admin review | `src/pages/AdminPage.jsx` → `admin_review_completion()` | Approve / reject / suspicious |
 | Validity queue | `AdminPage.jsx` → `admin_resolve_quest_validity()` | Admin-only |
 
@@ -174,19 +174,44 @@ from the token, never the body**. Client timeout is 45 s (`AbortController`).
 Admin-only fields (`admin_reason`, `risk_flags`, `model_version`) are stripped by
 `participantView()` and stored in the admin-read-only `quest_validity_reviews`.
 
-### `POST /api/verify`
+### `POST /api/verify`  *(hardened in Phase 5)*
 
 ```
-Body: { completion_id }
-→ 200 { verdict: 'pass'|'fail'|'error', confidence, reason }
+Headers: Content-Type: application/json
+         Authorization: Bearer <supabase access_token>      ← REQUIRED
+Body:    { completion_id }
 ```
 
-> 🔴 **Gap found during the audit:** `api/verify.js` performs **no token check and no
-> ownership check**. Any caller who knows a `completion_id` can trigger a verdict
-> (and a rollback) for someone else's completion. It is currently shielded only by
-> obscurity. **Phase 5 must add `Authorization: Bearer` + ownership/admin checks to
-> this endpoint**, matching `validate-quest`. This is a pre-existing web bug, not one
-> introduced by mobile — but mobile must not ship against the unauthenticated shape.
+| Status | Body | Meaning |
+|---|---|---|
+| 200 | `{ verdict: 'pass'\|'fail'\|'error', confidence, reason, reused? }` | verdict written (or `reused` = the stored one returned) |
+| 400 | `{ error:'missing_completion_id' }` | |
+| 401 | `{ error:'unauthenticated' }` | missing/invalid token |
+| 403 | `{ error:'forbidden' }` | not your completion, and not an admin |
+| 404 | `{ error:'completion_not_found' }` | |
+| 429 | `{ error:'rate_limited', message, retry_in_ms }` | per-user cooldown |
+| 500 | `{ error:'server_not_configured' }` | server env missing |
+
+Rules, all in `api/_lib/verify.js` and unit-tested in `tests/verify.test.mjs`:
+
+- the uid comes from the verified token, never the body;
+- you may verify **your own** completion, an admin may verify any;
+- a completion already holding a **final** verdict (pass/fail) is not re-judged
+  for a participant — the stored verdict is returned without a Gemini call.
+  `pending` and `error` stay retryable, which the admin re-run button needs;
+- an admin may force a fresh run on any verdict;
+- a short per-user cooldown (in-memory, best-effort).
+
+> ✅ **The Phase 0 gap is closed.** It previously accepted `{ completion_id }` from
+> anyone with no token and no ownership check; since a `fail` calls
+> `rollback_completion`, a stranger could reverse another participant's points. The
+> hole was confirmed against the live deployment during Phase 5 (an unauthenticated
+> POST reached the database lookup and returned `completion_not_found`). All three
+> web callers and the mobile client now send the bearer token via
+> `src/lib/authHeaders.js` / `apps/mobile/src/lib/verifyApi.ts`.
+>
+> ⚠️ **This requires a redeploy to take effect.** Until the branch ships, the live
+> endpoint is still the unauthenticated version.
 
 ### CORS
 

@@ -9,6 +9,7 @@ import {
 } from 'recharts'
 import { ArrowLeft, Users, CheckSquare, Clock, TrendingDown, RefreshCw, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { jsonPost } from '../lib/authHeaders'
 import { useGame } from '../context/GameContext'
 import { evidenceMeta, VALIDITY_META } from '../data/questValidity'
 import { PETS } from '../data/pets'
@@ -438,10 +439,8 @@ function VerificationQueue() {
   const rerunAI = async (id) => {
     setBusy(id + 'ai')
     try {
-      const r = await fetch('/api/verify', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ completion_id: id }),
-      })
+      // /api/verify authorises on the caller's token; an admin may re-run any row.
+      const r = await fetch('/api/verify', await jsonPost({ completion_id: id }))
       const d = await r.json().catch(() => ({}))
       addNotification(r.ok ? `AI verdict: ${d.verdict}` : `AI re-run failed (${d.error || r.status})`, r.ok ? 'info' : 'error')
     } catch (e) { addNotification(`AI re-run failed: ${e.message}`, 'error') }
@@ -463,10 +462,8 @@ function VerificationQueue() {
       const ctl = new AbortController()
       const to = setTimeout(() => ctl.abort(), 25000)   // never wait forever on one row
       try {
-        const res = await fetch('/api/verify', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ completion_id: stuck[i].id }), signal: ctl.signal,
-        })
+        const res = await fetch('/api/verify',
+          await jsonPost({ completion_id: stuck[i].id }, { signal: ctl.signal }))
         const d = await res.json().catch(() => ({}))
         if (d.verdict === 'pass' || d.verdict === 'fail') verdicted++
         else manual++   // 'error' / unavailable photo / bad response → manual review

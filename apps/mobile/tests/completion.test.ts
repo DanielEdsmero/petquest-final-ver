@@ -149,11 +149,13 @@ describe('2. nothing internal leaks to the participant', () => {
   });
 
   test('the reason shown is the server-written participant-safe one', () => {
-    const verify = readWeb('api/verify.js');
+    // The logic moved to api/_lib/verify.js in Phase 5 so it could be tested
+    // without Vercel; api/verify.js is now thin wiring.
+    const verify = readWeb('api/_lib/verify.js');
     // Proof that ai_reason is intended to be shown: the server never puts a
     // model name or HTTP code in it.
     assert.match(verify, /AI service busy — queued for manual review/);
-    assert.match(verify, /NEVER surfaced to the queue UI/);
+    assert.match(verify, /NEVER surfaced to a client/);
   });
 
   test('the detail screen has no write path to points or verdicts', () => {

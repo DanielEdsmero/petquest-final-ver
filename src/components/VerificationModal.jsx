@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Camera, X, RotateCcw, Check, AlertTriangle, Clock, Upload, Sparkles, Scale } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { jsonPost } from '../lib/authHeaders'
 import { useGame } from '../context/GameContext'
 
 /* Gilded Waypoints — verification progress. Three golden nodes
@@ -242,10 +243,10 @@ export default function VerificationModal({ task, onClose, onVerified }) {
        'pending' (that was the QA bug). Only the modal's own setState is guarded. */
     let verdict = 'error', reason = 'Queued for manual review.'
     try {
-      const r = await fetch('/api/verify', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ completion_id: res.completionId }),
-      })
+      /* Phase 13: /api/verify now requires the caller's Supabase token and
+         checks that they own this completion. Without it the request is 401 and
+         the fallback below leaves the row for manual review. */
+      const r = await fetch('/api/verify', await jsonPost({ completion_id: res.completionId }))
       if (r.ok) { const d = await r.json(); verdict = d.verdict || 'error'; reason = d.reason || reason }
     } catch { /* keep manual-review fallback */ }
 

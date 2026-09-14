@@ -883,3 +883,170 @@ the web, so there is a `quest_completions` row to render.
 
 **Phase 5 — server integration**, starting with the `/api/verify`
 authentication fix (web callers included), then 4D/4E on top of it.
+
+---
+
+## Phase 5 — Server integration: `/api/verify` hardened
+
+| | |
+|---|---|
+| **Branch** | `mobile-expo-migration` |
+| **Commit** | `git log --oneline --grep='mobile phase 5'` |
+| **Date** | 2026-09-14 |
+| **Status** | ✅ Complete on the dev machine — **needs a Vercel redeploy to take effect**, then on-device verification |
+
+### ⚠️ THIS IS THE FIRST PHASE THAT CHANGES WEB FILES
+
+Every previous phase left `git diff main` empty outside `apps/mobile/`. This one
+does not, and it cannot: the endpoint being hardened is shared, and all three
+existing web callers send no auth header today, so they change in the same
+commit or the web app breaks.
+
+**Web files changed (5):**
+
+| File | Change |
+|---|---|
+| `api/_lib/verify.js` | **new** — the endpoint logic, moved here and hardened |
+| `api/verify.js` | reduced to thin wiring (`createVerifyHandler({ createClient })`) |
+| `src/lib/authHeaders.js` | **new** — one shared bearer-header helper |
+| `src/components/VerificationModal.jsx` | sends the token |
+| `src/pages/AdminPage.jsx` | both re-run paths send the token |
+| `src/context/GameContext.jsx` | uses the shared helper instead of its private copy |
+| `tests/helpers/fakeSupabase.mjs` | extended: storage signed URLs, recordable rpc |
+| `tests/verify.test.mjs` | **new** — 34 tests |
+
+No SQL, no RLS policy, no migration, no Supabase setting. `rollback_completion`,
+`submit_completion` and `complete_task` are untouched.
+
+### The vulnerability, confirmed against production
+
+`/api/verify` accepted `{ completion_id }` with **no token and no ownership
+check**. A `fail` verdict calls `rollback_completion()`, so any caller who
+learned a completion id could reverse another participant's points — and every
+call spent a Gemini request.
+
+This was not theoretical. During this phase, an unauthenticated POST to the
+**live deployment** with a random completion id returned:
+
+```
+HTTP 404  {"error":"completion_not_found"}
+```
+
+That is the database lookup answering — i.e. the request was processed, and a
+*real* id would have produced a verdict and a possible rollback.
+
+### What the endpoint now enforces
+
+1. **A Supabase access token is required**, verified with the service client.
+   The uid comes from the token, never the body.
+2. **Ownership** — you may verify your own completion; an admin may verify any.
+3. **Idempotency** — a completion already holding a *final* verdict (pass/fail)
+   is not re-judged for a participant; the stored verdict is returned with
+   `reused: true` and no Gemini call. `pending` and `error` stay retryable,
+   because the admin "re-run stuck" button depends on that. An admin may force
+   a fresh run on any verdict.
+4. **A per-user cooldown** (4 s). Honest about its limits: it lives in the warm
+   instance's memory, so a cold start resets it. It is defence-in-depth — the
+   durable controls are ownership, idempotency, and the 3-completions-in-60s
+   burst lock inside `complete_task()`. A persistent counter would need a
+   migration, which was out of scope.
+
+### What was deliberately NOT changed
+
+The failure posture, which is the part most easily broken by a refactor:
+
+- Gemini outage, missing key, unreachable photo, unparseable reply → verdict
+  `error`. The provisional award **stands** and a human decides. Never an
+  auto-approve, never an auto-reject.
+- A blank/tiny image (< 3000 bytes) is still a `fail` with a rollback — and it
+  matters more now, because a native client cannot do the web's canvas check, so
+  this server-side guard is the only one covering every client.
+- Reasons stay participant-safe. Model names and HTTP codes are logged, never
+  returned. A test asserts the response never contains `AIza`,
+  `generativelanguage`, `gemini`, `service_role` or `flash`.
+
+### CORS
+
+No change needed. React Native's `fetch` is not CORS-constrained, so native
+callers work against the same-origin functions unchanged. Adding permissive
+headers would have widened the surface for no benefit. Recorded rather than
+implemented.
+
+### Mobile side
+
+`apps/mobile/src/lib/verifyApi.ts` — an authenticated client for the endpoint,
+added now so Phase 4D has it. **Not yet called by any screen.** It maps a
+`verdict` of `error` to "queued for review", never to a rejection.
+
+### Commands run
+
+```bash
+npm test            # web: 165 passed (131 existing + 34 new), 0 failed
+npm run build       # web: clean
+cd apps/mobile && npm test && npm run typecheck   # 125 passed, clean
+```
+
+### Verification done here
+
+| Check | Result |
+|---|---|
+| Web unit tests | ✅ 165/165 — the 131 pre-existing ones unchanged |
+| Web build | ✅ clean |
+| Mobile tests + typecheck | ✅ 125/125, clean |
+| Live vulnerability | ✅ **confirmed present** on the current deployment (see above) |
+| New module loads under the Vercel-style path | ✅ local `/api/verify` returns `server_not_configured` (the config gate), proving the module imports and runs |
+| 401 / 403 / 429 / idempotency paths | ✅ unit-tested against the real handler with an injected client |
+
+The retry backoff was made injectable so the transient-error tests exercise the
+full model fallback chain without waiting out the real delays — one test had
+been taking 17 s.
+
+### Web regression result
+
+✅ **Pass** — 165/165 tests (the 131 that existed before this phase all still
+pass), clean Vite build.
+
+### 🔴 Deployment step required
+
+**The fix is inert until Vercel redeploys.** Until then the live endpoint is
+still the unauthenticated version. Nothing else is needed — no new env var, no
+migration.
+
+Because this phase changes the production client, it is also the first one worth
+considering for an early merge to `main` on its own: the hardening benefits the
+web app regardless of whether the mobile client ever ships. The commit is
+self-contained and cherry-pickable.
+
+### Risk to the existing web application
+
+**Low but non-zero — this is the phase to watch.** The web verification flow now
+depends on a bearer token being attached. If a caller were missed, its verdict
+request would 401 and the completion would sit at `ai_verdict: 'pending'` for
+manual review — degraded, not broken, and no points move incorrectly. A test
+asserts no bare `/api/verify` call remains in either web file.
+
+### Rollback
+
+```bash
+git revert $(git log --format=%H --grep='mobile phase 5' -1)
+```
+
+That restores the unauthenticated endpoint **and** the un-authenticated web
+callers together, so the web app keeps working either way.
+
+### User-required verification (after redeploy)
+
+- [ ] Redeploy Vercel (push the branch, or cherry-pick this commit to `main`)
+- [ ] Repeat the probe — an unauthenticated POST must now return **401**:
+      `curl -sL -X POST https://petquest-final-ver.vercel.app/api/verify -H "Content-Type: application/json" -d '{"completion_id":"00000000-0000-4000-8000-0000000000ff"}'`
+- [ ] **On the web app**, complete a quest with a photo — the verdict must still
+      arrive (this is the regression that matters most)
+- [ ] **Admin → Verification queue → Re-run AI** on a stuck row still works
+- [ ] **Admin → Re-run stuck** batch still works
+- [ ] Re-running a row that already passed returns the same verdict without a
+      new Gemini call
+
+### Next
+
+**Phase 4D/4E** — evidence capture and live verification progress on mobile, now
+that there is a safe endpoint to call.

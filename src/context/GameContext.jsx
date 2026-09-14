@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { PETS } from '../data/pets'
 import { MILESTONE_REWARDS, levelFromPoints } from '../data/progression'
 import { ACCESSORIES } from '../data/accessories'
+import { authHeaders } from '../lib/authHeaders'
 
 const GameContext = createContext(null)
 
@@ -328,13 +329,6 @@ export function GameProvider({ children }) {
   }, [])
 
   /* ── tasks ── */
-  /* Bearer header for the Vercel functions: the server verifies the token with
-     the service client, so the user id can never be spoofed from the body. */
-  const authHeaders = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
-  }, [])
-
   /* POST to the quest-validity endpoint. Returns { status, body } where body is
      null when the response isn't JSON (e.g. plain `vite` dev serving index.html
      for /api/*), or { status: 0, aborted } on a network failure / timeout. */
@@ -344,7 +338,7 @@ export function GameProvider({ children }) {
     try {
       const r = await fetch('/api/validate-quest', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },  // src/lib/authHeaders.js
         body: JSON.stringify(payload),
         signal: ctl.signal,
       })
@@ -353,7 +347,7 @@ export function GameProvider({ children }) {
     } catch (e) {
       return { status: 0, body: null, aborted: e?.name === 'AbortError' }
     } finally { clearTimeout(to) }
-  }, [authHeaders])
+  }, [])
 
   const upsertLocalTask = useCallback((row) => {
     setTasks(prev => {
