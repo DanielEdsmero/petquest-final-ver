@@ -4,8 +4,8 @@
  * with eq/gte/in/order/limit/single. Records every insert/update so tests can
  * assert what would have been written.
  */
-export function createFakeSupabase({ users = {}, profiles = {}, tasks = [], reviews = [] } = {}) {
-  const db = { profiles, tasks: [...tasks], quest_validity_reviews: [...reviews] }
+export function createFakeSupabase({ users = {}, profiles = {}, tasks = [], reviews = [], completions = [], signedUrls = {} } = {}) {
+  const db = { profiles, tasks: [...tasks], quest_validity_reviews: [...reviews], quest_completions: [...completions] }
   const writes = []
   let seq = 0
 
@@ -62,9 +62,69 @@ export function createFakeSupabase({ users = {}, profiles = {}, tasks = [], revi
   const client = {
     auth: { getUser: async (token) => users[token] ? { data: { user: { id: users[token] } }, error: null } : { data: { user: null }, error: { message: 'bad token' } } },
     from: (table) => builder(table),
-    rpc: async (name) => { writes.push({ op: 'rpc', name }); return { data: null, error: { message: 'rpc not expected' } } },
+    /* Records the call and succeeds. api/_lib/verify.js relies on
+       rollback_completion actually resolving, so tests can assert it fired. */
+    rpc: async (name, args) => { writes.push({ op: 'rpc', name, args }); return { data: { ok: true }, error: null } },
+    /* Signed URLs for the private quest-proofs bucket. `signedUrls` maps a
+       storage path to the URL the fetch stub should be asked for; a path that
+       is absent returns no URL, which is how "photo unavailable" is exercised. */
+    storage: {
+      from: (bucket) => ({
+        createSignedUrl: async (path, expiresIn) => {
+          writes.push({ op: 'signedUrl', bucket, path, expiresIn })
+          const url = signedUrls[path]
+          return url
+            ? { data: { signedUrl: url }, error: null }
+            : { data: null, error: { message: 'object not found' } }
+        },
+      }),
+    },
   }
   return { client, db, writes, createClient: () => client }
+}
+
+/*
+ * A fetch stub for the proof-photo download.
+ *
+ * `bytes` sets the size of the body, which is what the blank-frame guard in
+ * api/_lib/verify.js measures — pass something under MIN_PROOF_BYTES (3000) to
+ * exercise it. Any request that is not the signed URL falls through to
+ * `geminiResult`, so one stub can serve both legs of the verification.
+ */
+export function proofAndGeminiFetch({
+  signedUrl,
+  bytes = 50_000,
+  contentType = 'image/jpeg',
+  geminiResult = { verdict: 'pass', confidence: 0.9, reason: 'Looks done.' },
+  geminiStatus = 200,
+  imageOk = true,
+} = {}) {
+  const calls = []
+  const fn = async (url, init) => {
+    calls.push({ url, init })
+    if (url === signedUrl) {
+      return {
+        ok: imageOk,
+        status: imageOk ? 200 : 404,
+        headers: { get: (h) => (h.toLowerCase() === 'content-type' ? contentType : null) },
+        arrayBuffer: async () => new ArrayBuffer(bytes),
+      }
+    }
+    if (geminiStatus !== 200) {
+      return { ok: false, status: geminiStatus, text: async () => 'overloaded', json: async () => ({}) }
+    }
+    const text = typeof geminiResult === 'string' ? geminiResult : JSON.stringify(geminiResult)
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ candidates: [{ content: { parts: [{ text }] } }] }),
+      text: async () => '',
+    }
+  }
+  fn.calls = calls
+  /** Requests that went to Gemini rather than the photo. */
+  fn.geminiCalls = () => calls.filter((c) => String(c.url).includes('generativelanguage'))
+  return fn
 }
 
 /* Vercel-style res shim capturing status + body. */
