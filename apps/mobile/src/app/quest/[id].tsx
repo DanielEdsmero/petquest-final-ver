@@ -33,8 +33,8 @@ import { Colors, FontSize, Radius, Spacing } from '@/theme';
  * latest `quest_completions` row for its verification state. Nothing here
  * computes or displays an award the server has not recorded.
  *
- * Evidence capture (4D) is not built yet, so the completion button explains why
- * rather than pretending to work — see the Phase 4C report.
+ * "Submit evidence" pushes the capture screen (4D); the verification card below
+ * shows the real pipeline state afterwards (4E) and refetches on focus.
  */
 export default function QuestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -218,12 +218,7 @@ export default function QuestDetailScreen() {
             </View>
           ) : (
             <Pressable
-              onPress={() =>
-                Alert.alert(
-                  'Not available yet',
-                  'Submitting evidence from the phone arrives in the next step of the migration. For now, complete this quest on the PetQuest website.',
-                )
-              }
+              onPress={() => router.push({ pathname: '/quest/verify', params: { questId } })}
               accessibilityRole="button"
               accessibilityLabel="Submit evidence"
               style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}

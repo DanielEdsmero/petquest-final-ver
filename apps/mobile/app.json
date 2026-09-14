@@ -37,7 +37,14 @@
         }
       ],
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "PetQuest uses the camera to photograph evidence that you completed a quest.",
+          "photosPermission": "PetQuest lets you choose an existing photo as evidence that you completed a quest."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

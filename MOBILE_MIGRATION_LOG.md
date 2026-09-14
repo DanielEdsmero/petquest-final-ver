@@ -1050,3 +1050,173 @@ callers together, so the web app keeps working either way.
 
 **Phase 4D/4E** — evidence capture and live verification progress on mobile, now
 that there is a safe endpoint to call.
+
+---
+
+## Phase 5 follow-up — the hardening reached `main`
+
+Before Phase 4D/4E began, the web-only version of the Phase 5 hardening was
+rebuilt as `a56b83f` ("Require auth and ownership on /api/verify") directly on
+`main`, deployed, and verified: production returns **401** to an unauthenticated
+POST, a signed-in test user completed a quest with a photo and reached the
+pipeline, and both admin re-run paths worked. `main` was then merged into this
+branch (`f38c810`); the only conflict was `tests/verify.test.mjs`, resolved by
+taking `main`'s version (a strict superset — two `existsSync` guards so the suite
+stands alone without the mobile tree).
+
+---
+
+## Phase 4D/4E — Evidence submission and live verification progress
+
+| | |
+|---|---|
+| **Branch** | `mobile-expo-migration` |
+| **Commit** | `git log --oneline --grep='mobile phase 4d/4e'` |
+| **Date** | 2026-09-15 |
+| **Status** | ✅ Complete on the dev machine — **on-device verification is user-required** and is the real test of this phase |
+
+This closes the loop that 4C had to leave open. A participant can now complete a
+quest from the phone: capture → upload → `submit_completion()` → `/api/verify` →
+outcome, with the real pipeline state shown afterwards.
+
+### Files added
+
+| Path | Purpose |
+|---|---|
+| `src/data/evidenceModel.ts` | Rules, storage path, RPC error wording, the step machine, outcome mapping — pure, tested |
+| `src/lib/evidence.ts` | Camera/library capture, compression, upload, the `submit_completion` call |
+| `tests/evidence.test.ts` | 30 tests |
+
+Changed: `src/app/quest/verify.tsx` (the real screen), `src/app/quest/[id].tsx`
+(re-linked to verify; the 4C placeholder alert removed), `app.json` (image
+picker plugin + permission strings), `tests/navigation.test.ts` (the assertion
+4C replaced is restored, as its note required).
+
+### Dependencies added
+
+`expo-image-picker` ~57.0.17 · `expo-image-manipulator` ~57.0.17 (via
+`npx expo install`; both work in Expo Go). The first install attempt failed on a
+network reset after writing `package.json`, so the plugin was added by hand with
+the iOS permission strings — a test asserts they are present and say "evidence".
+
+### What replaced the web's browser-only capture
+
+The web `VerificationModal` used `getUserMedia`, a `<canvas>` frame grab and a
+pixel-level blank-frame check. None of that exists in React Native:
+
+| Web | Mobile |
+|---|---|
+| `getUserMedia` + `<video>` frame grab | `expo-image-picker` camera |
+| `<input type="file">` | `expo-image-picker` library |
+| canvas `toBlob(0.85)` | `expo-image-manipulator` — long edge ≤ 1600 px, JPEG 0.8 |
+| canvas `getImageData` blank check | **byte-size floor** = the server's own `MIN_PROOF_BYTES` (3000) |
+| `File`/`Blob` upload | **`ArrayBuffer`** — a RN `Blob` can reach Supabase as zero bytes |
+
+The blank-frame guard is weaker than the web's pixel check, and that is
+acceptable *because the server runs the same byte check on every client*
+(`api/_lib/verify.js`). The mobile check exists only to save a doomed upload.
+
+### The rule this phase exists to get right
+
+Once `submit_completion()` has returned OK, **the submission exists server-side
+whatever happens next.** So:
+
+- A `/api/verify` reply of `error`, or no reply at all (network, 429, timeout),
+  is shown as **"Submitted — queued for review"** with the points marked
+  provisional. It is *never* shown as a rejection, and it never re-submits.
+  `outcomeFromVerdict()` is tested for each case.
+- The verdict is requested **even if the participant navigates away** between
+  submit and verify. The web client learned this the hard way: bailing early
+  orphaned rows at `pending` until an admin re-ran them. A test asserts there is
+  no `if (!alive.current) return` between the two calls; only the screen's own
+  state updates are guarded.
+- The three progress steps (Uploading → Submitting → AI checking) advance
+  **only on a real response** — never a timer. A test asserts each `setStep` is
+  immediately followed by its `await`.
+
+### Server authority, again
+
+- `submit_completion()` is the only completion path (tests assert no
+  `rpc('complete_task'` call and no direct write to `tasks`,
+  `quest_completions` or `profiles`).
+- The RPC is called with all six Phase-8 arguments, including
+  `p_verification_started_at` (when the screen opened — the research "active
+  time") and `p_source` (`camera` vs `upload`, so a reviewer sees which).
+- No local point total anywhere; after the flow the profile is refetched.
+- Upload goes to the private `quest-proofs` bucket under `<uid>/…` — the
+  bucket's INSERT policy requires that first segment, so a wrong path is
+  refused by the database, not by this code. `upsert: false`, and
+  `getPublicUrl` is never called.
+- EXIF is stripped from picked images (`exif: false`).
+
+### One parity fix the tests caught
+
+My first wording for the `locked` RPC error was *"Completion is locked for 5
+minutes"*; the web says *"Completion locked for 5 minutes"*. A test compares the
+mobile strings against `GameContext.jsx`, and it failed. Fixed to match — the
+two clients now explain the same server rule in the same words.
+
+### Commands run
+
+```bash
+npx expo install expo-image-picker expo-image-manipulator
+npm test                                  # mobile: 155 passed
+npm run typecheck                         # clean
+npx expo export --platform ios --clear    # 3.6 MB Hermes bundle
+```
+
+### Verification done here
+
+| Check | Result |
+|---|---|
+| Mobile unit tests | ✅ 155/155 (+30 evidence) |
+| TypeScript | ✅ clean |
+| iOS bundle | ✅ compiles, 3.6 MB |
+| Secret scan | ✅ 0 hits for private keys and `admin_reason` |
+| Web regression (merged branch) | ✅ 165/165, clean build |
+| Web files changed by this phase | **none** — `git diff main` is empty for `src/`, `api/`, `supabase/` |
+
+### Migrations / server changes
+
+None. Phase 5 already put the authenticated endpoint on `main`.
+
+### Environment variables required
+
+Unchanged.
+
+### Risk to the existing web application
+
+**None.** Mobile-only; the shared endpoint was hardened and deployed separately.
+
+### Rollback
+
+```bash
+git revert $(git log --format=%H --grep='mobile phase 4d/4e' -1)
+```
+
+### User-required verification (cannot be done from this machine)
+
+**This is the phase where on-device testing actually matters** — camera
+permissions, the picker, the upload and the real Gemini round trip cannot be
+exercised here. Use a **non-production test account**; every run creates a real
+completion row and spends a real Gemini call.
+
+- [ ] iOS asks for **camera** permission with the "evidence" wording, once
+- [ ] Take photo → preview appears with "📷 Live photo · N KB"
+- [ ] Choose photo → asks for **photo** permission, preview says "🖼️ From library"
+- [ ] Retake clears the preview
+- [ ] Submit stays disabled until a photo *and* a 20-char log are present; the counter turns green at 20
+- [ ] Submit → the three steps light up in order, each waiting on its request
+- [ ] A good photo → "+N points earned", reason shown, "provisional" note
+- [ ] Back to quest → the detail card shows the four-stage pipeline with the real state
+- [ ] **Home tab points went up** by the difficulty's award (server-side)
+- [ ] A clearly wrong photo (e.g. a blank wall) → "Evidence not accepted", points reversed, detail shows "Not approved"
+- [ ] Airplane mode *during* the AI check → "Submitted — queued for review", **not** a rejection; the row appears in Admin → Verification queue as stuck
+- [ ] Submitting the same quest again after completion is refused
+- [ ] The photo appears in the **web** Admin → Verification queue, with "File upload" flagged for a library pick
+- [ ] Nothing sideways-scrolls at 320 pt; the preview keeps its 4:3 box
+
+### Next
+
+**Phase 4F** — the pet screen with the real sprite and evolution progress, then
+**Phase 6** (the mandatory-but-skippable wake-up loader).
