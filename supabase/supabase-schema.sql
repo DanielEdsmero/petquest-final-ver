@@ -429,9 +429,7 @@ grant execute on function complete_task(uuid) to authenticated;
 revoke update (completed, completed_at, started_at) on tasks from authenticated;
 revoke update (completed, completed_at, started_at) on tasks from anon;
 
--- NOTE: profiles.points is deliberately still client-writable because
--- spendPoints() (accessories shop, GameContext.jsx) debits it directly. Until
--- that is also moved into an RPC, a determined user can still award themselves
--- points by writing profiles.points, without touching tasks. Closing that hole
--- requires a matching spend_points() RPC plus:
---   revoke update (points) on profiles from authenticated, anon;
+-- NOTE: profiles.points was client-writable until Phase 13
+-- (supabase-phase13-spend-points.sql). Spending now goes through
+-- spend_points() / care_pet(), and the profiles_economy_guard trigger rejects
+-- a direct non-admin client write to the economy columns.

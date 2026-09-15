@@ -18,6 +18,7 @@ replace`, `add column if not exists`), so re-running is safe.
 | 9 | `supabase-phase10-cooldown-anchoring.sql` | Removes the creation-anchored completion gate (starter quests instantly verifiable). **Full Phase 6 `complete_task` minus the time gate** — must stay in sync with the award economy. |
 | 10 | `supabase-phase11-dedupe-tasks.sql` | One-time cleanup: collapses duplicate quest rows from earlier non-dedupe inserts. |
 | 11 | `supabase-phase12-quest-validity.sql` | **AI quest validity check at creation.** `tasks.goal/priority/evidence_type` + participant-safe `validity_*` columns, `preset_quest_catalog` (starter quests exempt), admin-only `quest_validity_reviews`, the `tasks_validity_guard` trigger (browser can never set a validity status; un-accepted quests can't be completed), `admin_resolve_quest_validity()`. Does **not** touch any economy function. |
+| 12 | `supabase-phase13-spend-points.sql` | **Server-side point spending.** `spend_points()` (atomic debit, the only way a balance goes down), `care_pet()` (feed/wash/play: cost + stat boost in one transaction), and the `profiles_economy_guard` trigger (a non-admin browser/phone write can no longer change points, streaks, level, badges or role). Does **not** touch any economy award function. Required by the web build from the commit that introduces it — run it before deploying. |
 
 ## Phase 12 and the economy
 Phase 12 deliberately leaves `complete_task` / `submit_completion` /
