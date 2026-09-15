@@ -2,8 +2,11 @@ import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 
+import { PetSprite } from '@/components/PetSprite';
 import { ProgressBar } from '@/components/ui';
 import { type PetHome } from '@/data/petHomeModel';
+import { type FrameSet } from '@/data/spriteFrames';
+import { type Reaction } from '@/data/spriteModel';
 import useReducedMotion from '@/hooks/useReducedMotion';
 import { Colors, FontSize, Radius, Shadow, Spacing } from '@/theme';
 
@@ -17,6 +20,12 @@ import { Colors, FontSize, Radius, Shadow, Spacing } from '@/theme';
  * fades out and the new one fades in, so the pet and its home change
  * together. The level line is server data (`pet_level`,
  * `total_points_earned`); nothing here is computed from a local award.
+ *
+ * With `walking` set (a baby companion, whose sheet frames exist) the static
+ * portrait is replaced by the walking sprite (PetSprite), which strolls the
+ * home's walkable strip. Older stages keep their evolution portrait — the
+ * supplied sheets are baby art, and a walking baby under an Elder's name
+ * would be a lie.
  */
 export function PetHomeHero({
   home,
@@ -28,6 +37,7 @@ export function PetHomeHero({
   fraction,
   accessoryEmojis = [],
   compact = false,
+  walking = null,
 }: {
   home: PetHome;
   homeImage: ImageSourcePropType;
@@ -41,6 +51,8 @@ export function PetHomeHero({
   /** Equipped accessory glyphs, shown beside the pet. */
   accessoryEmojis?: string[];
   compact?: boolean;
+  /** Walking-sprite mode: the frame set for the companion and an optional care reaction to play. */
+  walking?: { frames: FrameSet; reaction?: { kind: Reaction; nonce: number } | null } | null;
 }) {
   const reduced = useReducedMotion();
   const float = useRef(new Animated.Value(0)).current;
@@ -90,29 +102,46 @@ export function PetHomeHero({
           transition={0}
           accessibilityLabel={`${shown.home.displayName}: ${shown.home.blurb}`}
         />
-        <View style={styles.stage}>
-          <Animated.View style={{ transform: [{ translateY }] }}>
-            {sprite ? (
-              <Image
-                source={sprite}
-                style={{ width: spriteSize, height: spriteSize }}
-                contentFit="contain"
-                allowDownscaling={false}
-                transition={200}
-                accessibilityLabel={`${petName}${stageLabel ? `, ${stageLabel} stage` : ''}, at home in ${shown.home.displayName}`}
-              />
-            ) : (
-              <Text style={styles.egg} accessibilityLabel="No companion yet">
-                🥚
+        {walking ? (
+          <>
+            <PetSprite
+              home={shown.home.id}
+              frames={walking.frames}
+              reaction={walking.reaction ?? null}
+              size={compact ? 56 : 64}
+              accessibilityLabel={`${petName}${stageLabel ? `, ${stageLabel} stage` : ''}, walking around ${shown.home.displayName}`}
+            />
+            {accessoryEmojis.length > 0 && (
+              <Text style={styles.accessoriesCorner} accessibilityLabel={`Wearing ${accessoryEmojis.length} accessories`}>
+                {accessoryEmojis.join(' ')}
               </Text>
             )}
-          </Animated.View>
-          {accessoryEmojis.length > 0 && (
-            <Text style={styles.accessories} accessibilityLabel={`Wearing ${accessoryEmojis.length} accessories`}>
-              {accessoryEmojis.join(' ')}
-            </Text>
-          )}
-        </View>
+          </>
+        ) : (
+          <View style={styles.stage}>
+            <Animated.View style={{ transform: [{ translateY }] }}>
+              {sprite ? (
+                <Image
+                  source={sprite}
+                  style={{ width: spriteSize, height: spriteSize }}
+                  contentFit="contain"
+                  allowDownscaling={false}
+                  transition={200}
+                  accessibilityLabel={`${petName}${stageLabel ? `, ${stageLabel} stage` : ''}, at home in ${shown.home.displayName}`}
+                />
+              ) : (
+                <Text style={styles.egg} accessibilityLabel="No companion yet">
+                  🥚
+                </Text>
+              )}
+            </Animated.View>
+            {accessoryEmojis.length > 0 && (
+              <Text style={styles.accessories} accessibilityLabel={`Wearing ${accessoryEmojis.length} accessories`}>
+                {accessoryEmojis.join(' ')}
+              </Text>
+            )}
+          </View>
+        )}
         <View style={[styles.homeTag, { backgroundColor: shown.home.palette.surface }]}>
           <Text style={[styles.homeTagText, { color: shown.home.palette.accent }]} numberOfLines={1}>
             {shown.home.displayName}
@@ -146,6 +175,7 @@ const styles = StyleSheet.create({
   stage: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: Spacing.sm },
   egg: { fontSize: 72 },
   accessories: { fontSize: 18, marginTop: -4, letterSpacing: 2 },
+  accessoriesCorner: { position: 'absolute', right: Spacing.sm, bottom: Spacing.sm, fontSize: 18, letterSpacing: 2 },
   homeTag: { position: 'absolute', top: Spacing.sm, left: Spacing.sm, borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 4 },
   homeTagText: { fontSize: FontSize.xs, fontWeight: '700', letterSpacing: 0.4 },
 

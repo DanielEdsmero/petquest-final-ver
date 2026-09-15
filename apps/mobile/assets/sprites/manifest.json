@@ -1,0 +1,44 @@
+{
+  "dragon": {
+    "source": "derived",
+    "frame": 128,
+    "frames": [
+      "f1_idle",
+      "f2_blink",
+      "f3_walk_left_a",
+      "f4_walk_left_b",
+      "f5_walk_right_a",
+      "f6_walk_right_b",
+      "f7_happy",
+      "f8_interact"
+    ]
+  },
+  "cat": {
+    "source": "derived",
+    "frame": 128,
+    "frames": [
+      "f1_idle",
+      "f2_blink",
+      "f3_walk_left_a",
+      "f4_walk_left_b",
+      "f5_walk_right_a",
+      "f6_walk_right_b",
+      "f7_happy",
+      "f8_interact"
+    ]
+  },
+  "wolf": {
+    "source": "derived",
+    "frame": 128,
+    "frames": [
+      "f1_idle",
+      "f2_blink",
+      "f3_walk_left_a",
+      "f4_walk_left_b",
+      "f5_walk_right_a",
+      "f6_walk_right_b",
+      "f7_happy",
+      "f8_interact"
+    ]
+  }
+}

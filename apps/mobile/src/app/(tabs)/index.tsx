@@ -17,6 +17,7 @@ import { homeAndImageFor } from '@/data/petHomes';
 import { LEGENDARY_MIN, PET_CATALOG, evolutionProgress, petIdOf, stageName } from '@/data/petModel';
 import { spriteFor } from '@/data/petSprites';
 import { fetchPetStats } from '@/data/petStats';
+import { framesFor } from '@/data/spriteFrames';
 import { DIFF_POINTS, difficultyMeta, type Difficulty } from '@/data/quests';
 import { type Task } from '@/data/taskModel';
 import { fetchTasks } from '@/data/tasks';
@@ -75,6 +76,8 @@ export default function HomeTab() {
   const level = profile?.pet_level ?? progress.level;
   const sprite = spriteFor(profile?.selected_pet_id, level);
   const { home, image } = homeAndImageFor(profile?.selected_pet_id);
+  // Baby-stage companions walk their home; later stages keep the evolution portrait.
+  const walking = meta && level === 1 ? { frames: framesFor(profile?.selected_pet_id) } : null;
   const streak = profile?.current_streak;
   const levelLine =
     !meta
@@ -132,6 +135,7 @@ export default function HomeTab() {
           levelLine={levelLine}
           fraction={meta && totalEarned != null ? progress.fraction : null}
           compact
+          walking={walking}
         />
         <Text style={styles.heroMessage}>
           {loading ? ' ' : meta ? heroMessage(next, summary) : 'Hatch your egg on the PetQuest website'}

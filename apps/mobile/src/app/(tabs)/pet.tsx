@@ -17,6 +17,8 @@ import { STAT_META } from '@/data/petHomeModel';
 import { homeAndImageFor } from '@/data/petHomes';
 import { LEGENDARY_MIN, PET_CATALOG, STAGES, evolutionProgress, petIdOf, stageName } from '@/data/petModel';
 import { spriteFor } from '@/data/petSprites';
+import { framesFor } from '@/data/spriteFrames';
+import { type Reaction } from '@/data/spriteModel';
 import { fetchPetStats } from '@/data/petStats';
 import { formatMinutes, formatPct, progressMetrics } from '@/data/progressModel';
 import { fetchTasks } from '@/data/tasks';
@@ -90,6 +92,8 @@ export default function PetTab() {
   }, [profile?.points]);
 
   const [busyAction, setBusyAction] = useState<CareAction | null>(null);
+  /* A cosmetic reaction for the walking sprite — set ONLY after care_pet() replied ok. */
+  const [reaction, setReaction] = useState<{ kind: Reaction; nonce: number } | null>(null);
   const [notice, setNotice] = useState<{ text: string; tone: 'ok' | 'bad' } | null>(null);
   useEffect(() => {
     if (!notice) return;
@@ -106,6 +110,8 @@ export default function PetTab() {
   const { home, image } = homeAndImageFor(profile?.selected_pet_id);
   const metrics = useMemo(() => progressMetrics(tasks.data), [tasks.data]);
   const glyphs = useMemo(() => equippedGlyphs(equipped.data), [equipped.data]);
+  // The walking sprite is baby art: only a Baby-stage companion walks; later stages keep their portrait.
+  const walking = meta && level === 1 ? { frames: framesFor(profile?.selected_pet_id), reaction } : null;
 
   /* Care: confirm (cost + benefit) → care_pet() → show only what it returned. */
   const runCare = useCallback(
@@ -120,6 +126,7 @@ export default function PetTab() {
         return;
       }
       setLiveStats(r.stats);
+      setReaction({ kind: action, nonce: Date.now() }); // the server said yes — now the pet may react
       const text = careSuccessMessage(action, meta?.name ?? null);
       setNotice({ text, tone: 'ok' });
       AccessibilityInfo.announceForAccessibility(text);
@@ -202,6 +209,7 @@ export default function PetTab() {
         fraction={meta && totalEarned != null ? progress.fraction : null}
         accessoryEmojis={glyphs}
         compact={view === 'accessories'}
+        walking={walking}
       />
 
       {view === 'home' ? (

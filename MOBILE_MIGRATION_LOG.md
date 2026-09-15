@@ -1813,3 +1813,72 @@ unlocking to the website; nothing on the phone inserts or debits.
 - [ ] Pet → Accessories: equipped items first, unlocked next, locked with cost; Equip/Remove update the hero's glyphs after the server reply; locked items have no Equip button; the note sends unlocking to the website
 - [ ] Nothing scrolls sideways at 320 pt; rings fit in one row
 - [ ] Normal user sees no Admin row; admin still does
+
+---
+
+## Walking baby sprites (2026-09-15)
+
+Follow-up to the pet-homes work. Baseline `7190ea9`, 289/289. Mobile-only;
+nothing in the web app, SQL, verification, award or economy code changed.
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `scripts/slice-sprite-sheets.py` | Deterministic frame processing. Splits a 4×2 sheet into eight cells, crops each to its opaque bounding box (the supplied sheets are not grid-aligned), scales the set so its tallest frame fills 88 % of a 128×128 canvas, pastes centred and **bottom-aligned** (feet on one baseline), nearest-neighbour throughout. Keys a flat black ground to transparency. When a sheet is absent, derives the eight frames from the baby portrait so the app works meanwhile. Writes `assets/sprites/manifest.json` saying which. |
+| `assets/sprites/{dragon,cat,wolf}/f1…f8.png` | 24 frames, 128×128 RGBA. **All three sets are currently derived** — the sheets arrived in the chat, not as files. Drop them at `assets/sprites/sheets/{dragon,cat,wolf}.png` and re-run the script (`assets/sprites/README.md`). The fox sheet maps to `wolf`; PetQuest has no fox. |
+| `src/data/spriteModel.ts` | Pure. Frame keys/files, `WALK_FPS = 10`, `IDLE_FPS = 2`, `WALK_SPEED = 0.14` scene-widths/s, per-home walkable strip + three points of interest (`HOME_LAYOUT`), `chooseDestination` (≥ 0.12 away, always inside), `walkDurationMs` (distance / speed, ≥ 400 ms), `directionFor`, `frameFor(state, tick)`, the machine `nextStep()` — idle → blink (30 %) \| pause → walkLeft/Right → interact (70 % when the target was a point of interest) \| idle; happy/interact → idle — with an injectable rng and a `seededRng` for tests. Reduce Motion: no pause/walk, only idle + blink. |
+| `src/data/spriteFrames.ts` | Literal `require`s per companion; unknown id → dragon set; a missing key → that set's idle frame. |
+| `src/components/PetSprite.tsx` | The two synchronised animations. **A. frames:** a `setInterval` ticker at the state's cadence picks `frameFor(state, tick)`. **B. position:** an `Animated.ValueXY` moved by `Animated.timing` (native driver, `Easing.inOut(quad)`) with `duration = step.durationMs` from the distance, so the sprite passes through every intermediate point. The ticker starts with the walk and is cleared in the arrival timeout, so legs never move while the body is still. Feet-anchored (`x − size/2`, `y − size`). Pauses on blur (`useFocusEffect`) and background (`AppState`); clears every timer, interval and animation on stop and unmount. A mid-walk interruption (tap, care reaction, pause) samples the same easing to put the feet exactly where the walk had got to, so machine and picture agree. Tap → `happy` + "I'm here!" bubble. `reaction` prop → happy (play/tap) or interact (feed/wash). No data access of any kind. |
+| `src/components/PetHomeHero.tsx` | `walking` prop: when set, the walking sprite replaces the static portrait in the scene; otherwise unchanged. |
+| `(tabs)/index.tsx`, `(tabs)/pet.tsx` | Mount the sprite for **Baby-stage** companions (`level === 1`) — the sheets are baby art; Juvenile/Adult/Elder keep their evolution portrait. Pet sets `reaction` only after `care_pet()` replied `ok`, after the server stats are applied; Home has no reaction channel. |
+| `tests/sprite.test.ts` | +27 (suite 289 → 316). |
+
+Animation library: React Native `Animated` with the native driver. Reanimated
+is in `package.json`, but whether its Babel/worklets plugin is active could not
+be verified on a device from this session, and `Animated` is what the wake-up
+loader and hero float already use. Swapping to `withTiming` later is a change
+confined to `PetSprite.tsx`.
+
+Frame rate: 10 fps walking, 2 fps idle. Frame size: 128 × 128, rendered at
+64 pt (56 pt in the compact Home hero). A 30 % → 65 % walk takes 2.5 s.
+
+### Tests
+
+1. Eight frames in sheet order; directional frames alternate A/B; idle/reactions hold one; walk cadence 8–12 fps, idle slower.
+2. Seeded traces over all four homes obey the transition table and reach every state; same seed → same trace; a walk ends at its destination and idle/interact follows in place; direction always matches the movement; Reduce Motion never walks; reactions are one in-place step then idle.
+3. Duration grows with distance (never a fixed hop); the eased path is monotonic and passes through intermediate points; 500 destinations per home and a 400-step trace never leave the strip and never walk less than `minWalk`; strips have edge padding, sit on the floor, and every point of interest is inside.
+4. 24 frame files exist, PNG, 128×128, RGBA; manifest records the source; the frame table requires exactly those files and falls back safely.
+5. Component: `Animated.timing` to `toPx(step.to)` with `step.durationMs` on the native driver and no `setValue` jump to the destination; ticker at `fpsFor(state)` cleared on arrival; feet anchoring formula; pause on unfocus/background via `running`; cleanup of timeout, interval, bubble timer, animation and AppState listener; tap → `react('tap')` with no data imports; reduce-motion wiring; only the selected companion's frames are mounted.
+6. Pet sets the reaction only after the `!r.ok` return and after `setLiveStats(r.stats)`; Home mounts no reaction channel and still never writes; only Baby-stage companions walk; the sprite model's code mentions nothing of the economy.
+
+### Results
+
+| Check | Result |
+|---|---|
+| Mobile `npm test` | ✅ 316/316 |
+| `npm run typecheck` | ✅ clean |
+| `npx expo export --platform ios` | ✅ 9.4 MB, 92 assets |
+| Secret scan | ✅ 0 hits |
+| Web `npm test` (root) | ✅ 198/198 — nothing outside `apps/mobile/` changed |
+
+### Frames that need replacement
+
+All 24 — every set is derived from the baby portrait until the three sheets
+are saved under `assets/sprites/sheets/` and the script is re-run. The derived
+frames are correct in size, alignment and transparency, so the walk, timing
+and bounds are exactly what the real frames will get.
+
+### User-required iPhone checklist (Expo Go)
+
+- [ ] With a Baby companion: it stands in its home, breathes/blinks, pauses, then walks — continuously, not in hops — and stops with idle
+- [ ] Walking left shows the left-facing frames; right shows right-facing
+- [ ] Feet stay on the floor when frames swap; no float, slide or jump
+- [ ] It never leaves the lower strip of the scene or overlaps the home-name tag, the quest card or any button
+- [ ] At least one home-specific interaction (e.g. the dragon at the food basin) within a minute or two
+- [ ] Tap it: happy frame + "I'm here!" — points, rings and stats unchanged
+- [ ] Feed / Wash / Play: the reaction plays only after the success notice; Cancel or "Not enough points" → no reaction
+- [ ] Switch to Quests and back: the walk resumes; background the app: it pauses
+- [ ] Reduce Motion on: it stands and blinks, never walks
+- [ ] A Juvenile+ companion still shows its evolution portrait, not the baby sprite
+- [ ] Scrolling over the hero and the Accessories segmented control still work
