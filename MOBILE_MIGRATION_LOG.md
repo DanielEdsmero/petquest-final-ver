@@ -1623,3 +1623,96 @@ If 10 is the intended value, it is one constant (`c_boost`) in
 1. Run `supabase-phase13-spend-points.sql`, then `supabase-phase13b-signup-role.sql`, in the SQL editor (without RLS). Run each file's verify block.
 2. `git push origin main` (`b883001`, which includes `f98277a`). Let Vercel deploy.
 3. Acceptance on the web, then on the phone (list in the Phase 8 entry, plus the sign-up probe in the 13b file header).
+
+---
+
+## UI — "Today's Adventure" (Concept 1) on mobile (2026-09-15)
+
+Visual direction change for the participant app: warm ivory ground, ink text,
+muted teal as the single interaction colour, small coral / green status
+accents, one primary quest card, a vertical Today's Path, four tabs. No web
+files touched. Baseline before editing: `fb3361b`, 230/230 tests, typecheck
+clean. Note: the reference image did not arrive with the brief; the build
+follows its written description.
+
+### Information architecture
+
+| Tab | Route (unchanged) | Contents |
+|---|---|---|
+| Home | `(tabs)/index.tsx` | Greeting + streak line + profile affordance · pet hero (real sprite, idle float) · **NEXT QUEST** card with one action · **TODAY'S PATH** timeline · compact summary + evolution bar |
+| Quests | `(tabs)/quests.tsx` | Today / Upcoming / Completed / Needs review; one tap target per row; status pill + due chip |
+| Progress | `(tabs)/pet.tsx` | Companion + evolution stages, streak, own planning metrics (on-time rate, planned-ahead rate, late count, average delay), care actions |
+| Profile | `(tabs)/profile.tsx` | Account, collapsible "How verification works" (the four stages), help, admin entry (admins only), sign out |
+
+The Progress tab keeps the `pet` route name so every link, guard and test that
+names the route still holds. Admin stays outside the tabs behind
+`admin/_layout.tsx` and RLS, exactly as before.
+
+### New modules
+
+| File | Purpose |
+|---|---|
+| `src/theme.ts` | Re-tokened: semantic keys (`background`, `ink`, `primary`, `accentWarm`, `success`, `warning`, `border`, …), `TapTarget = 48`, `Shadow.card`. The old key names are kept as aliases onto the new palette so every screen flipped consistently; they are to be removed once each screen is migrated. |
+| `src/components/ui.tsx` | `PrimaryButton`, `SecondaryButton`, `TextButton`, `Surface`, `SectionLabel`, `Chip`, `StatusPill` (text + icon, never colour alone), `ProgressBar` (animates only to a value the server returned; snaps under Reduce Motion), `PetHero` (real sprite, `contentFit="contain"`, no downscaling, 3.6 s idle float off under Reduce Motion), `Skeleton`. |
+| `src/data/homeModel.ts` | Pure: `greeting`, `plannedLabel`, `questStatus` (from task + latest `quest_completions` row: Completed / Submitted / Queued for review / Not approved / In progress / Upcoming / Awaiting check / Needs changes), `nextQuest` (overdue → soonest planned → oldest unplanned; only eligible, non-cooling quests), `nextQuestAction` (Start quest → detail; Submit evidence → evidence flow after a reverted attempt; Continue quest → detail), `todaysPath` (capped, `truncated` flag), `todaySummary`, `heroMessage`, quest-list buckets. |
+| `src/data/progressModel.ts` | Pure own-data metrics with `null` (→ dash) when there is nothing to compute from. |
+| `src/data/completions.ts` | `fetchRecentCompletions(userId)` — one query so Home and Quests read the real status of every row. `completionModel.latestByQuest`. |
+| `tests/home.test.ts` | 32 tests (below). |
+
+Restyled in place: `states.tsx`, `ScreenContainer.tsx`, `LoadingScreen.tsx`,
+`MascotWakeLoader.tsx` (ivory ground, ink caption, teal Skip; timings and
+frames untouched), `login.tsx`, `quest/[id].tsx`, `quest/create.tsx`,
+`quest/verify.tsx`, `admin/*`, the two Stack layouts (ivory headers, teal
+tint), root `StatusBar` → dark, `app.json` → light UI style and ivory
+splash/adaptive-icon backgrounds.
+
+### What did not change
+
+Auth, SecureStore session persistence, the account-loading gate, the mandatory
+skippable wake-up loader, evidence capture and `submit_completion`, `/api/verify`
+polling, admin queues, `care_pet`, route guards. No `.rpc` / `.insert` /
+`.update` / `.upsert` was added anywhere; a test enumerates every file under
+`src/` and allows writes only in the eight modules that already had them.
+
+### Tests — `tests/home.test.ts` (+32; suite 230 → 262)
+
+1. Model: greeting; planned labels; status from the pipeline (a `pass` is still "Queued for review" until an admin confirms); next-quest ordering and eligibility; action labels and routes; Today's Path membership, order, cap; summary and hero message never mention points; `latestByQuest`; disjoint quest buckets.
+2. Progress metrics with honest blanks; the Progress screen never touches the admin RPC.
+3. Home: real sprite for the stored level; next quest and path from fetched tasks + completions; no demo content; Start quest → `/quest/[id]`, Submit evidence → `/quest/verify`; Home never writes; one primary button per state; "Queued for review" / "Submitted" / "Not approved" exist and "Approved" does not.
+4. Participant screens import nothing admin-only; no admin tab; the admin link is behind `isAdmin`; Home only routes to profile / quests / quest flow.
+5. Across `src/`, only the known modules write; care still calls `care_pet` only; no hardcoded "Approved".
+6. No width > 288, no `minWidth`, no horizontal scroll; titles wrap; 48 pt targets; status is text + icon; motion gated on Reduce Motion; skeletons not spinners on Home; the theme is the ivory / ink / teal direction; no leftover dark-theme literal anywhere under `src/app` or `src/components`.
+
+One existing assertion was updated (`quests.test.ts`: the dash-not-zero check
+now matches the new Home's expressions).
+
+### Results
+
+| Check | Result |
+|---|---|
+| `npm test` (mobile) | ✅ 262/262 |
+| `npm run typecheck` | ✅ clean |
+| `npx expo export --platform ios` | ✅ bundles |
+| Secret scan of the bundle | ✅ 0 hits; one JWT (the anon key) |
+| Web `npm test` (root) | ✅ 198/198 — no web file changed |
+
+### Visual compromises (existing architecture / assets)
+
+- **Expected duration** is not a field on `tasks`; the card shows the planned time when there is one and, for a completed quest, the server-recorded minutes. Nothing is invented.
+- **"Start quest"** does not set `started_at` — no client has ever written it and the column is revoked from clients. The label describes the participant's next step; the button only opens the quest.
+- **Pet idle motion** uses React Native's `Animated` (translateY ±4 pt) rather than Reanimated, because Reanimated's Babel/worklets plugin is not configured in this project and adding it is a build-config change.
+- **Difficulty colours** were re-tuned for contrast on ivory; the words (Easy / Medium / Hard) are what stay in parity with the web.
+- The web app keeps its dark theme; the two clients no longer share a palette by design.
+
+### User-required iPhone checklist (Expo Go)
+
+- [ ] Cold open: ivory background, the wake-up sequence plays (ink caption, teal "Skip animation →"), no yellow pulsing ring anywhere
+- [ ] Home: your real companion, large and centred, with a slow float (none with Reduce Motion on); greeting matches the time of day; the streak line matches Progress
+- [ ] NEXT QUEST shows the quest you would expect (overdue first, then the soonest planned); its button opens that quest; after a "Not approved" attempt the button reads "Submit evidence" and opens the camera flow directly
+- [ ] TODAY'S PATH statuses match the web quest log; after submitting evidence the row reads "Submitted", then "Queued for review" — never "Approved" until an admin confirms
+- [ ] "View all quests" appears when there are more than five today's rows
+- [ ] Quests: the four chips fit on one or two rows at 320 pt; counts add up to your total; rows open the quest
+- [ ] Quest detail: goal / priority (when present), planned finish, evidence type, the four-stage pipeline, Submit evidence
+- [ ] Progress: evolution bar animates only after a pull-to-refresh changes the value; on-time rate matches your own history; Feed / Wash / Play debit 10 and raise the stat only after the server replies; with < 10 points nothing changes
+- [ ] Profile: "How verification works" expands; sign-out works; **no Admin row as a normal user**; the Admin row appears and works as an admin
+- [ ] Nothing scrolls sideways; long quest titles wrap; safe areas respected top and bottom; Dynamic Type at the largest accessibility size still readable

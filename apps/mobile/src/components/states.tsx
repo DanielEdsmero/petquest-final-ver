@@ -20,7 +20,7 @@ import { Colors, FontSize, Radius, Spacing } from '@/theme';
 export function LoadingState({ label = 'Loading…' }: { label?: string }) {
   return (
     <View style={styles.centered} accessibilityRole="progressbar" accessibilityLabel={label}>
-      <ActivityIndicator color={Colors.gold} />
+      <ActivityIndicator color={Colors.primary} />
       <Text style={styles.mutedText}>{label}</Text>
     </View>
   );
@@ -42,7 +42,7 @@ export function EmptyState({
   return (
     <View style={styles.centered}>
       <View style={styles.iconCircle}>
-        <Ionicons name={icon} size={28} color={Colors.arcane} />
+        <Ionicons name={icon} size={28} color={Colors.primary} />
       </View>
       <Text style={styles.title}>{title}</Text>
       {body ? <Text style={styles.body}>{body}</Text> : null}
@@ -72,7 +72,7 @@ export function ErrorState({
   return (
     <View style={styles.centered} accessibilityLiveRegion="polite">
       <View style={[styles.iconCircle, styles.iconCircleError]}>
-        <Ionicons name="alert-circle-outline" size={28} color={Colors.rose} />
+        <Ionicons name="alert-circle-outline" size={28} color={Colors.warning} />
       </View>
       <Text style={styles.title}>{title}</Text>
       {body ? <Text style={styles.body}>{body}</Text> : null}
@@ -146,66 +146,67 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(124,58,237,0.14)',
+    backgroundColor: Colors.primaryTint,
     borderWidth: 1,
-    borderColor: 'rgba(124,58,237,0.35)',
+    borderColor: Colors.border,
     marginBottom: Spacing.xs,
   },
   iconCircleError: {
-    backgroundColor: 'rgba(244,63,94,0.12)',
-    borderColor: 'rgba(244,63,94,0.35)',
+    backgroundColor: Colors.warningTint,
+    borderColor: Colors.border,
   },
   title: {
-    color: Colors.textPrimary,
+    color: Colors.ink,
     fontSize: FontSize.lg,
     fontWeight: '700',
     textAlign: 'center',
   },
   body: {
-    color: Colors.textMuted,
+    color: Colors.inkMuted,
     fontSize: FontSize.sm,
     textAlign: 'center',
     lineHeight: 20,
     maxWidth: 320,
   },
-  mutedText: { color: Colors.textMuted, fontSize: FontSize.sm, textAlign: 'center' },
+  mutedText: { color: Colors.inkMuted, fontSize: FontSize.sm, textAlign: 'center' },
 
   primaryButton: {
     marginTop: Spacing.md,
-    backgroundColor: Colors.gold,
+    backgroundColor: Colors.primary,
     borderRadius: Radius.md,
     minHeight: 48,
     paddingHorizontal: Spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryButtonText: { color: '#1a0d00', fontSize: FontSize.md, fontWeight: '800' },
+  primaryButtonText: { color: Colors.onPrimary, fontSize: FontSize.md, fontWeight: '700' },
   secondaryButton: {
     marginTop: Spacing.md,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.cardBorderHi,
+    borderColor: Colors.borderStrong,
+    backgroundColor: Colors.surfaceElevated,
     minHeight: 48,
     paddingHorizontal: Spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  secondaryButtonText: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' },
+  secondaryButtonText: { color: Colors.primary, fontSize: FontSize.md, fontWeight: '700' },
   pressed: { opacity: 0.8 },
 
   card: {
-    backgroundColor: Colors.cardBg,
+    backgroundColor: Colors.surfaceElevated,
     borderRadius: Radius.lg,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: Colors.border,
     padding: Spacing.md,
     marginBottom: Spacing.md,
   },
   cardTitle: {
-    color: Colors.textMuted,
+    color: Colors.inkMuted,
     fontSize: FontSize.xs,
     fontWeight: '700',
-    letterSpacing: 1.4,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
     marginBottom: Spacing.sm,
   },
@@ -214,9 +215,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: Spacing.sm,
-    paddingVertical: 4,
+    paddingVertical: 6,
   },
-  rowLabel: { color: Colors.textSoft, fontSize: FontSize.sm },
-  rowValue: { color: Colors.textPrimary, fontSize: FontSize.sm, flexShrink: 1 },
-  listItem: { color: Colors.textSoft, fontSize: FontSize.sm, paddingVertical: 2 },
+  rowLabel: { color: Colors.inkMuted, fontSize: FontSize.sm },
+  rowValue: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
+  listItem: { color: Colors.inkSoft, fontSize: FontSize.sm, paddingVertical: 2 },
 });

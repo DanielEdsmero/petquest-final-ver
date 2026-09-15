@@ -1,16 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/auth/AuthProvider';
 import ScreenContainer from '@/components/ScreenContainer';
-import { Card, LoadingState, Row } from '@/components/states';
+import { LoadingState, Row } from '@/components/states';
+import { SecondaryButton, SectionLabel, Surface } from '@/components/ui';
 import { Env, supabaseProjectRef } from '@/lib/env';
-import { Colors, FontSize, Radius, Spacing } from '@/theme';
+import { Colors, FontSize, Radius, Spacing, TapTarget } from '@/theme';
 
 /**
- * Profile tab — account, the admin entry point, and sign-out.
+ * Profile — account, how verification works, help, the admin entry point, and
+ * sign-out.
  *
  * The admin row is rendered only for an admin, but that is presentation: the
  * route itself is gated in `app/admin/_layout.tsx` and the data behind it is
@@ -20,6 +22,7 @@ export default function ProfileTab() {
   const { session, profile, profileLoading, isAdmin, signOut } = useAuth();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
+  const [showHow, setShowHow] = useState(false);
 
   const confirmSignOut = () => {
     Alert.alert('Sign out?', 'You will need to sign in again to continue your quests.', [
@@ -40,27 +43,53 @@ export default function ProfileTab() {
     <ScreenContainer insetBottom={false}>
       <Text style={styles.title}>Profile</Text>
 
-      <Card title="Account">
+      <SectionLabel>Account</SectionLabel>
+      <Surface style={styles.block}>
         {profileLoading && !profile ? (
           <LoadingState label="Loading your profile…" />
         ) : (
           <>
-            <Row label="Email" value={session?.user?.email ?? '—'} />
             <Row label="Username" value={profile?.username ?? 'not set'} />
-            <Row
-              label="Role"
-              value={profile?.role ?? 'unknown'}
-              tint={isAdmin ? Colors.gold : Colors.green}
-            />
+            <Row label="Email" value={session?.user?.email ?? '—'} />
             <Row label="Companion" value={profile?.selected_pet_id ?? 'not hatched'} />
+            {isAdmin ? <Row label="Role" value="Study admin" tint={Colors.primary} /> : null}
           </>
         )}
-      </Card>
+      </Surface>
 
-      <Card title="Connection">
-        <Row label="Supabase" value={supabaseProjectRef() ?? '—'} tint={Colors.green} />
-        <Row label="API" value={hostOf(Env.apiBaseUrl)} tint={Colors.green} />
-      </Card>
+      <SectionLabel style={styles.sectionGap}>How verification works</SectionLabel>
+      <Surface style={styles.block}>
+        <Pressable
+          onPress={() => setShowHow((v) => !v)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showHow }}
+          accessibilityLabel="How verification works"
+          style={styles.disclosure}
+        >
+          <Text style={styles.disclosureText}>
+            Every quest you finish goes through four steps before its points are final.
+          </Text>
+          <Ionicons name={showHow ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.primary} />
+        </Pressable>
+        {showHow && (
+          <View style={styles.steps}>
+            <Step n={1} title="Submitted" body="You add a photo and a short note about what you did." />
+            <Step n={2} title="AI check" body="An automatic check compares your evidence with the quest. Points are added provisionally." />
+            <Step n={3} title="Researcher review" body="If the check cannot decide, or flags something, a study admin looks at it." />
+            <Step n={4} title="Outcome" body="Approved points are confirmed. If a submission is not approved, its points are reversed." />
+            <Text style={styles.footnote}>
+              Feeding, washing and playing with your companion cost points and are settled by the server, so the balance you see is always the real one.
+            </Text>
+          </View>
+        )}
+      </Surface>
+
+      <SectionLabel style={styles.sectionGap}>Help</SectionLabel>
+      <Surface style={styles.block}>
+        <Row label="Hatching and the shop" value="PetQuest website" />
+        <Row label="Server" value={supabaseProjectRef() ?? '—'} />
+        <Row label="API" value={hostOf(Env.apiBaseUrl)} />
+      </Surface>
 
       {isAdmin && (
         <Pressable
@@ -69,33 +98,30 @@ export default function ProfileTab() {
           accessibilityLabel="Open the admin area"
           style={({ pressed }) => [styles.adminButton, pressed && styles.pressed]}
         >
-          <Ionicons name="shield-checkmark" size={18} color={Colors.gold} />
+          <Ionicons name="shield-checkmark-outline" size={20} color={Colors.primary} />
           <Text style={styles.adminButtonText}>Admin area</Text>
-          <Ionicons name="chevron-forward" size={16} color={Colors.gold} />
+          <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
         </Pressable>
       )}
 
       <View style={styles.spacer} />
 
-      <Pressable
-        onPress={confirmSignOut}
-        disabled={signingOut}
-        accessibilityRole="button"
-        accessibilityLabel="Sign out"
-        accessibilityState={{ busy: signingOut }}
-        style={({ pressed }) => [
-          styles.signOutButton,
-          pressed && styles.pressed,
-          signingOut && styles.disabled,
-        ]}
-      >
-        {signingOut ? (
-          <ActivityIndicator color="#fb7185" />
-        ) : (
-          <Text style={styles.signOutText}>Sign out</Text>
-        )}
-      </Pressable>
+      <SecondaryButton label="Sign out" onPress={confirmSignOut} busy={signingOut} icon="log-out-outline" />
     </ScreenContainer>
+  );
+}
+
+function Step({ n, title, body }: { n: number; title: string; body: string }) {
+  return (
+    <View style={styles.step}>
+      <View style={styles.stepNum}>
+        <Text style={styles.stepNumText}>{n}</Text>
+      </View>
+      <View style={styles.stepBody}>
+        <Text style={styles.stepTitle}>{title}</Text>
+        <Text style={styles.stepText}>{body}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -105,37 +131,35 @@ function hostOf(url: string): string {
 }
 
 const styles = StyleSheet.create({
-  title: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.lg,
-    fontWeight: '700',
-    marginBottom: Spacing.md,
-  },
+  title: { color: Colors.ink, fontSize: FontSize.xl, fontWeight: '700', letterSpacing: -0.3, marginBottom: Spacing.md },
+  sectionGap: { marginTop: Spacing.lg },
+  block: { marginBottom: Spacing.xs },
+
+  disclosure: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, minHeight: TapTarget },
+  disclosureText: { color: Colors.inkSoft, fontSize: FontSize.sm, lineHeight: 20, flex: 1 },
+  steps: { marginTop: Spacing.sm, gap: Spacing.md },
+  step: { flexDirection: 'row', gap: Spacing.sm },
+  stepNum: { width: 24, height: 24, borderRadius: Radius.pill, backgroundColor: Colors.primaryTint, alignItems: 'center', justifyContent: 'center' },
+  stepNumText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '700' },
+  stepBody: { flex: 1 },
+  stepTitle: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: '700' },
+  stepText: { color: Colors.inkMuted, fontSize: FontSize.sm, lineHeight: 20, marginTop: 2 },
+  footnote: { color: Colors.inkMuted, fontSize: FontSize.xs, lineHeight: 16 },
+
   adminButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(245,163,26,0.45)',
-    backgroundColor: 'rgba(245,163,26,0.10)',
-    minHeight: 52,
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primaryTint,
+    minHeight: TapTarget + 4,
     paddingHorizontal: Spacing.md,
+    marginTop: Spacing.lg,
   },
-  adminButtonText: { color: Colors.gold, fontSize: FontSize.md, fontWeight: '700', flex: 1 },
+  adminButtonText: { color: Colors.primary, fontSize: FontSize.md, fontWeight: '700', flex: 1 },
 
   spacer: { flex: 1, minHeight: Spacing.lg },
-
-  signOutButton: {
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: 'rgba(244,63,94,0.40)',
-    backgroundColor: 'rgba(244,63,94,0.08)',
-    minHeight: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  signOutText: { color: '#fb7185', fontSize: FontSize.md, fontWeight: '700' },
-  pressed: { opacity: 0.8 },
-  disabled: { opacity: 0.5 },
+  pressed: { opacity: 0.7 },
 });

@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
   queueTitle: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' },
   queueText: { color: Colors.textMuted, fontSize: FontSize.xs, marginTop: 2, lineHeight: 16 },
   body: { color: Colors.textSoft, fontSize: FontSize.sm, lineHeight: 20 },
-  code: { color: Colors.goldLight },
+  code: { color: Colors.ink },
   ok: { color: Colors.green, fontWeight: '700' },
   pressed: { opacity: 0.8 },
 });

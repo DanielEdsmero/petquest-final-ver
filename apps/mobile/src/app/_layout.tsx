@@ -23,13 +23,13 @@ import { Colors } from '@/theme';
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <AuthProvider>
         <AuthGate>
           <Stack
             screenOptions={{
               headerShown: false,
-              contentStyle: { backgroundColor: Colors.bgDeep },
+              contentStyle: { backgroundColor: Colors.background },
               animation: 'fade',
             }}
           >

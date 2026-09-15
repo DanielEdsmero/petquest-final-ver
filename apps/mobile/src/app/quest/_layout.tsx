@@ -15,11 +15,11 @@ export default function QuestLayout() {
     <Stack
       screenOptions={{
         headerShown: true,
-        headerStyle: { backgroundColor: Colors.bgVoid },
-        headerTintColor: Colors.gold,
-        headerTitleStyle: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' },
+        headerStyle: { backgroundColor: Colors.background },
+        headerTintColor: Colors.primary,
+        headerTitleStyle: { color: Colors.ink, fontSize: FontSize.md, fontWeight: '700' },
         headerShadowVisible: false,
-        contentStyle: { backgroundColor: Colors.bgDeep },
+        contentStyle: { backgroundColor: Colors.background },
       }}
     >
       <Stack.Screen name="create" options={{ title: 'New quest' }} />

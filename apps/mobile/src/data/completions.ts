@@ -36,6 +36,26 @@ export async function fetchLatestCompletion(
   return { data: rows[0] ?? null, error: null };
 }
 
+/**
+ * The participant's recent submissions, newest first, so Home can read the
+ * real status of every quest on Today's Path with one query. RLS (`qc: own
+ * read`) scopes this to the caller; the `user_id` filter is for the index.
+ */
+export async function fetchRecentCompletions(
+  userId: string,
+  limit = 200,
+): Promise<{ data: Completion[] | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from('quest_completions')
+    .select(COMPLETION_COLUMNS)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) return { data: null, error: friendly(error.message) };
+  return { data: (data ?? []) as unknown as Completion[], error: null };
+}
+
 function friendly(message: string): string {
   const m = message.toLowerCase();
   if (m.includes('fetch') || m.includes('network') || m.includes('timeout')) {

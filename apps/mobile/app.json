@@ -6,8 +6,8 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "petquest",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#06061a",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FAF8F0",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
@@ -16,7 +16,7 @@
     "android": {
       "package": "com.yourresearchgroup.petquest",
       "adaptiveIcon": {
-        "backgroundColor": "#06061a",
+        "backgroundColor": "#FAF8F0",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png"
       },
@@ -31,7 +31,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#06061a",
+          "backgroundColor": "#FAF8F0",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 160
         }

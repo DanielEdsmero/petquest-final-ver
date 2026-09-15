@@ -301,10 +301,10 @@ function CaptureButton({
       style={({ pressed }) => [styles.captureButton, primary && styles.capturePrimary, pressed && styles.pressed, busy && styles.submitDisabled]}
     >
       {busy ? (
-        <ActivityIndicator color={primary ? '#1a0d00' : Colors.gold} />
+        <ActivityIndicator color={primary ? Colors.onPrimary : Colors.gold} />
       ) : (
         <>
-          <Ionicons name={icon} size={22} color={primary ? '#1a0d00' : Colors.gold} />
+          <Ionicons name={icon} size={22} color={primary ? Colors.onPrimary : Colors.gold} />
           <Text style={[styles.captureLabel, primary && styles.captureLabelPrimary]}>{label}</Text>
         </>
       )}
@@ -326,7 +326,7 @@ function ProgressView({ step }: { step: SubmitStep }) {
             <View key={s.key} style={styles.stepItem}>
               <View style={[styles.stepDot, done && styles.stepDotDone, active && styles.stepDotActive]}>
                 {done ? (
-                  <Ionicons name="checkmark" size={14} color="#1a0d00" />
+                  <Ionicons name="checkmark" size={14} color={Colors.onPrimary} />
                 ) : active ? (
                   <ActivityIndicator size="small" color={Colors.gold} />
                 ) : null}
@@ -357,7 +357,7 @@ function OutcomeView({ outcome, onDone }: { outcome: VerdictOutcome; onDone: () 
       ? { icon: 'checkmark-circle' as const, color: Colors.green, title: `+${outcome.points} points earned` }
       : outcome.kind === 'fail'
         ? { icon: 'close-circle' as const, color: Colors.rose, title: 'Evidence not accepted' }
-        : { icon: 'time' as const, color: Colors.gold, title: 'Submitted — queued for review' };
+        : { icon: 'time' as const, color: Colors.accentWarm, title: 'Submitted — queued for review' };
   return (
     <ScreenContainer insetTop={false} center>
       <Ionicons name={tone.icon} size={56} color={tone.color} />
@@ -396,15 +396,15 @@ const styles = StyleSheet.create({
     minHeight: 64,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(245,163,26,0.45)',
-    backgroundColor: 'rgba(245,163,26,0.08)',
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primaryTint,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
   },
   capturePrimary: { backgroundColor: Colors.gold, borderColor: Colors.gold },
   captureLabel: { color: Colors.gold, fontSize: FontSize.sm, fontWeight: '700' },
-  captureLabelPrimary: { color: '#1a0d00' },
+  captureLabelPrimary: { color: Colors.onPrimary },
 
   previewWrap: { borderRadius: Radius.md, overflow: 'hidden', backgroundColor: Colors.bgCard2, borderWidth: 1, borderColor: Colors.cardBorder },
   preview: { width: '100%', aspectRatio: 4 / 3 },
@@ -428,12 +428,12 @@ const styles = StyleSheet.create({
   errorPanel: {
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(244,63,94,0.40)',
-    backgroundColor: 'rgba(244,63,94,0.10)',
+    borderColor: Colors.warning,
+    backgroundColor: Colors.warningTint,
     padding: Spacing.md,
     marginTop: Spacing.md,
   },
-  errorText: { color: '#fb7185', fontSize: FontSize.sm, lineHeight: 19 },
+  errorText: { color: Colors.warning, fontSize: FontSize.sm, lineHeight: 19 },
 
   submit: {
     marginTop: Spacing.lg,
@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   submitDisabled: { opacity: 0.4 },
-  submitText: { color: '#1a0d00', fontSize: FontSize.md, fontWeight: '800' },
+  submitText: { color: Colors.onPrimary, fontSize: FontSize.md, fontWeight: '800' },
   pressed: { opacity: 0.85 },
   footnote: { color: Colors.textMuted, fontSize: FontSize.xs, textAlign: 'center', marginTop: Spacing.md, lineHeight: 16 },
 
@@ -463,7 +463,7 @@ const styles = StyleSheet.create({
   stepDotDone: { backgroundColor: Colors.gold, borderColor: Colors.gold },
   stepDotActive: { borderColor: Colors.gold },
   stepLabel: { color: Colors.textMuted, fontSize: FontSize.xs, textAlign: 'center' },
-  stepLabelOn: { color: Colors.goldLight, fontWeight: '700' },
+  stepLabelOn: { color: Colors.ink, fontWeight: '700' },
   track: { width: '100%', height: 6, borderRadius: Radius.pill, backgroundColor: Colors.bgCard2, overflow: 'hidden' },
   fill: { height: '100%', backgroundColor: Colors.gold },
   progressHint: { color: Colors.textSoft, fontSize: FontSize.sm, textAlign: 'center', marginTop: Spacing.md, lineHeight: 20 },

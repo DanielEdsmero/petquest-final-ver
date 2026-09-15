@@ -94,7 +94,7 @@ export default function ScreenContainer({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.bgDeep },
+  root: { flex: 1, backgroundColor: Colors.background },
   scrollContent: { flexGrow: 1 },
   center: { justifyContent: 'center' },
   column: {

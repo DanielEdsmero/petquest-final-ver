@@ -237,7 +237,7 @@ function ActionButton({ label, color, busy, disabled, onPress }: { label: string
 const styles = StyleSheet.create({
   filters: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginBottom: Spacing.md },
   chip: { minHeight: 40, paddingHorizontal: 10, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.cardBorder, backgroundColor: Colors.bgCard2, justifyContent: 'center' },
-  chipActive: { borderColor: 'rgba(245,163,26,0.45)', backgroundColor: 'rgba(245,163,26,0.16)' },
+  chipActive: { borderColor: Colors.primary, backgroundColor: Colors.primaryTint },
   chipText: { color: Colors.textMuted, fontSize: FontSize.xs, fontWeight: '700' },
   chipTextActive: { color: Colors.gold },
 

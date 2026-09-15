@@ -285,8 +285,8 @@ function ActionButton({ label, color, busy, disabled, onPress }: { label: string
 const styles = StyleSheet.create({
   filters: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginBottom: Spacing.md },
   chip: { minHeight: 40, paddingHorizontal: 10, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.cardBorder, backgroundColor: Colors.bgCard2, justifyContent: 'center' },
-  chipActive: { borderColor: 'rgba(245,163,26,0.45)', backgroundColor: 'rgba(245,163,26,0.16)' },
-  rerunChip: { borderColor: 'rgba(6,182,212,0.45)', backgroundColor: 'rgba(6,182,212,0.12)' },
+  chipActive: { borderColor: Colors.primary, backgroundColor: Colors.primaryTint },
+  rerunChip: { borderColor: Colors.primary, backgroundColor: Colors.primaryTint },
   chipText: { color: Colors.textMuted, fontSize: FontSize.xs, fontWeight: '700' },
   chipTextActive: { color: Colors.gold },
 
@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
   reason: { color: Colors.textSoft, fontSize: FontSize.xs, fontStyle: 'italic', lineHeight: 16 },
   adminReason: { color: Colors.gold, fontSize: FontSize.xs, lineHeight: 16 },
 
-  photoBox: { borderRadius: Radius.md, overflow: 'hidden', backgroundColor: '#000', marginTop: Spacing.xs },
+  photoBox: { borderRadius: Radius.md, overflow: 'hidden', backgroundColor: Colors.surface, marginTop: Spacing.xs },
   photo: { width: '100%', aspectRatio: 4 / 3 },
   photoEmpty: { width: '100%', aspectRatio: 4 / 3, alignItems: 'center', justifyContent: 'center', gap: 4 },
 

@@ -414,7 +414,8 @@ describe('6. the client never decides acceptance or awards points', () => {
   test('an unloaded figure renders as a dash, never a zero', () => {
     const src = readMobile('src/app/(tabs)/index.tsx');
     // "0 points" and "not loaded yet" mean very different things in a study.
-    assert.match(src, /typeof n === 'number' \? n\.toLocaleString\(\) : '—'/);
+    assert.match(src, /typeof streak === 'number' \? `\$\{streak\}d` : '—'/);
+    assert.match(src, /loading \? '—' : String\(summary\.completedToday\)/);
   });
 });
 

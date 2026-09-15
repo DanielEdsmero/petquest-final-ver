@@ -89,7 +89,7 @@ export default function LoginScreen() {
             if (error) setError(null);
           }}
           placeholder="you@example.com"
-          placeholderTextColor={Colors.textPlaceholder}
+          placeholderTextColor={Colors.inkFaint}
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="email"
@@ -109,7 +109,7 @@ export default function LoginScreen() {
             if (error) setError(null);
           }}
           placeholder="••••••••"
-          placeholderTextColor={Colors.textPlaceholder}
+          placeholderTextColor={Colors.inkFaint}
           secureTextEntry
           autoCapitalize="none"
           autoComplete="current-password"
@@ -139,7 +139,7 @@ export default function LoginScreen() {
           ]}
         >
           {busy ? (
-            <ActivityIndicator color="#1a0d00" />
+            <ActivityIndicator color={Colors.onPrimary} />
           ) : (
             <Text style={styles.buttonText}>Sign in</Text>
           )}
@@ -162,19 +162,19 @@ const styles = StyleSheet.create({
     height: 124,
     borderRadius: Radius.pill,
     backgroundColor: PetAccents.dragon,
-    opacity: 0.13,
+    opacity: 0.35,
   },
   mascot: { width: 112, height: 112 },
 
   title: {
-    color: Colors.goldLight,
-    fontSize: FontSize.xl + 4,
-    fontWeight: '800',
+    color: Colors.ink,
+    fontSize: FontSize.xl + 2,
+    fontWeight: '700',
     textAlign: 'center',
-    letterSpacing: 1.5,
+    letterSpacing: -0.3,
   },
   subtitle: {
-    color: Colors.textMuted,
+    color: Colors.inkMuted,
     fontSize: FontSize.sm,
     textAlign: 'center',
     marginTop: Spacing.xs,
@@ -182,14 +182,14 @@ const styles = StyleSheet.create({
   },
 
   form: {
-    backgroundColor: Colors.cardBg,
+    backgroundColor: Colors.surfaceElevated,
     borderRadius: Radius.lg,
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: Colors.border,
     padding: Spacing.md,
   },
   label: {
-    color: Colors.textMuted,
+    color: Colors.inkMuted,
     fontSize: FontSize.xs,
     fontWeight: '700',
     letterSpacing: 1.2,
@@ -198,11 +198,11 @@ const styles = StyleSheet.create({
   },
   labelSpaced: { marginTop: Spacing.md },
   input: {
-    backgroundColor: Colors.bgCard2,
+    backgroundColor: Colors.surface,
     borderWidth: 1,
-    borderColor: Colors.cardBorderHi,
+    borderColor: Colors.borderStrong,
     borderRadius: Radius.md,
-    color: Colors.textPrimary,
+    color: Colors.ink,
     fontSize: FontSize.md,
     paddingHorizontal: Spacing.md,
     // A 48pt target is comfortable to tap and leaves room for large text.
@@ -217,32 +217,32 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
   },
   bannerWarn: {
-    backgroundColor: 'rgba(245,163,26,0.10)',
-    borderColor: 'rgba(245,163,26,0.40)',
+    backgroundColor: Colors.accentWarmTint,
+    borderColor: Colors.accentWarm,
     marginBottom: Spacing.md,
   },
   bannerError: {
-    backgroundColor: 'rgba(244,63,94,0.10)',
-    borderColor: 'rgba(244,63,94,0.40)',
+    backgroundColor: Colors.warningTint,
+    borderColor: Colors.warning,
   },
-  bannerTitle: { color: Colors.gold, fontSize: FontSize.sm, fontWeight: '700' },
-  bannerBody: { color: Colors.textSoft, fontSize: FontSize.xs, marginTop: 2, lineHeight: 16 },
-  errorText: { color: '#fb7185', fontSize: FontSize.sm },
+  bannerTitle: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: '700' },
+  bannerBody: { color: Colors.inkSoft, fontSize: FontSize.xs, marginTop: 2, lineHeight: 16 },
+  errorText: { color: Colors.warning, fontSize: FontSize.sm, fontWeight: '600' },
 
   button: {
     marginTop: Spacing.lg,
-    backgroundColor: Colors.gold,
+    backgroundColor: Colors.primary,
     borderRadius: Radius.md,
     minHeight: 50,
     alignItems: 'center',
     justifyContent: 'center',
   },
   buttonDisabled: { opacity: 0.4 },
-  buttonPressed: { opacity: 0.85 },
-  buttonText: { color: '#1a0d00', fontSize: FontSize.md, fontWeight: '800' },
+  buttonPressed: { backgroundColor: Colors.primaryPressed },
+  buttonText: { color: Colors.onPrimary, fontSize: FontSize.md, fontWeight: '700' },
 
   footer: {
-    color: Colors.textMuted,
+    color: Colors.inkMuted,
     fontSize: FontSize.xs,
     textAlign: 'center',
     marginTop: Spacing.lg,

@@ -14,7 +14,6 @@ import {
 import { fetchLatestCompletion } from '@/data/completions';
 import {
   DIFF_POINTS,
-  DIFFICULTY_COLORS,
   VALIDITY_META,
   cooldownRemainingMs,
   evidenceMeta,
@@ -24,7 +23,7 @@ import {
 } from '@/data/quests';
 import { deleteTask, fetchTask } from '@/data/tasks';
 import { useAsyncData } from '@/lib/useAsyncData';
-import { Colors, FontSize, Radius, Spacing } from '@/theme';
+import { Colors, DifficultyColors, FontSize, Radius, Spacing, TapTarget } from '@/theme';
 
 /**
  * Quest detail (Phase 4C).
@@ -116,33 +115,33 @@ export default function QuestDetailScreen() {
         <RefreshControl
           refreshing={quest.refreshing || completion.refreshing}
           onRefresh={onRefresh}
-          tintColor={Colors.gold}
+          tintColor={Colors.primary}
         />
       }
     >
       <Text style={styles.title}>{task.text}</Text>
 
       <View style={styles.pillRow}>
-        <View style={[styles.pill, { borderColor: `${DIFFICULTY_COLORS[difficulty]}66` }]}>
-          <Text style={[styles.pillText, { color: DIFFICULTY_COLORS[difficulty] }]}>
+        <View style={[styles.pill, { borderColor: DifficultyColors[difficulty] }]}>
+          <Text style={[styles.pillText, { color: DifficultyColors[difficulty] }]}>
             {difficulty} · +{DIFF_POINTS[difficulty]} pts
           </Text>
         </View>
         {task.completed && (
-          <View style={[styles.pill, { borderColor: `${Colors.green}66` }]}>
-            <Text style={[styles.pillText, { color: Colors.green }]}>Completed</Text>
+          <View style={[styles.pill, { borderColor: Colors.success }]}>
+            <Text style={[styles.pillText, { color: Colors.success }]}>Completed</Text>
           </View>
         )}
         {badge && (
-          <View style={[styles.pill, { borderColor: `${badge.color}66` }]}>
-            <Text style={[styles.pillText, { color: badge.color }]}>{badge.label}</Text>
+          <View style={[styles.pill, { borderColor: Colors.accentWarm }]}>
+            <Text style={[styles.pillText, { color: Colors.accentWarm }]}>{badge.label}</Text>
           </View>
         )}
       </View>
 
       {/* The validity check's own words, when it had something to say. */}
       {badge && (
-        <View style={[styles.notice, { borderColor: `${badge.color}55`, backgroundColor: `${badge.color}14` }]}>
+        <View style={[styles.notice, { borderColor: Colors.accentWarm, backgroundColor: Colors.accentWarmTint }]}>
           <Text style={styles.noticeBody}>{task.validity_reason || badge.hint}</Text>
         </View>
       )}
@@ -156,7 +155,7 @@ export default function QuestDetailScreen() {
           <Row
             label="Planned finish"
             value={planned.toLocaleString()}
-            tint={!task.completed && planned.getTime() < Date.now() ? Colors.rose : undefined}
+            tint={!task.completed && planned.getTime() < Date.now() ? Colors.warning : undefined}
           />
         )}
         {task.completed_at && (
@@ -223,7 +222,7 @@ export default function QuestDetailScreen() {
               accessibilityLabel="Submit evidence"
               style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
             >
-              <Ionicons name="camera-outline" size={18} color="#1a0d00" />
+              <Ionicons name="camera-outline" size={18} color={Colors.onPrimary} />
               <Text style={styles.primaryButtonText}>Submit evidence</Text>
             </Pressable>
           )}
@@ -238,7 +237,7 @@ export default function QuestDetailScreen() {
         style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed, deleting && styles.disabled]}
       >
         {deleting ? (
-          <ActivityIndicator color="#fb7185" />
+          <ActivityIndicator color={Colors.warning} />
         ) : (
           <Text style={styles.deleteText}>Delete quest</Text>
         )}
@@ -269,24 +268,24 @@ function stageVisual(state: Stage['state']): {
 } {
   switch (state) {
     case 'done':
-      return { icon: 'checkmark-circle', color: Colors.green };
+      return { icon: 'checkmark-circle', color: Colors.success };
     case 'active':
-      return { icon: 'ellipse', color: Colors.gold };
+      return { icon: 'time', color: Colors.accentWarm };
     case 'failed':
-      return { icon: 'close-circle', color: Colors.rose };
+      return { icon: 'close-circle', color: Colors.warning };
     default:
-      return { icon: 'ellipse-outline', color: Colors.textMuted };
+      return { icon: 'ellipse-outline', color: Colors.inkFaint };
   }
 }
 
 const toneColor = (tone: 'neutral' | 'good' | 'bad' | 'waiting') =>
-  tone === 'good' ? Colors.green : tone === 'bad' ? Colors.rose : tone === 'waiting' ? Colors.gold : Colors.textMuted;
+  tone === 'good' ? Colors.success : tone === 'bad' ? Colors.warning : tone === 'waiting' ? Colors.accentWarm : Colors.inkMuted;
 
 const styles = StyleSheet.create({
-  title: { color: Colors.textPrimary, fontSize: FontSize.lg, fontWeight: '700', lineHeight: 25 },
+  title: { color: Colors.ink, fontSize: FontSize.xl, fontWeight: '700', lineHeight: 32, letterSpacing: -0.3 },
 
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginTop: Spacing.sm, marginBottom: Spacing.md },
-  pill: { borderWidth: 1, borderRadius: Radius.sm, paddingHorizontal: 8, paddingVertical: 3 },
+  pill: { borderWidth: 1, borderRadius: Radius.pill, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: Colors.surfaceElevated },
   pillText: { fontSize: FontSize.xs, fontWeight: '700', textTransform: 'capitalize' },
 
   notice: {
@@ -295,8 +294,8 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     marginBottom: Spacing.md,
   },
-  noticeMuted: { borderColor: Colors.cardBorderHi, backgroundColor: Colors.bgCard2 },
-  noticeBody: { color: Colors.textSoft, fontSize: FontSize.sm, lineHeight: 19 },
+  noticeMuted: { borderColor: Colors.border, backgroundColor: Colors.surface },
+  noticeBody: { color: Colors.inkSoft, fontSize: FontSize.sm, lineHeight: 20 },
 
   summaryRow: {
     flexDirection: 'row',
@@ -304,19 +303,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: Spacing.sm,
   },
-  summaryLabel: { fontSize: FontSize.md, fontWeight: '800' },
-  summaryPoints: { color: Colors.gold, fontSize: FontSize.sm, fontWeight: '700' },
+  summaryLabel: { fontSize: FontSize.md, fontWeight: '700' },
+  summaryPoints: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: '700' },
 
   stages: { marginTop: Spacing.xs },
   stageRow: { flexDirection: 'row', gap: Spacing.sm },
   stageMarker: { alignItems: 'center', width: 20 },
-  stageLine: { flex: 1, width: 2, backgroundColor: Colors.cardBorderHi, marginVertical: 2 },
+  stageLine: { flex: 1, width: 2, backgroundColor: Colors.border, marginVertical: 2 },
   stageBody: { flex: 1, paddingBottom: Spacing.md },
   stageLabel: { fontSize: FontSize.sm, fontWeight: '700' },
-  stageDetail: { color: Colors.textMuted, fontSize: FontSize.xs, marginTop: 2, lineHeight: 16 },
+  stageDetail: { color: Colors.inkMuted, fontSize: FontSize.xs, marginTop: 2, lineHeight: 16 },
 
   provisional: {
-    color: Colors.textMuted,
+    color: Colors.inkMuted,
     fontSize: FontSize.xs,
     lineHeight: 16,
     marginTop: Spacing.xs,
@@ -328,23 +327,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.sm,
-    backgroundColor: Colors.gold,
+    backgroundColor: Colors.primary,
     borderRadius: Radius.md,
-    minHeight: 52,
+    minHeight: TapTarget + 4,
   },
-  primaryButtonText: { color: '#1a0d00', fontSize: FontSize.md, fontWeight: '800' },
+  primaryButtonText: { color: Colors.onPrimary, fontSize: FontSize.md, fontWeight: '700' },
 
   deleteButton: {
     marginTop: 'auto',
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(244,63,94,0.40)',
-    backgroundColor: 'rgba(244,63,94,0.08)',
-    minHeight: 48,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surfaceElevated,
+    minHeight: TapTarget,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  deleteText: { color: '#fb7185', fontSize: FontSize.sm, fontWeight: '700' },
+  deleteText: { color: Colors.warning, fontSize: FontSize.sm, fontWeight: '700' },
 
   pressed: { opacity: 0.8 },
   disabled: { opacity: 0.5 },

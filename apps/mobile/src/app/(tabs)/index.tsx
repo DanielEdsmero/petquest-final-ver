@@ -1,31 +1,34 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/auth/AuthProvider';
 import ScreenContainer from '@/components/ScreenContainer';
 import { ErrorState } from '@/components/states';
-import { evolutionProgress, PET_CATALOG, petIdOf, stageName } from '@/data/petModel';
+import { PetHero, PrimaryButton, ProgressBar, SectionLabel, Skeleton, StatusPill, Surface, TextButton, type Tone } from '@/components/ui';
+import { latestByQuest } from '@/data/completionModel';
+import { fetchRecentCompletions } from '@/data/completions';
+import { greeting, heroMessage, nextQuest, nextQuestAction, plannedLabel, todaySummary, todaysPath, type PathRow } from '@/data/homeModel';
+import { PET_CATALOG, evolutionProgress, petIdOf, stageName } from '@/data/petModel';
 import { spriteFor } from '@/data/petSprites';
-import { summariseTasks } from '@/data/taskModel';
+import { DIFF_POINTS, difficultyMeta, type Difficulty } from '@/data/quests';
+import { type Task } from '@/data/taskModel';
 import { fetchTasks } from '@/data/tasks';
 import { useAsyncData } from '@/lib/useAsyncData';
-import { Colors, FontSize, Radius, Spacing } from '@/theme';
+import { Colors, DifficultyColors, FontSize, PetAccents, Radius, Spacing, TapTarget } from '@/theme';
 
 /**
- * Home — the live dashboard (Phase 4A).
+ * Home — "Today's Adventure".
  *
- * Every figure comes from Supabase: points and streak from the `profiles` row
- * the auth provider already holds, quest counts derived from the participant's
- * own `tasks`. Nothing is hardcoded and nothing is estimated — a value that has
- * not loaded shows as a dash rather than a zero, because "0 points" and "not
- * loaded yet" mean very different things in a study.
+ * One calm column: a short greeting, the companion, ONE next quest with ONE
+ * action, today's path, and a small summary. Every figure comes from the
+ * server — the participant's `tasks` and their latest `quest_completions` —
+ * and a value that has not loaded shows as a skeleton or a dash, never a zero.
  *
- * Pull-to-refresh goes through ScreenContainer's `refreshControl` prop rather
- * than a second ScrollView, so the safe-area and keyboard handling stay in one
- * place.
+ * Nothing here writes. The primary action only routes: to the quest screen or
+ * straight into the existing evidence flow. Points, streaks and approvals move
+ * only through the server RPCs the other screens call.
  */
 export default function HomeTab() {
   const { session, profile, refreshProfile } = useAuth();
@@ -33,278 +36,291 @@ export default function HomeTab() {
   const userId = session?.user?.id ?? null;
 
   const tasks = useAsyncData(
+    useCallback(() => (userId ? fetchTasks(userId) : Promise.resolve({ data: [], error: null })), [userId]),
+    { enabled: !!userId },
+  );
+  const completions = useAsyncData(
     useCallback(
-      () => (userId ? fetchTasks(userId) : Promise.resolve({ data: [], error: null })),
+      () => (userId ? fetchRecentCompletions(userId) : Promise.resolve({ data: [], error: null })),
       [userId],
     ),
     { enabled: !!userId },
   );
 
   const onRefresh = useCallback(async () => {
-    await Promise.all([refreshProfile(), tasks.refresh()]);
-  }, [refreshProfile, tasks]);
+    await Promise.all([refreshProfile(), tasks.refresh(), completions.refresh()]);
+  }, [refreshProfile, tasks, completions]);
 
-  const summary = summariseTasks(tasks.data);
+  const byQuest = useMemo(() => latestByQuest(completions.data), [completions.data]);
+  const loading = tasks.loading || completions.loading;
+  const next = useMemo(() => (loading ? null : nextQuest(tasks.data, byQuest)), [loading, tasks.data, byQuest]);
+  const path = useMemo(() => (loading ? { rows: [], truncated: false } : todaysPath(tasks.data, byQuest)), [loading, tasks.data, byQuest]);
+  const summary = useMemo(() => todaySummary(tasks.data), [tasks.data]);
+
   const petId = petIdOf(profile?.selected_pet_id);
+  const meta = petId ? PET_CATALOG[petId] : null;
   const totalEarned = profile?.total_points_earned ?? null;
   const progress = evolutionProgress(totalEarned);
-  // The server's stored level wins; the local computation is only a fallback
-  // for a profile row that predates the column.
   const level = profile?.pet_level ?? progress.level;
   const sprite = spriteFor(profile?.selected_pet_id, level);
-  const accent = petId ? PET_CATALOG[petId].accent : Colors.arcane;
+  const accent = petId ? PetAccents[petId] : PetAccents.dragon;
+  const streak = profile?.current_streak;
+
+  const openQuest = (task: Task) => router.push({ pathname: '/quest/[id]', params: { id: task.id } });
+  const openEvidence = (task: Task) => router.push({ pathname: '/quest/verify', params: { questId: task.id } });
 
   return (
     <ScreenContainer
       insetBottom={false}
       refreshControl={
-        <RefreshControl refreshing={tasks.refreshing} onRefresh={onRefresh} tintColor={Colors.gold} />
+        <RefreshControl refreshing={tasks.refreshing || completions.refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
       }
     >
-      <View>
-        <Text style={styles.greeting} numberOfLines={2}>
-          {profile?.username ? `Welcome back, ${profile.username}` : 'Welcome back'}
-        </Text>
-
-        {/* Companion */}
-        <View style={styles.heroCard}>
-          <View style={styles.hero}>
-            <View style={[styles.glow, { backgroundColor: accent }]} />
-            {sprite ? (
-              <Image
-                source={sprite}
-                style={styles.mascot}
-                contentFit="contain"
-                allowDownscaling={false}
-                transition={200}
-                accessibilityLabel={petId ? PET_CATALOG[petId].species : 'Your companion'}
-              />
-            ) : (
-              <Text style={styles.noPet}>🥚</Text>
-            )}
-          </View>
-
-          {petId ? (
-            <>
-              <Text style={styles.petName}>{PET_CATALOG[petId].name}</Text>
-              <Text style={styles.petStage}>
-                {PET_CATALOG[petId].species} · {stageName(level)}
-              </Text>
-
-              {progress.nextAt != null && totalEarned != null ? (
-                <View style={styles.progressWrap}>
-                  <View style={styles.progressTrack}>
-                    <View
-                      style={[styles.progressFill, { width: `${Math.round(progress.fraction * 100)}%` }]}
-                    />
-                  </View>
-                  <Text style={styles.progressLabel}>
-                    {progress.remaining} points to {stageName(level + 1)}
-                  </Text>
-                </View>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <Text style={styles.petName}>No companion yet</Text>
-              <Text style={styles.petStage}>Hatch your egg on the PetQuest website</Text>
-            </>
-          )}
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerText}>
+          <Text style={styles.greeting} numberOfLines={1}>
+            {greeting()}
+            {profile?.username ? `, ${profile.username}` : ''}
+          </Text>
+          <Text style={styles.subline} numberOfLines={1}>
+            {typeof streak === 'number'
+              ? streak > 0
+                ? `Day ${streak} of your streak`
+                : 'Start a streak today'
+              : ' '}
+          </Text>
         </View>
-
-        {/* Progression — server-authoritative values only */}
-        <View style={styles.statRow}>
-          <Stat icon="star" label="Points" value={fmt(profile?.points)} tint={Colors.gold} />
-          <Stat icon="flame" label="Streak" value={fmtStreak(profile?.current_streak)} tint={Colors.rose} />
-          <Stat
-            icon="checkmark-done"
-            label="Done"
-            value={tasks.loading ? '—' : String(summary.completed)}
-            tint={Colors.green}
-          />
-        </View>
-
-        {/* Quest summary */}
-        {tasks.error ? (
-          <View style={styles.card}>
-            <ErrorState body={tasks.error} onRetry={tasks.refetch} />
-          </View>
-        ) : (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Your quests</Text>
-            <SummaryRow label="Active" value={tasks.loading ? '—' : String(summary.active)} />
-            <SummaryRow label="Completed" value={tasks.loading ? '—' : String(summary.completed)} />
-            {summary.awaitingCheck > 0 && (
-              <SummaryRow label="Awaiting check" value={String(summary.awaitingCheck)} tint="#22d3ee" />
-            )}
-            {summary.needsAttention > 0 && (
-              <SummaryRow label="Needs changes" value={String(summary.needsAttention)} tint={Colors.gold} />
-            )}
-          </View>
-        )}
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Quick actions</Text>
-          <Action icon="add-circle-outline" label="Create a quest" onPress={() => router.push('/quest/create')} />
-          <Action icon="list-outline" label="View your quest log" onPress={() => router.push('/quests')} />
-        </View>
+        <Pressable
+          onPress={() => router.push('/profile')}
+          accessibilityRole="button"
+          accessibilityLabel="Profile and settings"
+          hitSlop={8}
+          style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+        >
+          <Ionicons name="person-circle-outline" size={28} color={Colors.inkSoft} />
+        </Pressable>
       </View>
+
+      {/* Pet hero */}
+      <View style={styles.hero}>
+        <PetHero
+          sprite={sprite}
+          accent={accent}
+          size={168}
+          accessibilityLabel={meta ? `${meta.name}, your ${meta.species}, ${stageName(level)} stage` : 'No companion yet'}
+        />
+        {meta ? (
+          <Text style={styles.petName}>
+            {meta.name} <Text style={styles.petStage}>· {stageName(level)}</Text>
+          </Text>
+        ) : (
+          <Text style={styles.petName}>No companion yet</Text>
+        )}
+        <Text style={styles.heroMessage}>
+          {loading ? ' ' : meta ? heroMessage(next, summary) : 'Hatch your egg on the PetQuest website'}
+        </Text>
+      </View>
+
+      {/* Next quest */}
+      <SectionLabel>Next quest</SectionLabel>
+      {tasks.error || completions.error ? (
+        <Surface style={styles.block}>
+          <ErrorState body={tasks.error ?? completions.error ?? undefined} onRetry={onRefresh} />
+        </Surface>
+      ) : loading ? (
+        <Surface style={styles.block}>
+          <Skeleton height={22} width="70%" />
+          <Skeleton height={14} width="40%" style={{ marginTop: Spacing.sm }} />
+          <Skeleton height={TapTarget} style={{ marginTop: Spacing.md }} />
+        </Surface>
+      ) : next ? (
+        <NextQuestCard
+          task={next}
+          action={nextQuestAction(next, byQuest[next.id] ?? null)}
+          onOpen={() => openQuest(next)}
+          onEvidence={() => openEvidence(next)}
+        />
+      ) : (
+        <Surface style={styles.block}>
+          <Text style={styles.emptyTitle}>{summary.completedToday > 0 ? 'Nothing left for today' : 'No quest is ready yet'}</Text>
+          <Text style={styles.emptyBody}>
+            {summary.completedToday > 0
+              ? 'Every ready quest is done. Add another when you want more.'
+              : 'Create a quest, or wait for the quality check on the ones you have.'}
+          </Text>
+          <PrimaryButton label="Create a quest" icon="add" onPress={() => router.push('/quest/create')} style={styles.blockButton} />
+        </Surface>
+      )}
+
+      {/* Today's path */}
+      <SectionLabel style={styles.sectionGap}>Today's path</SectionLabel>
+      <Surface style={styles.block}>
+        {loading ? (
+          <>
+            <Skeleton height={16} />
+            <Skeleton height={16} style={{ marginTop: Spacing.md }} />
+            <Skeleton height={16} style={{ marginTop: Spacing.md }} />
+          </>
+        ) : path.rows.length === 0 ? (
+          <Text style={styles.emptyBody}>Nothing planned for today. Quests with a planned time show up here.</Text>
+        ) : (
+          path.rows.map((row, i) => (
+            <PathItem key={row.task.id} row={row} last={i === path.rows.length - 1} onPress={() => openQuest(row.task)} />
+          ))
+        )}
+        {(path.truncated || (!loading && (tasks.data?.length ?? 0) > path.rows.length)) && (
+          <TextButton label="View all quests" onPress={() => router.push('/quests')} />
+        )}
+      </Surface>
+
+      {/* Compact summary */}
+      <View style={styles.summary}>
+        <Summary label="Done today" value={loading ? '—' : String(summary.completedToday)} />
+        <Summary label="Streak" value={typeof streak === 'number' ? `${streak}d` : '—'} />
+        <Summary label={meta ? stageName(level) : 'Level'} value={meta && totalEarned != null ? `Lv ${level}` : '—'} />
+      </View>
+      {meta && totalEarned != null && progress.nextAt != null && progress.remaining != null ? (
+        <View style={styles.evolution}>
+          <ProgressBar fraction={progress.fraction} height={6} accessibilityLabel={`${progress.remaining} points to ${stageName(level + 1)}`} />
+          <Text style={styles.evolutionLabel}>
+            {progress.remaining.toLocaleString()} to {stageName(level + 1)}
+          </Text>
+        </View>
+      ) : null}
     </ScreenContainer>
   );
 }
 
-/** A number we have, or a dash we do not — never a placeholder zero. */
-const fmt = (n: number | null | undefined) => (typeof n === 'number' ? n.toLocaleString() : '—');
-const fmtStreak = (n: number | null | undefined) =>
-  typeof n === 'number' ? `${n}d` : '—';
-
-function Stat({
-  icon,
-  label,
-  value,
-  tint,
+function NextQuestCard({
+  task,
+  action,
+  onOpen,
+  onEvidence,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
-  tint: string;
+  task: Task;
+  action: ReturnType<typeof nextQuestAction>;
+  onOpen: () => void;
+  onEvidence: () => void;
 }) {
+  const difficulty = (task.difficulty ?? 'easy') as Difficulty;
+  const d = difficultyMeta(difficulty);
+  const planned = plannedLabel(task);
   return (
-    <View style={styles.stat} accessibilityLabel={`${label}: ${value}`}>
-      <Ionicons name={icon} size={16} color={tint} />
-      <Text style={[styles.statValue, { color: tint }]} numberOfLines={1} adjustsFontSizeToFit>
-        {value}
-      </Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
+    <Surface style={styles.next}>
+      <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel={`Open quest: ${task.text}`} style={({ pressed }) => pressed && styles.pressed}>
+        <Text style={styles.nextTitle}>{task.text}</Text>
+        <View style={styles.metaRow}>
+          <View style={[styles.dot, { backgroundColor: DifficultyColors[difficulty] }]} />
+          <Text style={styles.meta}>
+            {d.label} · {DIFF_POINTS[difficulty]} pts
+            {planned ? ` · ${planned}` : ''}
+          </Text>
+        </View>
+      </Pressable>
+      <PrimaryButton
+        label={action.label}
+        icon={action.route === 'verify' ? 'camera-outline' : 'arrow-forward'}
+        onPress={action.route === 'verify' ? onEvidence : onOpen}
+        style={styles.blockButton}
+      />
+    </Surface>
   );
 }
 
-function SummaryRow({ label, value, tint }: { label: string; value: string; tint?: string }) {
-  return (
-    <View style={styles.summaryRow}>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={[styles.summaryValue, tint ? { color: tint } : null]}>{value}</Text>
-    </View>
-  );
-}
+const ICONS: Record<Tone, keyof typeof Ionicons.glyphMap> = {
+  good: 'checkmark-circle',
+  waiting: 'time-outline',
+  bad: 'close-circle-outline',
+  active: 'play-circle-outline',
+  neutral: 'ellipse-outline',
+};
 
-function Action({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress: () => void;
-}) {
+function PathItem({ row, last, onPress }: { row: PathRow; last: boolean; onPress: () => void }) {
+  const difficulty = (row.task.difficulty ?? 'easy') as Difficulty;
+  const d = difficultyMeta(difficulty);
+  const tone = row.status.tone;
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => [styles.action, pressed && styles.pressed]}
+      accessibilityLabel={`${row.task.text}, ${row.status.label}`}
+      style={({ pressed }) => [styles.pathRow, pressed && styles.pressed]}
     >
-      <Ionicons name={icon} size={18} color={Colors.gold} />
-      <Text style={styles.actionLabel}>{label}</Text>
-      <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+      <View style={styles.pathNode}>
+        <Ionicons name={ICONS[tone]} size={20} color={toneFg(tone)} />
+        {!last && <View style={styles.pathLine} />}
+      </View>
+      <View style={styles.pathBody}>
+        <Text style={[styles.pathTitle, tone === 'good' && styles.pathTitleDone]} numberOfLines={2}>
+          {row.task.text}
+        </Text>
+        <Text style={styles.pathMeta} numberOfLines={1}>
+          {d.label}
+          {row.planned ? ` · ${row.planned}` : ''}
+          {row.task.completed && row.task.completion_duration_minutes != null ? ` · ${row.task.completion_duration_minutes} min` : ''}
+        </Text>
+      </View>
+      <StatusPill label={row.status.label} tone={tone} />
     </Pressable>
   );
 }
 
+const toneFg = (tone: Tone) =>
+  tone === 'good' ? Colors.success : tone === 'bad' ? Colors.warning : tone === 'waiting' ? Colors.accentWarm : tone === 'active' ? Colors.primary : Colors.inkFaint;
+
+function Summary({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.summaryItem} accessibilityLabel={`${label}: ${value}`}>
+      <Text style={styles.summaryValue} numberOfLines={1} adjustsFontSizeToFit>
+        {value}
+      </Text>
+      <Text style={styles.summaryLabel} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  greeting: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.lg,
-    fontWeight: '700',
-    marginBottom: Spacing.md,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },
+  headerText: { flex: 1 },
+  greeting: { color: Colors.ink, fontSize: FontSize.xl, fontWeight: '700', letterSpacing: -0.3 },
+  subline: { color: Colors.inkMuted, fontSize: FontSize.sm, marginTop: 2 },
+  headerButton: { width: TapTarget, height: TapTarget, alignItems: 'center', justifyContent: 'center' },
 
-  heroCard: {
-    backgroundColor: Colors.cardBg,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    alignItems: 'center',
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  hero: { alignItems: 'center', justifyContent: 'center', height: 132 },
-  glow: {
-    position: 'absolute',
-    width: 124,
-    height: 124,
-    borderRadius: Radius.pill,
-    opacity: 0.14,
-  },
-  mascot: { width: 124, height: 124 },
-  noPet: { fontSize: 72 },
-  petName: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' },
-  petStage: { color: Colors.textMuted, fontSize: FontSize.xs, marginTop: 2 },
+  hero: { alignItems: 'center', paddingVertical: Spacing.md, marginBottom: Spacing.sm },
+  petName: { color: Colors.ink, fontSize: FontSize.lg, fontWeight: '700', marginTop: Spacing.xs },
+  petStage: { color: Colors.inkMuted, fontWeight: '500' },
+  heroMessage: { color: Colors.inkSoft, fontSize: FontSize.md, marginTop: Spacing.xs, textAlign: 'center' },
 
-  progressWrap: { width: '100%', marginTop: Spacing.sm },
-  progressTrack: {
-    height: 6,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.bgCard2,
-    overflow: 'hidden',
-  },
-  progressFill: { height: '100%', backgroundColor: Colors.gold, borderRadius: Radius.pill },
-  progressLabel: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
-    textAlign: 'center',
-    marginTop: Spacing.xs,
-  },
+  sectionGap: { marginTop: Spacing.lg },
+  block: { marginBottom: Spacing.xs },
+  blockButton: { marginTop: Spacing.md },
 
-  statRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md },
-  stat: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 2,
-    backgroundColor: Colors.cardBg,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: 4,
-  },
-  statValue: { fontSize: FontSize.lg, fontWeight: '800' },
-  statLabel: { color: Colors.textMuted, fontSize: FontSize.xs },
+  next: { borderColor: Colors.primary, borderWidth: 1.5 },
+  nextTitle: { color: Colors.ink, fontSize: FontSize.lg, fontWeight: '700', lineHeight: 26 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xs, flexWrap: 'wrap' },
+  dot: { width: 8, height: 8, borderRadius: Radius.pill },
+  meta: { color: Colors.inkMuted, fontSize: FontSize.sm, flexShrink: 1 },
 
-  card: {
-    backgroundColor: Colors.cardBg,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  cardTitle: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
-    fontWeight: '700',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    marginBottom: Spacing.sm,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  summaryLabel: { color: Colors.textSoft, fontSize: FontSize.sm },
-  summaryValue: { color: Colors.textPrimary, fontSize: FontSize.sm, fontWeight: '700' },
+  emptyTitle: { color: Colors.ink, fontSize: FontSize.md, fontWeight: '700' },
+  emptyBody: { color: Colors.inkMuted, fontSize: FontSize.sm, lineHeight: 20, marginTop: Spacing.xs },
 
-  action: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    minHeight: 48,
-    paddingHorizontal: Spacing.xs,
-  },
-  actionLabel: { color: Colors.textPrimary, fontSize: FontSize.sm, flex: 1 },
+  pathRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm, minHeight: TapTarget },
+  pathNode: { width: 24, alignItems: 'center', alignSelf: 'stretch' },
+  pathLine: { flex: 1, width: 2, backgroundColor: Colors.border, marginVertical: 2 },
+  pathBody: { flex: 1, paddingBottom: Spacing.md },
+  pathTitle: { color: Colors.ink, fontSize: FontSize.md, fontWeight: '600', lineHeight: 22 },
+  pathTitleDone: { color: Colors.inkMuted },
+  pathMeta: { color: Colors.inkMuted, fontSize: FontSize.xs, marginTop: 2 },
+
+  summary: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg },
+  summaryItem: { flex: 1, alignItems: 'center', paddingVertical: Spacing.sm },
+  summaryValue: { color: Colors.ink, fontSize: FontSize.lg, fontWeight: '700' },
+  summaryLabel: { color: Colors.inkMuted, fontSize: FontSize.xs, marginTop: 2 },
+  evolution: { marginTop: Spacing.xs, paddingHorizontal: Spacing.sm },
+  evolutionLabel: { color: Colors.inkMuted, fontSize: FontSize.xs, textAlign: 'center', marginTop: Spacing.xs },
+
   pressed: { opacity: 0.7 },
 });

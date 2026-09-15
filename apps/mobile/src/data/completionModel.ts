@@ -137,3 +137,16 @@ export function verificationSummary(c: Completion | null): {
  */
 export const pointsAreProvisional = (c: Completion | null) =>
   !!c && c.status !== 'verified' && c.status !== 'reverted' && c.status !== 'rejected';
+
+/**
+ * Collapse a newest-first list of completions to the latest one per quest.
+ * Used by Home so one query covers every row of Today's Path.
+ */
+export function latestByQuest(rows: Completion[] | null): Record<string, Completion | null> {
+  const out: Record<string, Completion | null> = {};
+  for (const c of rows ?? []) {
+    if (!c.quest_id) continue;
+    if (!(c.quest_id in out)) out[c.quest_id] = c;
+  }
+  return out;
+}

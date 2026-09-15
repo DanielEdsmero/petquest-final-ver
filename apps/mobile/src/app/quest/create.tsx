@@ -18,7 +18,6 @@ import {
   CHECK_EXPLAINER,
   CHECK_STEPS,
   DIFFICULTIES,
-  DIFFICULTY_COLORS,
   EVIDENCE_TYPES,
   checkPeriodCap,
   evidenceMeta,
@@ -29,7 +28,7 @@ import {
 import { fetchTasks } from '@/data/tasks';
 import { validateQuest, type ValidateResult } from '@/lib/questApi';
 import { useAsyncData } from '@/lib/useAsyncData';
-import { Colors, FontSize, Radius, Spacing } from '@/theme';
+import { Colors, DifficultyColors, FontSize, Radius, Spacing } from '@/theme';
 
 /**
  * Create a quest (Phase 4B).
@@ -179,13 +178,13 @@ export default function CreateQuestScreen() {
               style={[
                 styles.chip,
                 {
-                  backgroundColor: active ? `${DIFFICULTY_COLORS[d.id]}22` : Colors.bgCard2,
-                  borderColor: active ? `${DIFFICULTY_COLORS[d.id]}88` : Colors.cardBorder,
+                  backgroundColor: active ? `${DifficultyColors[d.id]}22` : Colors.bgCard2,
+                  borderColor: active ? `${DifficultyColors[d.id]}88` : Colors.cardBorder,
                 },
               ]}
             >
               <Text
-                style={[styles.chipText, { color: active ? DIFFICULTY_COLORS[d.id] : Colors.textMuted }]}
+                style={[styles.chipText, { color: active ? DifficultyColors[d.id] : Colors.textMuted }]}
               >
                 {d.emoji} {d.label}
               </Text>
@@ -336,12 +335,12 @@ function CheckingView({ step }: { step: number }) {
 function ResultPanel({ result }: { result: ValidateResult }) {
   const tone =
     result.decision === 'pending'
-      ? { color: '#22d3ee', title: 'Saved — awaiting check' }
+      ? { color: Colors.accentWarm, title: 'Saved — awaiting check' }
       : result.decision === 'clarify'
-        ? { color: Colors.gold, title: 'Almost there' }
+        ? { color: Colors.accentWarm, title: 'Almost there' }
         : result.decision === 'reject'
           ? { color: Colors.rose, title: 'Not accepted' }
-          : { color: Colors.gold, title: 'Could not check' };
+          : { color: Colors.accentWarm, title: 'Could not check' };
 
   return (
     <View
@@ -416,11 +415,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.sm,
   },
-  evidenceItemActive: { borderColor: 'rgba(245,163,26,0.55)', backgroundColor: 'rgba(245,163,26,0.08)' },
+  evidenceItemActive: { borderColor: Colors.primary, backgroundColor: Colors.primaryTint },
   evidenceEmoji: { fontSize: 20 },
   evidenceBody: { flex: 1 },
   evidenceLabel: { color: Colors.textPrimary, fontSize: FontSize.sm, fontWeight: '700' },
-  evidenceLabelActive: { color: Colors.goldLight },
+  evidenceLabelActive: { color: Colors.ink },
   evidenceDesc: { color: Colors.textMuted, fontSize: FontSize.xs, marginTop: 1, lineHeight: 15 },
 
   dateButton: {
@@ -445,16 +444,16 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     marginBottom: Spacing.md,
   },
-  panelWarn: { backgroundColor: 'rgba(245,163,26,0.10)', borderColor: 'rgba(245,163,26,0.40)', marginTop: Spacing.sm },
+  panelWarn: { backgroundColor: Colors.accentWarmTint, borderColor: Colors.accentWarm, marginTop: Spacing.sm },
   panelError: {
-    backgroundColor: 'rgba(244,63,94,0.10)',
-    borderColor: 'rgba(244,63,94,0.40)',
+    backgroundColor: Colors.warningTint,
+    borderColor: Colors.warning,
     marginTop: Spacing.md,
   },
   panelTitle: { fontSize: FontSize.sm, fontWeight: '800', marginBottom: 4 },
   panelBody: { color: Colors.textSoft, fontSize: FontSize.sm, lineHeight: 19 },
   panelHint: { color: Colors.textMuted, fontSize: FontSize.xs, marginTop: Spacing.xs },
-  errorText: { color: '#fb7185', fontSize: FontSize.sm },
+  errorText: { color: Colors.warning, fontSize: FontSize.sm },
 
   submit: {
     marginTop: Spacing.lg,
@@ -465,7 +464,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   submitDisabled: { opacity: 0.4 },
-  submitText: { color: '#1a0d00', fontSize: FontSize.md, fontWeight: '800' },
+  submitText: { color: Colors.onPrimary, fontSize: FontSize.md, fontWeight: '800' },
   pressed: { opacity: 0.85 },
   footnote: {
     color: Colors.textMuted,

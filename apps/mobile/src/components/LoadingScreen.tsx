@@ -25,7 +25,7 @@ export default function LoadingScreen({ message = 'Restoring your session…' }:
           accessibilityLabel="PetQuest"
         />
       </View>
-      <ActivityIndicator color={Colors.gold} />
+      <ActivityIndicator color={Colors.primary} />
       <Text style={styles.text} accessibilityRole="text">
         {message}
       </Text>
@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.md,
-    backgroundColor: Colors.bgDeep,
+    backgroundColor: Colors.background,
     padding: Spacing.lg,
   },
   hero: { alignItems: 'center', justifyContent: 'center', height: 130 },
@@ -49,8 +49,8 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: Radius.pill,
     backgroundColor: PetAccents.dragon,
-    opacity: 0.12,
+    opacity: 0.35,
   },
   mascot: { width: 112, height: 112 },
-  text: { color: Colors.textMuted, fontSize: FontSize.sm, textAlign: 'center' },
+  text: { color: Colors.inkMuted, fontSize: FontSize.sm, textAlign: 'center' },
 });

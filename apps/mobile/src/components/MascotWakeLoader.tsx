@@ -16,7 +16,7 @@ import {
 } from '@/data/wakeModel';
 import { WAKE_FRAMES } from '@/data/wakeSprites';
 import useReducedMotion from '@/hooks/useReducedMotion';
-import { Colors, FontSize, Radius, Spacing } from '@/theme';
+import { Colors, FontSize, PetAccents, Radius, Spacing } from '@/theme';
 
 /**
  * Mascot wake-up loader — the account-loading buffer (Phase 6).
@@ -180,7 +180,7 @@ export default function MascotWakeLoader({
           <Animated.View
             style={[
               styles.glow,
-              { width: size * 0.9, height: size * 0.9, backgroundColor: meta.accent, opacity: glow },
+              { width: size * 0.9, height: size * 0.9, backgroundColor: PetAccents[petId], opacity: glow },
             ]}
           />
           <Image
@@ -194,7 +194,7 @@ export default function MascotWakeLoader({
           />
         </View>
 
-        <Text style={[styles.caption, { color: meta.accent }]}>{caption}</Text>
+        <Text style={styles.caption}>{caption}</Text>
       </View>
 
       {/* Skip — always visible, outside the live region so it is not re-announced.
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: Colors.bgDeep,
+    backgroundColor: Colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.lg,
@@ -233,12 +233,13 @@ const styles = StyleSheet.create({
   stage: { alignItems: 'center', justifyContent: 'center' },
   glow: { position: 'absolute', borderRadius: Radius.pill },
   caption: {
+    color: Colors.ink,
     fontSize: FontSize.lg,
-    fontWeight: '800',
+    fontWeight: '700',
     textAlign: 'center',
     marginTop: Spacing.md,
     maxWidth: 320,
-    letterSpacing: 0.4,
+    letterSpacing: 0.2,
   },
   skip: {
     marginTop: Spacing.xl,
@@ -247,9 +248,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(124,58,237,0.35)',
-    backgroundColor: 'rgba(124,58,237,0.12)',
+    borderColor: Colors.borderStrong,
+    backgroundColor: Colors.surfaceElevated,
   },
   skipPressed: { opacity: 0.7 },
-  skipText: { color: '#a78bfa', fontSize: FontSize.sm, fontWeight: '700' },
+  skipText: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
 });
