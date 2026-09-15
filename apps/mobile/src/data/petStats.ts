@@ -3,14 +3,9 @@ import { supabase } from '@/lib/supabase';
 /**
  * The companion's care stats, read from `pet_stats` (RLS: own row only).
  *
- * READ-ONLY on mobile, deliberately. The web client's feed / wash / play
- * actions raise a stat AND debit 10 points by writing `profiles.points`
- * straight from the browser — a hole supabase-schema.sql documents as a TODO
- * ("a determined user can still award themselves points by writing
- * profiles.points"). Reproducing that write on a second client would double
- * the surface of a known weakness, and the fix — a `spend_points()` RPC plus
- * `revoke update (points) on profiles` — is a migration that needs approval.
- * Until it exists, mobile shows the stats and sends care to the web.
+ * Reads only. Writes happen in src/data/care.ts through the `care_pet()` RPC
+ * (Phase 13 migration), which debits the cost and raises the stat in one
+ * transaction. This client never upserts pet_stats or touches profiles.points.
  *
  * The web also DECAYS these client-side on a 30-minute timer while logged in.
  * Mobile does not run that timer, so the numbers here are whatever was last

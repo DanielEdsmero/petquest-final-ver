@@ -1481,3 +1481,104 @@ git revert $(git log --format=%H --grep='mobile phase 7' -1)
 
 **Phase 8** — test hardening, performance pass, EAS build configuration,
 cross-client regression, offline behaviour. Then merge review.
+
+---
+
+## Phase 8 — point spending server-side; care actions on mobile (2026-09-15)
+
+Approved by the user after Phase 7 ("add the spend points feature in the next
+phase"). This is the first phase with a **migration** and the first with a
+**web change**, so it is two commits in two places, per the Option B rule:
+
+| Where | Commit | Contains |
+|---|---|---|
+| `main` | `f98277a` "Move point spending server-side (spend_points, care_pet, economy guard)" | `supabase/supabase-phase13-spend-points.sql`, `src/context/GameContext.jsx`, `supabase/README.md`, `supabase/supabase-schema.sql` (stale note), `tests/spend-points.test.mjs`. **No mobile files, no migration docs.** Not pushed. |
+| `mobile-expo-migration` | `cbc4039` merge of main (clean), then "mobile phase 8: …" | `apps/mobile/` + this log only. |
+
+### The migration — `supabase-phase13-spend-points.sql` (run by hand, after phase 12)
+
+| Object | What it does |
+|---|---|
+| `spend_points(p_amount, p_reason)` | SECURITY DEFINER. The only way a balance goes down. Balance check is inside the UPDATE's WHERE (`points >= p_amount`), so concurrent spends cannot both succeed. Rejects anon, ≤0, >100000. Only debits the caller — no target id. |
+| `care_pet(p_action)` | SECURITY DEFINER. `feed`/`wash`/`play`: debits 10 and raises the stat by 30 (cap 100) in one transaction; seeds a missing `pet_stats` row at the web baseline 80/78/72. Returns the new balance and stats. `no_pet` if no companion. |
+| `profiles_economy_guard` trigger | BEFORE UPDATE on `profiles`, NOT security definer. If `current_user` is `anon`/`authenticated` and **not** `is_admin()`, a change to `points`, `total_points_earned`, `current_streak`, `longest_streak`, `last_completion_date`, `pet_level`, `badges`, `boss_battles_unlocked` or **`role`** raises `economy_column_locked`. SECURITY DEFINER RPCs (owner) and Vercel (service_role) pass. The admin cheat panel writes these as itself and passes via `is_admin()`. |
+
+Not redefined: `complete_task`, `submit_completion`, `rollback_completion`,
+`admin_review_completion`, `admin_resolve_quest_validity`. No table changes.
+Rollback is four `drop` statements, listed in the file header.
+
+Why a trigger, not `revoke update (points)`: Supabase grants table-level ALL to
+`authenticated`, and Postgres column-level revoke is a no-op while the
+table-level grant stands (phase 12 hit the same thing on `tasks`).
+
+**`role` was included on purpose.** Before this, any signed-in participant could
+run `supabase.from('profiles').update({ role: 'admin' })` from the browser
+console — RLS `profiles: own update` allowed it and nothing guarded the column.
+Same mechanism, one more array entry, so it is in.
+
+### Web change (`GameContext.jsx`)
+
+`spendPoints(amount, reason)` → `rpc('spend_points')`; `feedPet`/`showerPet`/
+`playWithPet` → `rpc('care_pet')`. The balance and stats shown are the ones the
+server returned. `updateStat` (client +30 and `pet_stats` upsert) is gone. The
+30-minute decay timer still upserts `pet_stats` (cosmetic, own row) — unchanged.
+Toast wording unchanged. **Until the migration is run, feed/wash/play and the
+shop fail closed** (an error toast; no debit, no stat change).
+
+### Mobile change
+
+| File | Purpose |
+|---|---|
+| `src/data/careModel.ts` | Pure: actions, cost/boost (mirrors of the migration, tested), `canAfford`, error/success wording (web wording, with the pet name). |
+| `src/data/care.ts` | `carePet(action)` → `rpc('care_pet')`. No `.from()` at all. |
+| `src/app/(tabs)/pet.tsx` | Feed / Wash / Play buttons (64 pt, cost in the a11y label), inline notice (3.5 s, live region + VoiceOver announcement), balance and stats replaced by the server's answer, then `refreshProfile()`. No buttons without a companion. |
+| `src/data/petStats.ts` | Comment updated; still read-only. |
+| `tests/care.test.ts` (+14), `tests/quests.test.ts` (2 rewritten) | See below. |
+
+### Tests
+
+- Web `tests/spend-points.test.mjs` (+21): the SQL defines both functions as SECURITY DEFINER with pinned search_path, granted to `authenticated` only; the debit is atomic; the guard is not definer, names every column, bypasses admins, is installed BEFORE UPDATE; no award function is redefined; no DDL; the client has no `.update({ points` and calls the two RPCs; stats come from the server.
+- Mobile `tests/care.test.ts`: model behaviour; cost/boost/action names/error codes match the migration text; the only write path is the RPC; the screen shows the returned balance and stats (no optimistic boost, no local debit); buttons absent without a pet; the guard would reject the client anyway.
+
+### Results
+
+| Check | Result |
+|---|---|
+| Web `npm test` on `main` | ✅ 185 pass, 1 skipped (the mobile-absent guard) |
+| Web `npm test` on the branch | ✅ 186/186; build clean |
+| Mobile `npm test` | ✅ 230/230 (was 216) |
+| Mobile typecheck | ✅ clean |
+| `expo export` + secret scan | ✅ 0 hits |
+| Web paths on the branch vs `main` | ✅ identical |
+
+### Rollback
+
+```bash
+# mobile
+git revert $(git log --format=%H --grep='mobile phase 8' -1)
+# web (main) — revert the commit AND run the four drops in the SQL header
+git revert f98277a
+```
+
+### User-required steps, in this order
+
+1. **Run `supabase/supabase-phase13-spend-points.sql`** in the SQL editor (run without RLS; the "destructive" warning is the `drop trigger if exists` that is immediately re-created). Then the verify block at the bottom of the file.
+2. **Push `main`** (`f98277a`) and let Vercel deploy. Before the migration exists, the deployed web would fail closed on feed/wash/play/shop.
+3. **Web:** feed/wash/play debit 10 and raise the stat; the shop debits the cost; a browser-console `update({ points: 99999 })` as a normal user is rejected with `economy_column_locked`; the **admin cheat panel** (+points, streak, level, reset) still works.
+4. **Phone:** Pet tab → Feed / Wash / Play → the stat rises by 30, the Points row drops by 10, the notice reads like the web toast; with < 10 points the "Not enough points" notice shows and nothing changes; the numbers match the web after a pull-to-refresh on both.
+
+### Also found, NOT changed — needs your decision
+
+`handle_new_user()` (schema line ~141) copies `raw_user_meta_data->>'role'`
+into `profiles.role`. Anyone with the public anon key can call
+`supabase.auth.signUp({ …, options: { data: { role: 'admin' } } })` and be
+created as an admin. The web only sends `username`. If admins are not created
+this way on purpose, the fix is a one-line migration:
+`coalesce(...)` → `'user'` (promote admins by hand in the dashboard instead).
+Flagging, not fixing, because it changes how accounts are created.
+
+### Next
+
+**Phase 9** (the original Phase 8 list) — test hardening, performance pass,
+EAS build configuration, cross-client regression, offline behaviour. Then the
+merge review.

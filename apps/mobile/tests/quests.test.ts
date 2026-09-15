@@ -425,22 +425,22 @@ describe('7. pet tab (Phase 4F) — real sprite, real stage, no client-side poin
     assert.match(src, /const level = profile\?\.pet_level \?\? progress\.level/);
   });
 
-  test('care actions are absent: no client may debit points', () => {
-    // The web writes profiles.points from the browser for feed/wash/play — a
-    // documented hole. Mobile must not reproduce it.
-    for (const f of ['src/app/(tabs)/pet.tsx', 'src/data/petStats.ts']) {
+  test('care actions never debit points or write stats from the client', () => {
+    // Phase 8: feed / wash / play exist, but only as a call to care_pet().
+    for (const f of ['src/app/(tabs)/pet.tsx', 'src/data/petStats.ts', 'src/data/care.ts', 'src/data/careModel.ts']) {
       const src = readMobile(f);
       assert.doesNotMatch(src, /\.from\('profiles'\)\.update/, `${f} writes the profile`);
       assert.doesNotMatch(src, /\.from\('pet_stats'\)\.(update|upsert|insert)/, `${f} writes pet_stats`);
       assert.doesNotMatch(src, /points\s*-\s*\d+|points:\s*next/, `${f} debits points locally`);
     }
-    assert.match(readMobile('src/data/petStats.ts'), /READ-ONLY on mobile, deliberately/);
+    assert.match(readMobile('src/data/care.ts'), /supabase\.rpc\('care_pet', \{ p_action: action \}\)/);
   });
 
-  test('the web hole this avoids is the one the schema documents', () => {
+  test('the hole the schema used to document is closed, on both clients', () => {
     const schema = readWeb('supabase/supabase-schema.sql');
-    assert.match(schema, /profiles\.points is deliberately still client-writable/);
-    assert.match(schema, /spend_points\(\) RPC/);
+    assert.doesNotMatch(schema, /profiles\.points is deliberately still client-writable/);
+    assert.match(schema, /profiles_economy_guard trigger/);
+    assert.doesNotMatch(readWeb('src/context/GameContext.jsx'), /\.update\(\{ points/);
   });
 
   test('a missing stats row is "no stats", not an error', () => {
