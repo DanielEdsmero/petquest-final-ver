@@ -242,11 +242,11 @@ describe('3. Home renders real data and only routes', () => {
   const home = app('(tabs)/index.tsx');
 
   test('the pet hero uses the real sprite for the stored level', () => {
-    assert.match(home, /<PetHero/);
+    assert.match(home, /<PetHomeHero/);
     assert.match(home, /spriteFor\(profile\?\.selected_pet_id, level\)/);
     assert.match(home, /const level = profile\?\.pet_level \?\? progress\.level/);
-    assert.match(read('src/components/ui.tsx'), /allowDownscaling=\{false\}/);
-    assert.match(read('src/components/ui.tsx'), /contentFit="contain"/);
+    assert.match(read('src/components/PetHomeHero.tsx'), /allowDownscaling=\{false\}/);
+    assert.match(read('src/components/PetHomeHero.tsx'), /contentFit="contain"/);
   });
 
   test('the next quest and the path come from fetched tasks and completions', () => {
@@ -310,13 +310,13 @@ describe('4. participant screens carry nothing admin-only', () => {
   test('Home links to profile, quests and the quest flow — nowhere else', () => {
     const home = app('(tabs)/index.tsx');
     const targets = [...home.matchAll(/router\.push\((?:\{ pathname: )?'([^']+)'/g)].map((m) => m[1]).sort();
-    assert.deepEqual([...new Set(targets)], ['/profile', '/quest/[id]', '/quest/create', '/quest/verify', '/quests']);
+    assert.deepEqual([...new Set(targets)], ['/pet', '/profile', '/quest/[id]', '/quest/create', '/quest/verify', '/quests']);
   });
 });
 
 describe('5. economy and verification state are never mutated locally', () => {
   test('across src/, the only writers are the known modules', () => {
-    const allowed = new Set(['src/lib/evidence.ts', 'src/data/care.ts', 'src/data/admin.ts', 'src/data/tasks.ts', 'src/lib/questApi.ts', 'src/lib/verifyApi.ts', 'src/auth/AuthProvider.tsx', 'src/lib/supabase.ts']);
+    const allowed = new Set(['src/lib/evidence.ts', 'src/data/care.ts', 'src/data/admin.ts', 'src/data/tasks.ts', 'src/data/accessories.ts', 'src/lib/questApi.ts', 'src/lib/verifyApi.ts', 'src/auth/AuthProvider.tsx', 'src/lib/supabase.ts']);
     const offenders: string[] = [];
     for (const f of walk(path.join(MOBILE, 'src'))) {
       const rel = path.relative(MOBILE, f).replace(/\\/g, '/');
@@ -388,6 +388,7 @@ describe('6. small-screen and accessibility guards for the new screens', () => {
   test('loading uses skeletons, not the old spinner ring, on Home', () => {
     assert.match(app('(tabs)/index.tsx'), /<Skeleton/);
     assert.doesNotMatch(app('(tabs)/index.tsx'), /ActivityIndicator/);
+    assert.doesNotMatch(read('src/components/PetHomeHero.tsx'), /ActivityIndicator/);
   });
 
   test('the theme is the ivory / ink / teal direction and the tab bar uses it', () => {
@@ -397,7 +398,7 @@ describe('6. small-screen and accessibility guards for the new screens', () => {
     assert.match(theme, /ink: '#102A43'/);
     assert.match(theme, /teal: '#3F8580'/);
     assert.match(app('(tabs)/_layout.tsx'), /tabBarActiveTintColor: Colors\.primary/);
-    assert.match(app('(tabs)/_layout.tsx'), /title: 'Progress'/);
+    assert.match(app('(tabs)/_layout.tsx'), /title: 'Pet'/);
     assert.match(app('_layout.tsx'), /<StatusBar style="dark" \/>/);
     assert.match(read('app.json'), /"userInterfaceStyle": "light"/);
   });

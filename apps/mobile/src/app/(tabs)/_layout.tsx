@@ -5,10 +5,11 @@ import { Platform } from 'react-native';
 import { Colors, FontSize } from '@/theme';
 
 /**
- * The signed-in tab bar: Home, Quests, Progress, Profile.
+ * The signed-in tab bar: Home, Quests, Pet, Profile.
  *
- * The Progress tab keeps the `pet` route name (the file is pet.tsx) so every
- * existing link, guard and test that names the route still holds.
+ * The Pet tab holds the companion's home, the status rings, care, progress
+ * metrics and the Accessories view (a segmented control inside the tab, not a
+ * fifth tab).
  *
  * Admin is deliberately NOT a tab. It is a separate route group so that an
  * ordinary participant never sees it in the chrome, and so the role gate has a
@@ -56,9 +57,9 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="pet"
         options={{
-          title: 'Progress',
-          tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? 'trending-up' : 'trending-up-outline'} size={size} color={color} />,
-          tabBarAccessibilityLabel: 'Progress tab',
+          title: 'Pet',
+          tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? 'paw' : 'paw-outline'} size={size} color={color} />,
+          tabBarAccessibilityLabel: 'Pet tab',
         }}
       />
       <Tabs.Screen

@@ -6,17 +6,22 @@ import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { useAuth } from '@/auth/AuthProvider';
 import ScreenContainer from '@/components/ScreenContainer';
 import { ErrorState } from '@/components/states';
-import { PetHero, PrimaryButton, ProgressBar, SectionLabel, Skeleton, StatusPill, Surface, TextButton, type Tone } from '@/components/ui';
+import { PetHomeHero } from '@/components/PetHomeHero';
+import { StatusRing } from '@/components/StatusRing';
+import { PrimaryButton, SecondaryButton, SectionLabel, Skeleton, StatusPill, Surface, TextButton, type Tone } from '@/components/ui';
 import { latestByQuest } from '@/data/completionModel';
 import { fetchRecentCompletions } from '@/data/completions';
 import { greeting, heroMessage, nextQuest, nextQuestAction, plannedLabel, todaySummary, todaysPath, type PathRow } from '@/data/homeModel';
-import { PET_CATALOG, evolutionProgress, petIdOf, stageName } from '@/data/petModel';
+import { STAT_META } from '@/data/petHomeModel';
+import { homeAndImageFor } from '@/data/petHomes';
+import { LEGENDARY_MIN, PET_CATALOG, evolutionProgress, petIdOf, stageName } from '@/data/petModel';
 import { spriteFor } from '@/data/petSprites';
+import { fetchPetStats } from '@/data/petStats';
 import { DIFF_POINTS, difficultyMeta, type Difficulty } from '@/data/quests';
 import { type Task } from '@/data/taskModel';
 import { fetchTasks } from '@/data/tasks';
 import { useAsyncData } from '@/lib/useAsyncData';
-import { Colors, DifficultyColors, FontSize, PetAccents, Radius, Spacing, TapTarget } from '@/theme';
+import { Colors, DifficultyColors, FontSize, Radius, Spacing, TapTarget } from '@/theme';
 
 /**
  * Home — "Today's Adventure".
@@ -46,10 +51,16 @@ export default function HomeTab() {
     ),
     { enabled: !!userId },
   );
+  // Read-only here. The rings show whatever pet_stats holds; the only thing
+  // that changes it is care_pet(), which lives on the Pet tab.
+  const stats = useAsyncData(
+    useCallback(() => (userId ? fetchPetStats(userId) : Promise.resolve({ data: null, error: null })), [userId]),
+    { enabled: !!userId },
+  );
 
   const onRefresh = useCallback(async () => {
-    await Promise.all([refreshProfile(), tasks.refresh(), completions.refresh()]);
-  }, [refreshProfile, tasks, completions]);
+    await Promise.all([refreshProfile(), tasks.refresh(), completions.refresh(), stats.refresh()]);
+  }, [refreshProfile, tasks, completions, stats]);
 
   const byQuest = useMemo(() => latestByQuest(completions.data), [completions.data]);
   const loading = tasks.loading || completions.loading;
@@ -63,8 +74,16 @@ export default function HomeTab() {
   const progress = evolutionProgress(totalEarned);
   const level = profile?.pet_level ?? progress.level;
   const sprite = spriteFor(profile?.selected_pet_id, level);
-  const accent = petId ? PetAccents[petId] : PetAccents.dragon;
+  const { home, image } = homeAndImageFor(profile?.selected_pet_id);
   const streak = profile?.current_streak;
+  const levelLine =
+    !meta
+      ? 'Hatch your egg on the PetQuest website'
+      : totalEarned == null
+        ? null
+        : progress.nextAt != null && progress.remaining != null
+          ? `${totalEarned.toLocaleString()} / ${progress.nextAt.toLocaleString()} · ${progress.remaining.toLocaleString()} to ${stageName(level + 1)}`
+          : `${totalEarned.toLocaleString()} lifetime points · Legendary (${LEGENDARY_MIN.toLocaleString()}+)`;
 
   const openQuest = (task: Task) => router.push({ pathname: '/quest/[id]', params: { id: task.id } });
   const openEvidence = (task: Task) => router.push({ pathname: '/quest/verify', params: { questId: task.id } });
@@ -102,25 +121,52 @@ export default function HomeTab() {
         </Pressable>
       </View>
 
-      {/* Pet hero */}
+      {/* Pet home hero */}
       <View style={styles.hero}>
-        <PetHero
+        <PetHomeHero
+          home={home}
+          homeImage={image}
           sprite={sprite}
-          accent={accent}
-          size={168}
-          accessibilityLabel={meta ? `${meta.name}, your ${meta.species}, ${stageName(level)} stage` : 'No companion yet'}
+          petName={meta?.name ?? 'No companion yet'}
+          stageLabel={meta ? stageName(level) : null}
+          levelLine={levelLine}
+          fraction={meta && totalEarned != null ? progress.fraction : null}
+          compact
         />
-        {meta ? (
-          <Text style={styles.petName}>
-            {meta.name} <Text style={styles.petStage}>· {stageName(level)}</Text>
-          </Text>
-        ) : (
-          <Text style={styles.petName}>No companion yet</Text>
-        )}
         <Text style={styles.heroMessage}>
           {loading ? ' ' : meta ? heroMessage(next, summary) : 'Hatch your egg on the PetQuest website'}
         </Text>
       </View>
+
+      {/* Status rings — tapping one opens the Pet tab with that care action highlighted; nothing is spent here */}
+      {meta && (
+        <Surface style={styles.block}>
+          {stats.error ? (
+            <ErrorState body={stats.error} onRetry={stats.refetch} />
+          ) : (
+            <View style={styles.rings}>
+              {STAT_META.map((s) => (
+                <StatusRing
+                  key={s.key}
+                  label={s.label}
+                  value={stats.loading ? null : (stats.data?.[s.key] ?? null)}
+                  color={s.color}
+                  icon={STAT_ICONS[s.key]}
+                  size={68}
+                  actionHint={`Opens ${s.actionLabel}`}
+                  onPress={() => router.push({ pathname: '/pet', params: { action: s.action } })}
+                />
+              ))}
+            </View>
+          )}
+          <SecondaryButton
+            label="Care for your pet"
+            icon="paw-outline"
+            onPress={() => router.push({ pathname: '/pet', params: { view: 'home' } })}
+            style={styles.careButton}
+          />
+        </Surface>
+      )}
 
       {/* Next quest */}
       <SectionLabel>Next quest</SectionLabel>
@@ -180,14 +226,6 @@ export default function HomeTab() {
         <Summary label="Streak" value={typeof streak === 'number' ? `${streak}d` : '—'} />
         <Summary label={meta ? stageName(level) : 'Level'} value={meta && totalEarned != null ? `Lv ${level}` : '—'} />
       </View>
-      {meta && totalEarned != null && progress.nextAt != null && progress.remaining != null ? (
-        <View style={styles.evolution}>
-          <ProgressBar fraction={progress.fraction} height={6} accessibilityLabel={`${progress.remaining} points to ${stageName(level + 1)}`} />
-          <Text style={styles.evolutionLabel}>
-            {progress.remaining.toLocaleString()} to {stageName(level + 1)}
-          </Text>
-        </View>
-      ) : null}
     </ScreenContainer>
   );
 }
@@ -227,6 +265,8 @@ function NextQuestCard({
     </Surface>
   );
 }
+
+const STAT_ICONS = { hunger: 'restaurant-outline', cleanliness: 'water-outline', happiness: 'happy-outline' } as const;
 
 const ICONS: Record<Tone, keyof typeof Ionicons.glyphMap> = {
   good: 'checkmark-circle',
@@ -289,10 +329,10 @@ const styles = StyleSheet.create({
   subline: { color: Colors.inkMuted, fontSize: FontSize.sm, marginTop: 2 },
   headerButton: { width: TapTarget, height: TapTarget, alignItems: 'center', justifyContent: 'center' },
 
-  hero: { alignItems: 'center', paddingVertical: Spacing.md, marginBottom: Spacing.sm },
-  petName: { color: Colors.ink, fontSize: FontSize.lg, fontWeight: '700', marginTop: Spacing.xs },
-  petStage: { color: Colors.inkMuted, fontWeight: '500' },
-  heroMessage: { color: Colors.inkSoft, fontSize: FontSize.md, marginTop: Spacing.xs, textAlign: 'center' },
+  hero: { marginBottom: Spacing.md },
+  heroMessage: { color: Colors.inkSoft, fontSize: FontSize.md, marginTop: Spacing.sm, textAlign: 'center' },
+  rings: { flexDirection: 'row', gap: Spacing.xs },
+  careButton: { marginTop: Spacing.sm },
 
   sectionGap: { marginTop: Spacing.lg },
   block: { marginBottom: Spacing.xs },
@@ -319,8 +359,6 @@ const styles = StyleSheet.create({
   summaryItem: { flex: 1, alignItems: 'center', paddingVertical: Spacing.sm },
   summaryValue: { color: Colors.ink, fontSize: FontSize.lg, fontWeight: '700' },
   summaryLabel: { color: Colors.inkMuted, fontSize: FontSize.xs, marginTop: 2 },
-  evolution: { marginTop: Spacing.xs, paddingHorizontal: Spacing.sm },
-  evolutionLabel: { color: Colors.inkMuted, fontSize: FontSize.xs, textAlign: 'center', marginTop: Spacing.xs },
 
   pressed: { opacity: 0.7 },
 });

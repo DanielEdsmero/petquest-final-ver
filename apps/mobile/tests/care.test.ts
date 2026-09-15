@@ -115,8 +115,8 @@ describe('3. nothing on the phone moves a point or a stat itself', () => {
   });
 
   test('buttons are real tap targets with a cost in the label', () => {
-    assert.match(pet, /accessibilityLabel=\{`\$\{a\.label\} \$\{meta\.name\}, \$\{CARE_COST\} points`\}/);
-    assert.match(pet, /careBtn: \{[\s\S]*?minHeight: 64/);
+    assert.match(pet, /accessibilityLabel=\{`\$\{a\.label\} \$\{meta\.name\}, \$\{CARE_COST\} points, raises \$\{stat\.label\}`\}/);
+    assert.match(pet, /careBtn: \{[\s\S]*?minHeight: 72/);
   });
 
   test('the guard trigger would reject this client anyway', () => {

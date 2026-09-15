@@ -450,7 +450,8 @@ describe('7. pet tab (Phase 4F) — real sprite, real stage, no client-side poin
 
   test('unloaded values render as a dash, never a fake zero', () => {
     const src = readMobile('src/app/(tabs)/pet.tsx');
-    assert.match(src, /value == null \? '—' : `\$\{pct\}%`/);
+    // The rings render a null value as an empty ring with a dash (StatusRing).
+    assert.match(readMobile('src/components/StatusRing.tsx'), /fraction == null \? '—' : `\$\{Math\.round\(fraction \* 100\)\}%`/);
     assert.match(src, /typeof n === 'number' \? n\.toLocaleString\(\) : '—'/);
   });
 });

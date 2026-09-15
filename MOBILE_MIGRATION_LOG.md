@@ -1716,3 +1716,100 @@ now matches the new Home's expressions).
 - [ ] Progress: evolution bar animates only after a pull-to-refresh changes the value; on-time rate matches your own history; Feed / Wash / Play debit 10 and raise the stat only after the server replies; with < 10 points nothing changes
 - [ ] Profile: "How verification works" expands; sign-out works; **no Admin row as a normal user**; the Admin row appears and works as an admin
 - [ ] Nothing scrolls sideways; long quest titles wrap; safe areas respected top and bottom; Dynamic Type at the largest accessibility size still readable
+
+---
+
+## Pet homes, status rings and Accessories (2026-09-15)
+
+Baseline: `9376c9c`, 262/262, typecheck clean. Mobile-only; no web file, no
+SQL, no economy function touched.
+
+### What was built
+
+| Piece | File | Notes |
+|---|---|---|
+| Home mapping (pure) | `src/data/petHomeModel.ts` | `PET_HOMES` (4 environments with palette, blurb, preferred action), `HOME_FOR_PET` (`wolf`→Sunlit Meadow, `cat`→Moonlit Cottage, `dragon`→Ember Cavern), `FALLBACK_HOME` = Crystal Cavern (never a companion's home), `homeFor()` accepts either id form and falls back for unknown/null. `STAT_META` (Hunger gold / Cleanliness aqua / Happiness coral, each tied to one care action), `statState()` neutral wording ("Needs attention" / "Okay" / "Good" / "Not loaded"), `ringFraction()` (null stays null). |
+| Home images | `src/data/petHomes.ts`, `assets/homes/*.png` | Four literal `require`s; only the selected companion's image is rendered. |
+| Hero | `src/components/PetHomeHero.tsx` | 4:3 environment card, real sprite (`contain`, no downscaling) floating gently, home name tag, level line + evolution bar from `pet_level` / `total_points_earned`, equipped-accessory glyphs beside the pet. Cross-fades when the home id changes; snaps under Reduce Motion. |
+| Rings | `src/components/StatusRing.tsx` | `react-native-svg` circle, percentage + icon in the centre, label and state word below; animates only to the value it is given (a fetched row or a `care_pet()` reply); null = empty ring with a dash. Optional `onPress` — the ring never spends. |
+| Home tab | `(tabs)/index.tsx` | Hero (compact) → three rings → "Care for your pet" → NEXT QUEST → TODAY'S PATH → summary. Tapping a ring opens `/pet?action=<feed|wash|play>` (highlight only). Home reads `pet_stats`; it has no write of any kind. |
+| Pet tab | `(tabs)/pet.tsx` | Segmented control **Pet home \| Accessories** (not a fifth tab). Pet home: hero → rings → Feed/Wash/Play (cost + benefit under each; **confirmation dialog** with cost and expected boost; `care_pet()`; display only from the reply; duplicate taps blocked; insufficient points = message only) → Evolution → Streak/Points → Planning. `?view=accessories` and `?action=` deep-link in. |
+| Accessories | `src/data/accessoryModel.ts`, `src/data/accessories.ts`, Accessories view in `pet.tsx` | Catalogue copied from the web (parity test). Reads `owned_accessories` + `equipped_accessories`; **equip/remove** upserts/deletes the participant's own `equipped_accessories` row and only for an id the server's owned list contains (checked in the data module, not just the UI). Equipped first, then unlocked, then locked with cost; grouped by category; the hero previews what is worn. **Purchasing is deferred** (below). |
+| Dependency | `react-native-svg` 15.15.4 | Installed with `expo install`; ships in Expo Go. |
+| Tests | `tests/petHome.test.ts` (+27; suite 262 → 289) | See below. Two existing assertions updated (`care.test.ts` label/height, `quests.test.ts` dash-not-zero now points at `StatusRing`). |
+
+### Assets — read this
+
+The four concept paintings arrived in the chat, not as files, and cannot be
+extracted from the transcript into the repo. `scripts/make-home-placeholders.py`
+therefore draws a simple pixel-art scene per home in the right palette at the
+same names (960×720, PNG-8, 4–5 KB each). **Overwrite them with the real art
+at the same file names** — `assets/homes/README.md` gives the size/format
+targets — and nothing in the code changes. `tests/petHome.test.ts` checks each
+file exists, is PNG, is 4:3, and is ≤ 150 KB.
+
+| File | Home | Companion id |
+|---|---|---|
+| `assets/homes/sunlit_meadow.png` | Sunlit Meadow | `wolf` |
+| `assets/homes/moonlit_cottage.png` | Moonlit Cottage | `cat` |
+| `assets/homes/ember_cavern.png` | Ember Cavern (the lava/crystal cave concept) | `dragon` |
+| `assets/homes/crystal_cavern.png` | Crystal Cavern | fallback |
+
+The brief's list mentioned a "Forest Grove"; no such concept image was
+supplied and there is no fourth companion, so none was invented.
+
+### Backend assumptions
+
+- `pet_stats` columns `hunger`, `cleanliness`, `happiness` are 0–100 numerics; `care_pet()` returns `{ ok, points, stats:{hunger,cleanliness,happiness} }` (phase 13 SQL). Unchanged.
+- `owned_accessories(user_id, accessory_id)` and `equipped_accessories(user_id, category, accessory_id)` with `… : own all` RLS, exactly as `supabase-schema.sql` defines them. Unchanged.
+
+### Deferred: purchasing, and a hole to close
+
+Not built on mobile, on purpose. The web buys by calling `spend_points()` and
+then inserting the `owned_accessories` row from the browser — two calls, not
+one transaction — and `owned_accessories: own all` lets a client insert an
+owned row **without paying at all** (`supabase.from('owned_accessories').insert({ user_id, accessory_id: 'crown' })`
+from the console works today). Proposed, for approval, as phase 13c:
+
+```sql
+-- buy_accessory(p_accessory_id text) — SECURITY DEFINER: checks the id against a
+-- server-side price list, debits atomically (same pattern as spend_points), inserts
+-- the owned row, returns {ok, points}. Then:
+revoke insert on owned_accessories from anon, authenticated;   -- via a trigger, as phase 13 did
+```
+
+Until then the Accessories view shows locked items with their cost and sends
+unlocking to the website; nothing on the phone inserts or debits.
+
+### Tests — `tests/petHome.test.ts`
+
+1. One distinct home per real companion; fallback is not a companion home; both id forms resolve; unknown/null/empty fall back.
+2. Three stats ↔ three actions; `ringFraction` clamps and keeps null; low-stat wording is neutral.
+3. Assets exist, PNG, 4:3, ≥ 640 wide, ≤ 150 KB; the image table names exactly those files; the hero renders one home image and one sprite; placeholders documented.
+4. Home reads `pet_stats` and passes fetched values into the rings; a ring tap only navigates; the ring animates only to its given value and never writes; the hero uses the selected home and real sprite and fades between homes.
+5. Care: cost + benefit shown and RPC runs only on confirm; the only mutation is `care_pet()`; display from its reply; insufficient points = message only; `!r.ok` returns before any stat change; duplicate taps blocked; session-expired surfaced.
+6. Accessories: catalogue parity with the web; equipped → unlocked → locked ordering and grouping; a locked item cannot be equipped in the model, the data module or the screen; equipped state loads from the server and the hero reflects it; no insert into `owned_accessories`, no `spend_points`; Accessories reachable from Pet in one tap and from Home in two; no fifth tab.
+7. No admin material in the new pieces; no width > 288, no `minWidth`, no horizontal scroll; rings and care buttons are labelled controls.
+
+### Results
+
+| Check | Result |
+|---|---|
+| Mobile `npm test` | ✅ 289/289 (was 262) |
+| `npm run typecheck` | ✅ clean |
+| `npx expo export --platform ios` | ✅ bundles (9.0 MB export, 71 assets) |
+| Secret scan | ✅ 0 hits; one JWT (anon key) |
+| Web `npm test` (root) | ✅ 198/198 — no web file changed |
+
+### User-required iPhone checklist (Expo Go)
+
+- [ ] Home: your companion stands inside its home (dragon → Ember Cavern, cat → Moonlit Cottage, wolf → Sunlit Meadow); no broken image; level line matches Pet
+- [ ] Three rings under the hero read the same numbers as the web's stats; a fresh account shows dashes, not 0%
+- [ ] Tapping a ring opens Pet with that care button outlined; nothing is spent
+- [ ] Pet → Feed: the dialog shows "Costs 10 points and raises Hunger by up to 30"; Cancel changes nothing; confirm → Hunger ring animates to the server value, Points drops by 10, the notice appears. Same for Wash → Cleanliness and Play → Happiness
+- [ ] With < 10 points: "Not enough points" and no ring or balance change
+- [ ] Double-tap a care button quickly: one dialog, one request
+- [ ] Switch companion on the website, pull to refresh on the phone: home and sprite change together (fade)
+- [ ] Pet → Accessories: equipped items first, unlocked next, locked with cost; Equip/Remove update the hero's glyphs after the server reply; locked items have no Equip button; the note sends unlocking to the website
+- [ ] Nothing scrolls sideways at 320 pt; rings fit in one row
+- [ ] Normal user sees no Admin row; admin still does
