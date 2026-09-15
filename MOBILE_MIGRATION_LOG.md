@@ -1582,3 +1582,44 @@ Flagging, not fixing, because it changes how accounts are created.
 **Phase 9** (the original Phase 8 list) — test hardening, performance pass,
 EAS build configuration, cross-client regression, offline behaviour. Then the
 merge review.
+
+---
+
+## Phase 13b — sign-up role escalation closed (2026-09-15)
+
+Web-only, on `main` as `b883001` ("Never take profiles.role from sign-up
+metadata (phase 13b)"), merged into this branch without conflict. The mobile
+commit `8ecbe0e` is unchanged; this entry is the only branch-side change.
+
+| File (main) | Purpose |
+|---|---|
+| `supabase/supabase-phase13b-signup-role.sql` | `handle_new_user()` always writes `role = 'user'` (metadata read for the username only; `on conflict do nothing` so a re-fire cannot break sign-up). `profiles_signup_role_guard` BEFORE INSERT trigger forces `'user'` on a direct non-admin client insert. Never updates a row — existing admins keep their role. Redefines none of `complete_task`, `submit_completion`, `rollback_completion`, `spend_points`, `care_pet`, `profiles_economy_guard`; the non-comment SQL never mentions points. |
+| `tests/signup-role.test.mjs` (+12) | Parses the migration's actual `values (…)` expressions and evaluates the role expression against sign-up payloads carrying `role: 'admin'` / `'service_role'` → always `'user'`; confirms the schema's old definition *does* escalate (so the test is meaningful); static guards on the insert trigger, "no update/delete", "no function redefined", and the web sign-up sending only `username`. |
+
+Mobile is unaffected: `AuthProvider` reads `role` and never writes it, and the
+mobile app has no sign-up screen (Phase 1 decision: accounts are created on the
+web).
+
+### Results after the merge
+
+| Check | Result |
+|---|---|
+| Web `npm test` (main) | ✅ 197 pass, 1 expected skip |
+| Web `npm test` (branch) | ✅ 198/198; build clean |
+| Mobile `npm test` | ✅ 230/230; typecheck clean; export secret scan 0 hits |
+| Web paths on the branch vs `main` | ✅ identical |
+
+### One spec note
+
+The acceptance list says a care action "adds 10 to the selected stat". The web
+has always added **30** (`updateStat(stat, 30)` since Phase 1), and
+`care_pet()` keeps 30 so the migration changes no participant-visible number.
+If 10 is the intended value, it is one constant (`c_boost`) in
+`supabase-phase13-spend-points.sql` plus `CARE_BOOST` in
+`apps/mobile/src/data/careModel.ts` — say so and both change together.
+
+### Deployment order (user)
+
+1. Run `supabase-phase13-spend-points.sql`, then `supabase-phase13b-signup-role.sql`, in the SQL editor (without RLS). Run each file's verify block.
+2. `git push origin main` (`b883001`, which includes `f98277a`). Let Vercel deploy.
+3. Acceptance on the web, then on the phone (list in the Phase 8 entry, plus the sign-up probe in the 13b file header).
