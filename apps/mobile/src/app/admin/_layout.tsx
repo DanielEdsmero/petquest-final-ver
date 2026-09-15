@@ -39,6 +39,7 @@ export default function AdminLayout() {
       <Stack.Screen name="index" options={{ title: 'Admin' }} />
       <Stack.Screen name="validity" options={{ title: 'Quest validity' }} />
       <Stack.Screen name="verification" options={{ title: 'Verification queue' }} />
+      <Stack.Screen name="research" options={{ title: 'Research data' }} />
     </Stack>
   );
 }

@@ -1402,3 +1402,82 @@ git revert $(git log --format=%H --grep='mobile phase 4f' -1)    # pet tab
 
 **Phase 7** — admin queues (validity + verification) on mobile, role-gated and
 RLS-backed. Then **Phase 8** — tests, performance, EAS build configuration.
+
+---
+
+## Phase 7 — admin queues and research view (2026-09-15)
+
+**Branch:** `mobile-expo-migration` · **Scope:** `apps/mobile/` + this log only.
+
+### What was built
+
+| File | Purpose |
+|---|---|
+| `src/data/adminModel.ts` | Pure queue rules: unresolved validity statuses (same three as the web), filters/counts, `validityActions`, `isStuck` (web definition), `activeTimeMs` (verify-opened → submitted, not quest age), `summariseRerun`, `researchRows`. Node-testable. |
+| `src/data/admin.ts` | The only module that reads admin-only columns. Reads: `tasks` (validity queue), `quest_validity_reviews` (decision log incl. `admin_reason`/`risk_flags`/`model_version`), `quest_completions` (verification queue). Actions: `admin_resolve_quest_validity` RPC, `admin_review_completion` RPC, `POST /api/validate-quest` (bearer), `requestVerification` (same bearer endpoint the participant uses), `get_research_analytics` RPC. Signed proof URLs (300 s), never public. |
+| `src/app/admin/validity.tsx` | Filter chips with counts, Run AI / Accept / Reject (confirm dialogs), collapsible admin-only decision log. |
+| `src/app/admin/verification.tsx` | Filter chips, "Re-run stuck" batch (sequential, toast-style summary), rows with signed photo, log, AI verdict + confidence, admin note, timestamps, Approve / Reject / Suspicious / Re-run AI. |
+| `src/app/admin/research.tsx` | Read-only aggregates from `get_research_analytics`. |
+| `src/app/admin/_layout.tsx`, `index.tsx` | `research` route registered in the role-gated Stack; link added. |
+| `tests/admin.test.ts` | 22 tests (below). |
+
+### What protects the data
+
+Not the screen. `admin/_layout.tsx` redirects non-admins, but that is UX. The
+control is the database: `tasks: admin read`, `qc: admin read`, `qvr: admin
+read` RLS policies, `tasks_validity_guard` trigger, and `is_admin()` checks
+inside every RPC. A participant with a tampered client gets empty lists and
+`forbidden`. No admin file writes `tasks`, `quest_completions` or `profiles`
+directly; rejection rollback happens inside `admin_review_completion`, which
+calls `rollback_completion` server-side. `complete_task`, `submit_completion`
+and `rollback_completion` are untouched.
+
+### Tests (`tests/admin.test.ts`)
+
+1. Queue logic parity with `src/pages/AdminPage.jsx` — unresolved set, stuck definition, filters/counts, active time, research rows (aggregate only).
+2. Isolation — `data/admin` imported only from `app/admin/*`; `admin_reason` selected only in `data/admin.ts`; participant `COMPLETION_COLUMNS` still excludes it; every admin screen is in the gated Stack, none in the tabs.
+3. Server-side actions — RPC names, no direct `.update` on protected tables, no client `rollback_completion` call, bearer on `/api/validate-quest`, `createSignedUrl` not `getPublicUrl`, no points writes.
+4. Database is the control — RLS policies, the validity guard trigger, and `is_admin()` inside the RPCs all still present in the SQL files.
+
+Two existing navigation checks caught the first draft (36 pt chips, `minWidth`
+on action buttons); fixed to 40 pt and flex-only.
+
+### Results
+
+| Check | Result |
+|---|---|
+| `npm test` (mobile) | ✅ 216/216 (was 194) |
+| `npm run typecheck` | ✅ clean |
+| `expo export --platform ios` | ✅ bundles; secret scan 0 hits; exactly one JWT (anon key) |
+| Web regression (root) | ✅ 165/165, clean build, **no web files changed** (`git diff main` empty outside `apps/mobile` + this log) |
+
+### Migrations / server changes
+
+None.
+
+### Rollback
+
+```bash
+git revert $(git log --format=%H --grep='mobile phase 7' -1)
+```
+
+### User-required verification (cannot be done from this machine)
+
+**As a normal participant**
+- [ ] No Admin entry anywhere in the tabs or profile; typing nothing gets you to `/admin/*` (deep link `petquest://admin/validity` bounces to `/`)
+- [ ] Quest detail and completion history still show no admin note / risk flags
+
+**As an admin**
+- [ ] Profile → Admin → three links (Validity, Verification, Research data)
+- [ ] Validity queue loads; counts on the chips match the web tab; "Decision log" expands and shows admin notes / flags / model version
+- [ ] Run AI on a pending quest → decision alert, row updates (web tab agrees)
+- [ ] Accept and Reject each ask to confirm, then the row leaves the "Awaiting AI" filter; the participant's quest list reflects it
+- [ ] Verification queue loads; photos display (signed); Approve / Reject / Suspicious work; **Reject removes the points** on the participant's profile (server rollback)
+- [ ] Re-run AI on a row and "Re-run stuck" batch both finish with a summary and rows re-verdict
+- [ ] Research data shows the same numbers as the web card
+- [ ] Pull-to-refresh on every queue; nothing sideways-scrolls at 320 pt
+
+### Next
+
+**Phase 8** — test hardening, performance pass, EAS build configuration,
+cross-client regression, offline behaviour. Then merge review.

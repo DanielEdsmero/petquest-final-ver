@@ -35,6 +35,12 @@ export default function AdminHome() {
           body="Submitted evidence, AI verdicts and admin review."
           onPress={() => router.push('/admin/verification')}
         />
+        <QueueLink
+          icon="analytics-outline"
+          title="Research data"
+          body="Aggregate, anonymised study metrics."
+          onPress={() => router.push('/admin/research')}
+        />
       </View>
 
       <Card title="Role gate">
