@@ -1,6 +1,6 @@
 {
   "dragon": {
-    "source": "derived",
+    "source": "sheet",
     "frame": 128,
     "frames": [
       "f1_idle",
@@ -14,7 +14,7 @@
     ]
   },
   "cat": {
-    "source": "derived",
+    "source": "sheet",
     "frame": 128,
     "frames": [
       "f1_idle",
@@ -28,7 +28,7 @@
     ]
   },
   "wolf": {
-    "source": "derived",
+    "source": "sheet",
     "frame": 128,
     "frames": [
       "f1_idle",

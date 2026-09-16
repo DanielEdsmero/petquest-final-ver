@@ -231,10 +231,12 @@ describe('4. frame files', () => {
   test('the manifest says which sets are derived placeholders (to be replaced by the sheets)', () => {
     const manifest = JSON.parse(read('assets/sprites/manifest.json')) as Record<string, { source: string }>;
     for (const pet of Object.keys(PET_CATALOG)) assert.ok(['sheet', 'derived'].includes(manifest[pet]?.source), pet);
-    const derived = Object.entries(manifest).filter(([, v]) => v.source === 'derived').map(([k]) => k);
-    // Informational: the report lists these. The slicer is the one deterministic path either way.
+    // Every set now comes from a supplied sheet, which must be present so the slicer is reproducible.
+    for (const pet of Object.keys(PET_CATALOG)) {
+      assert.equal(manifest[pet].source, 'sheet', `${pet} frames are still derived placeholders`);
+      assert.ok(existsSync(path.join(MOBILE, 'assets', 'sprites', 'sheets', `${pet}.png`)), `${pet} sheet missing`);
+    }
     assert.ok(existsSync(path.join(MOBILE, 'scripts', 'slice-sprite-sheets.py')));
-    assert.ok(Array.isArray(derived));
   });
 
   test('the frame table requires exactly those files and falls back safely', () => {

@@ -1882,3 +1882,28 @@ and bounds are exactly what the real frames will get.
 - [ ] Reduce Motion on: it stands and blinks, never walks
 - [ ] A Juvenile+ companion still shows its evolution portrait, not the baby sprite
 - [ ] Scrolling over the hero and the Accessories segmented control still work
+
+---
+
+## Real art in: homes and sprite sheets (2026-09-16)
+
+The concept paintings and sprite sheets were in `~/Downloads`; they are now in
+the app. No code changed.
+
+| In the app | From | Processing |
+|---|---|---|
+| `assets/homes/sunlit_meadow.png` | `petquest_home_sunlit_meadow.png` | 2176×1632 → 960×720 Lanczos, PNG-8 256 colours + dither (300–420 KB each) |
+| `assets/homes/moonlit_cottage.png` | `petquest_home_moonlit_cottage.png` | 〃 |
+| `assets/homes/ember_cavern.png` | `petquest_home_dragon_lair_empty.png` | 〃 |
+| `assets/homes/crystal_cavern.png` | `petquest_home_crystal_cavern.png` | 〃 |
+| `assets/sprites/sheets/{dragon,cat,wolf}.png` + 24 sliced frames | `petquest_baby_{dragon,cat,fox}_sprite_sheet.png` | `scripts/slice-sprite-sheets.py` — every set now `"source": "sheet"` |
+
+Not used: `petquest_baby_aquatic_sprite_sheet.png` (no aquatic companion) and
+the `PetQuest_matching_wake_*` sheets (the wake-up loader already has its
+frames). The fox sheet is the `wolf` companion's walking art — the sitting
+portrait is a blue Spirit Wolf, the walking sprite is an orange fox; say the
+word if you want a recoloured sheet instead.
+
+Tests updated: home budget 150 → 450 KB (a painting, not a placeholder), and
+the sprite manifest must now say `sheet` for all three. 316/316, typecheck
+clean, export clean, secret scan 0 hits.

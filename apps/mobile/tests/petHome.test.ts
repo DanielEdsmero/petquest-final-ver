@@ -102,7 +102,7 @@ describe('3. home assets on disk', () => {
       const { width, height } = pngSize(file);
       assert.equal(Math.round((width / height) * 100), 133, `${h.file} is not 4:3`);
       assert.ok(width >= 640, `${h.file} is too small to look right on a phone`);
-      assert.ok(statSync(file).size <= 150 * 1024, `${h.file} exceeds 150 KB`);
+      assert.ok(statSync(file).size <= 450 * 1024, `${h.file} exceeds 450 KB`);
     }
   });
 
@@ -115,9 +115,11 @@ describe('3. home assets on disk', () => {
     assert.equal((hero.match(/<Image/g) || []).length, 2, 'one home image and one sprite');
   });
 
-  test('the placeholders are documented as placeholders', () => {
-    assert.match(read('assets/homes/README.md'), /These files are placeholders/);
+  test('the art is the supplied concept painting, and the placeholder generator still exists as a fallback', () => {
+    assert.match(read('assets/homes/README.md'), /concept paintings supplied with the brief/);
     assert.ok(existsSync(path.join(MOBILE, 'scripts', 'make-home-placeholders.py')));
+    // A real painting has far more colours than the 96-colour placeholder ever did.
+    for (const h of Object.values(PET_HOMES)) assert.ok(statSync(path.join(MOBILE, 'assets', 'homes', h.file)).size > 100 * 1024, `${h.file} looks like a placeholder`);
   });
 });
 
