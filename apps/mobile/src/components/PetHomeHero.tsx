@@ -169,8 +169,11 @@ export function PetHomeHero({
 
 const styles = StyleSheet.create({
   card: { borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden' },
-  scene: { width: '100%', aspectRatio: 4 / 3, maxHeight: 260, overflow: 'hidden' },
-  sceneCompact: { aspectRatio: 16 / 10, maxHeight: 200 },
+  // aspectRatio only — never together with maxHeight: when the height clamps,
+  // Yoga shrinks the WIDTH to keep the ratio and the card shows a bare strip
+  // beside the scene. 960×720 art into a ~340pt-wide card at 3× is ~1:1 pixels.
+  scene: { width: '100%', aspectRatio: 4 / 3, overflow: 'hidden' },
+  sceneCompact: { aspectRatio: 16 / 10 },
   scenery: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: Spacing.sm },
   egg: { fontSize: 72 },
