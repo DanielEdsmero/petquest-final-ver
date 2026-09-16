@@ -4,7 +4,9 @@ import { Animated, Easing, StyleSheet, Text, View, type ImageSourcePropType } fr
 
 import { PetSprite } from '@/components/PetSprite';
 import { ProgressBar } from '@/components/ui';
+import { type Mood } from '@/data/moodModel';
 import { type PetHome } from '@/data/petHomeModel';
+import { type PetId } from '@/data/petModel';
 import { type FrameSet } from '@/data/spriteFrames';
 import { type Reaction } from '@/data/spriteModel';
 import useReducedMotion from '@/hooks/useReducedMotion';
@@ -52,7 +54,14 @@ export function PetHomeHero({
   accessoryEmojis?: string[];
   compact?: boolean;
   /** Walking-sprite mode: the frame set for the companion and an optional care reaction to play. */
-  walking?: { frames: FrameSet; reaction?: { kind: Reaction; nonce: number } | null } | null;
+  walking?: {
+    frames: FrameSet;
+    reaction?: { kind: Reaction; nonce: number } | null;
+    /** Presentation state and dialogue, from useMood(). */
+    mood?: Mood;
+    petId?: PetId | null;
+    message?: string | null;
+  } | null;
 }) {
   const reduced = useReducedMotion();
   const float = useRef(new Animated.Value(0)).current;
@@ -108,6 +117,9 @@ export function PetHomeHero({
               home={shown.home.id}
               frames={walking.frames}
               reaction={walking.reaction ?? null}
+              mood={walking.mood ?? 'balanced'}
+              petId={walking.petId ?? null}
+              message={walking.message ?? null}
               size={compact ? 56 : 64}
               accessibilityLabel={`${petName}${stageLabel ? `, ${stageLabel} stage` : ''}, walking around ${shown.home.displayName}`}
             />

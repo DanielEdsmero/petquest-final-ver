@@ -98,15 +98,20 @@ describe('3. nothing on the phone moves a point or a stat itself', () => {
     assert.doesNotMatch(care, /spend_points/, 'care goes through care_pet, which debits itself');
   });
 
-  test('the screen shows the balance and stats the server returned', () => {
-    assert.match(pet, /if \(typeof r\.points === 'number'\) setLivePoints\(r\.points\)/);
-    assert.match(pet, /setLiveStats\(r\.stats\)/);
-    assert.doesNotMatch(pet, /previewStats\(/, 'no optimistic stat boost on the screen');
-    assert.doesNotMatch(pet, /livePoints\s*-\s*CARE_COST/, 'no local debit');
+  test('the screen shows the balance and stats the server returned (through the shared useCare hook)', () => {
+    const hook = readMobile('src/hooks/useCare.ts');
+    assert.match(pet, /useCare\(\{/);
+    assert.match(readMobile('src/app/companion/view.tsx'), /useCare\(\{/);
+    assert.match(hook, /if \(typeof r\.points === 'number'\) setLivePoints\(r\.points\)/);
+    assert.match(hook, /setLiveStats\(r\.stats\)/);
+    for (const src of [pet, hook, readMobile('src/app/companion/view.tsx')]) {
+      assert.doesNotMatch(src, /previewStats\(/, 'no optimistic stat boost on the screen');
+      assert.doesNotMatch(src, /livePoints\s*-\s*CARE_COST/, 'no local debit');
+    }
   });
 
   test('the balance is re-synced from the profile after a success', () => {
-    assert.match(pet, /void refreshProfile\(\);/);
+    assert.match(readMobile('src/hooks/useCare.ts'), /void refreshProfile\(\);/);
   });
 
   test('care is unavailable without a companion (the server would say no_pet)', () => {

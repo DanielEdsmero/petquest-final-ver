@@ -21,6 +21,7 @@ import { framesFor } from '@/data/spriteFrames';
 import { DIFF_POINTS, difficultyMeta, type Difficulty } from '@/data/quests';
 import { type Task } from '@/data/taskModel';
 import { fetchTasks } from '@/data/tasks';
+import { useMood } from '@/hooks/useMood';
 import { useAsyncData } from '@/lib/useAsyncData';
 import { Colors, DifficultyColors, FontSize, Radius, Spacing, TapTarget } from '@/theme';
 
@@ -76,8 +77,18 @@ export default function HomeTab() {
   const level = profile?.pet_level ?? progress.level;
   const sprite = spriteFor(profile?.selected_pet_id, level);
   const { home, image } = homeAndImageFor(profile?.selected_pet_id);
+  // A server-confirmed moment the pet may comment on: a completion verified today.
+  const verifiedToday = useMemo(() => {
+    const today = new Date();
+    return (completions.data ?? []).find((c) => c.status === 'verified' && c.admin_reviewed_at && isSameDay(new Date(c.admin_reviewed_at), today)) ?? null;
+  }, [completions.data]);
+  const { mood, message } = useMood(
+    stats.data ? { hunger: stats.data.hunger, cleanliness: stats.data.cleanliness, happiness: stats.data.happiness } : null,
+    petId,
+    verifiedToday ? { kind: 'verified', nonce: new Date(verifiedToday.admin_reviewed_at!).getTime() } : null,
+  );
   // Baby-stage companions walk their home; later stages keep the evolution portrait.
-  const walking = meta && level === 1 ? { frames: framesFor(profile?.selected_pet_id) } : null;
+  const walking = meta && level === 1 ? { frames: framesFor(profile?.selected_pet_id), mood, petId, message } : null;
   const streak = profile?.current_streak;
   const levelLine =
     !meta
@@ -124,7 +135,7 @@ export default function HomeTab() {
         </Pressable>
       </View>
 
-      {/* Pet home hero */}
+      {/* Pet home hero — tapping the caption opens the close-up */}
       <View style={styles.hero}>
         <PetHomeHero
           home={home}
@@ -137,9 +148,12 @@ export default function HomeTab() {
           compact
           walking={walking}
         />
-        <Text style={styles.heroMessage}>
-          {loading ? ' ' : meta ? heroMessage(next, summary) : 'Hatch your egg on the PetQuest website'}
-        </Text>
+        <View style={styles.heroRow}>
+          <Text style={styles.heroMessage} numberOfLines={1}>
+            {loading ? ' ' : meta ? heroMessage(next, summary) : 'Hatch your egg on the PetQuest website'}
+          </Text>
+          {meta ? <TextButton label="View pet" onPress={() => router.push('/companion/view')} /> : null}
+        </View>
       </View>
 
       {/* Status rings — tapping one opens the Pet tab with that care action highlighted; nothing is spent here */}
@@ -270,6 +284,8 @@ function NextQuestCard({
   );
 }
 
+const isSameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
 const STAT_ICONS = { hunger: 'restaurant-outline', cleanliness: 'water-outline', happiness: 'happy-outline' } as const;
 
 const ICONS: Record<Tone, keyof typeof Ionicons.glyphMap> = {
@@ -334,7 +350,8 @@ const styles = StyleSheet.create({
   headerButton: { width: TapTarget, height: TapTarget, alignItems: 'center', justifyContent: 'center' },
 
   hero: { marginBottom: Spacing.md },
-  heroMessage: { color: Colors.inkSoft, fontSize: FontSize.md, marginTop: Spacing.sm, textAlign: 'center' },
+  heroRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm, marginTop: Spacing.xs, paddingHorizontal: Spacing.xs },
+  heroMessage: { color: Colors.inkSoft, fontSize: FontSize.md, flexShrink: 1 },
   rings: { flexDirection: 'row', gap: Spacing.xs },
   careButton: { marginTop: Spacing.sm },
 

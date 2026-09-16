@@ -89,13 +89,15 @@ describe('1. frames', () => {
 describe('2. the state machine', () => {
   test('transitions follow idle → blink|pause → walk → interact|idle, deterministically', () => {
     const allowed: Record<SpriteState, SpriteState[]> = {
-      idle: ['blink', 'pause'],
+      idle: ['blink', 'pause', 'rest', 'walkLeft', 'walkRight', 'celebrate'],
       blink: ['idle'],
       pause: ['walkLeft', 'walkRight'],
-      walkLeft: ['interact', 'idle'],
-      walkRight: ['interact', 'idle'],
+      walkLeft: ['interact', 'idle', 'rest'],
+      walkRight: ['interact', 'idle', 'rest'],
       happy: ['idle'],
       interact: ['idle'],
+      rest: ['idle'],
+      celebrate: ['idle'],
     };
     for (const home of HOMES) {
       const { steps, machines } = simulate(home, 7, 300);
@@ -103,7 +105,7 @@ describe('2. the state machine', () => {
         assert.ok(allowed[machines[i].state].includes(steps[i].state), `${home}: ${machines[i].state} → ${steps[i].state}`);
       }
       const seen = new Set(steps.map((s) => s.state));
-      for (const s of ['idle', 'blink', 'pause', 'walkLeft', 'walkRight', 'interact'] as SpriteState[]) assert.ok(seen.has(s), `${home} never reached ${s}`);
+      for (const s of ['idle', 'blink', 'pause', 'walkLeft', 'walkRight', 'interact', 'rest'] as SpriteState[]) assert.ok(seen.has(s), `${home} never reached ${s}`);
     }
     const a = simulate('sunlit_meadow', 42, 50).steps.map((s) => s.state);
     const b = simulate('sunlit_meadow', 42, 50).steps.map((s) => s.state);
@@ -119,9 +121,9 @@ describe('2. the state machine', () => {
       walks++;
       assert.deepEqual(machines[i + 1].at, s.to, 'arrival point is the destination');
       const after = steps[i + 1];
-      assert.ok(after.state === 'idle' || after.state === 'interact');
+      assert.ok(after.state === 'idle' || after.state === 'interact' || after.state === 'rest');
       assert.deepEqual(after.to, s.to, 'nothing moves after arriving until the next walk');
-      if (after.state === 'interact') assert.ok(after.interaction, 'an interaction names its point of interest');
+      if (after.state === 'interact' || after.state === 'rest') assert.ok(after.interaction, 'an interaction names its point of interest');
     }
     assert.ok(walks > 10);
   });
@@ -262,7 +264,7 @@ describe('5. the component', () => {
   test('the frame ticker runs at the state cadence and stops on arrival', () => {
     assert.match(comp, /ticker\.current = setInterval\(\(\) => setTick\(\(t\) => t \+ 1\), Math\.round\(1000 \/ fpsFor\(step\.state\)\)\)/);
     assert.match(comp, /stepTimer\.current = setTimeout\(\(\) => \{[\s\S]*?clearInterval\(ticker\.current\)/);
-    assert.match(comp, /const frame = frameFor\(machine\.state, tick\)/);
+    assert.match(comp, /const frame = frameFor\(machine\.state, tick, petId\)/);
   });
 
   test('feet-anchored: the image is offset up by its height and centred on x', () => {
@@ -293,7 +295,7 @@ describe('5. the component', () => {
   });
 
   test('reduce motion: no walking (the machine), and any residual move is instant', () => {
-    assert.match(comp, /nextStep\(machineRef\.current, home, rng, reduced\)/);
+    assert.match(comp, /nextStep\(machineRef\.current, home, rng, reduced, \{ mood: moodRef\.current, petId \}\)/);
     assert.match(comp, /duration: reduced \? 0 : step\.durationMs/);
   });
 
@@ -306,19 +308,22 @@ describe('5. the component', () => {
 });
 
 describe('6. reactions only after the server said yes; nothing else changed', () => {
-  test('the Pet screen sets the reaction after `!r.ok` has returned, next to the server stats', () => {
-    const pet = read('src/app/(tabs)/pet.tsx');
-    const fail = pet.indexOf('if (!r.ok) {');
-    const react = pet.indexOf("setReaction({ kind: action, nonce: Date.now() })");
-    const stats = pet.indexOf('setLiveStats(r.stats)');
+  test('the shared care hook sets the reaction after `!r.ok` has returned, next to the server stats', () => {
+    const hook = read('src/hooks/useCare.ts');
+    const fail = hook.indexOf('if (!r.ok) {');
+    const react = hook.indexOf("setReaction({ kind: action, nonce: Date.now() })");
+    const stats = hook.indexOf('setLiveStats(r.stats)');
     assert.ok(fail > 0 && stats > fail && react > stats, 'reaction must come after the ok-branch stat update');
-    assert.ok(pet.slice(fail, stats).includes('return;'), 'the failure branch returns before any reaction');
-    assert.doesNotMatch(pet.slice(0, fail), /setReaction\(\{ kind: action/, 'no reaction before the reply');
+    assert.ok(hook.slice(fail, stats).includes('return;'), 'the failure branch returns before any reaction');
+    assert.doesNotMatch(hook.slice(0, fail), /setReaction\(\{ kind: action/, 'no reaction before the reply');
+    // Both screens hand that reaction (and nothing they made up) to the sprite.
+    assert.match(read('src/app/(tabs)/pet.tsx'), /framesFor\(profile\?\.selected_pet_id\), reaction, mood, petId, message \}/);
+    assert.match(read('src/app/companion/view.tsx'), /reaction=\{reaction\}/);
   });
 
   test('Home mounts the sprite with no reaction channel and still never writes', () => {
     const home = read('src/app/(tabs)/index.tsx');
-    assert.match(home, /const walking = meta && level === 1 \? \{ frames: framesFor\(profile\?\.selected_pet_id\) \} : null;/);
+    assert.match(home, /const walking = meta && level === 1 \? \{ frames: framesFor\(profile\?\.selected_pet_id\), mood, petId, message \} : null;/);
     assert.doesNotMatch(home, /setReaction|\.rpc\(|\.insert\(|\.update\(|\.upsert\(/);
   });
 

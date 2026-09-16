@@ -161,33 +161,44 @@ describe('4. Home and Pet render the rings from server values only', () => {
 });
 
 describe('5. care: confirm, one request at a time, show only the server result', () => {
-  const pet = app('(tabs)/pet.tsx');
+  // The flow is one hook (src/hooks/useCare.ts) shared by the Pet tab and View Pet.
+  const hook = read('src/hooks/useCare.ts');
+  const screens = [app('(tabs)/pet.tsx'), app('companion/view.tsx')];
+
+  test('both care screens use the shared hook and nothing else calls care_pet', () => {
+    for (const s of screens) {
+      assert.match(s, /useCare\(\{/);
+      assert.doesNotMatch(s, /carePet\(|\.rpc\(/);
+    }
+  });
 
   test('the cost and the benefit are shown before spending, and the RPC runs only on confirm', () => {
-    assert.match(pet, /Alert\.alert\(\s*`\$\{a\.label\} \$\{meta\?\.name \?\? 'your companion'\}\?`,\s*`Costs \$\{CARE_COST\} points and raises \$\{stat\.label\} by up to \$\{CARE_BOOST\}/);
-    assert.match(pet, /\{ text: `\$\{a\.label\} · \$\{CARE_COST\} pts`, onPress: \(\) => void runCare\(action\) \}/);
+    assert.match(hook, /Alert\.alert\(\s*`\$\{a\.label\} \$\{petName \?\? 'your companion'\}\?`,\s*`Costs \$\{CARE_COST\} points and raises \$\{stat\.label\} by up to \$\{CARE_BOOST\}/);
+    assert.match(hook, /\{ text: `\$\{a\.label\} · \$\{CARE_COST\} pts`, onPress: \(\) => void runCare\(action\) \}/);
   });
 
   test('the only mutation is care_pet(), and the screen shows what it returned', () => {
     assert.match(read('src/data/care.ts'), /supabase\.rpc\('care_pet', \{ p_action: action \}\)/);
-    assert.match(pet, /const r = await carePet\(action\)/);
-    assert.match(pet, /if \(typeof r\.points === 'number'\) setLivePoints\(r\.points\)/);
-    assert.match(pet, /setLiveStats\(r\.stats\)/);
-    assert.doesNotMatch(pet, /liveStats\?\.\w+\s*\+|points\s*-\s*CARE_COST|previewStats\(/, 'a local stat or balance change');
+    assert.match(hook, /const r = await carePet\(action\)/);
+    assert.match(hook, /if \(typeof r\.points === 'number'\) setLivePoints\(r\.points\)/);
+    assert.match(hook, /setLiveStats\(r\.stats\)/);
+    for (const s of [hook, ...screens]) assert.doesNotMatch(s, /liveStats\?\.\w+\s*\+|points\s*-\s*CARE_COST|previewStats\(/, 'a local stat or balance change');
   });
 
   test('insufficient points: message only, nothing changes; a failed RPC leaves the stats alone', () => {
-    assert.match(pet, /if \(!canAfford\(livePoints\)\) \{\s*setNotice\(\{ text: careErrorMessage\('insufficient_points'\), tone: 'bad' \}\);\s*return;/);
+    assert.match(hook, /if \(!canAfford\(livePoints\)\) \{\s*setNotice\(\{ text: careErrorMessage\('insufficient_points'\), tone: 'bad' \}\);\s*return;/);
     // On !r.ok the function returns before setLiveStats.
-    const i = pet.indexOf('if (!r.ok) {');
-    const j = pet.indexOf('setLiveStats(r.stats)', i);
-    assert.ok(i > 0 && j > i && pet.slice(i, j).includes('return;'));
+    const i = hook.indexOf('if (!r.ok) {');
+    const j = hook.indexOf('setLiveStats(r.stats)', i);
+    assert.ok(i > 0 && j > i && hook.slice(i, j).includes('return;'));
   });
 
   test('duplicate taps are blocked while a request is pending', () => {
-    assert.match(pet, /if \(busyAction\) return; \/\/ a second tap while one is in flight does nothing/);
-    assert.match(pet, /const disabled = busyAction != null;/);
-    assert.match(pet, /disabled=\{disabled\}/);
+    assert.match(hook, /if \(busyAction\) return; \/\/ a second tap while one is in flight does nothing/);
+    for (const s of screens) {
+      assert.match(s, /const disabled = busyAction != null;/);
+      assert.match(s, /disabled=\{disabled\}/);
+    }
   });
 
   test('a session-expired reply is surfaced, not swallowed', () => {

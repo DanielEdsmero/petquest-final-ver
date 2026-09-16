@@ -36,6 +36,7 @@ export default function RootLayout() {
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="quest" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="companion" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="admin" options={{ animation: 'slide_from_right' }} />
           </Stack>
         </AuthGate>

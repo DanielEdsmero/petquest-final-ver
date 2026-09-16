@@ -3,11 +3,14 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, AppState, Easing, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
+import { MOOD_CUE, type Mood } from '@/data/moodModel';
 import { type HomeId } from '@/data/petHomeModel';
+import { type PetId } from '@/data/petModel';
 import { type FrameSet } from '@/data/spriteFrames';
 import {
   REACTION_TEXT,
   applyStep,
+  flourishFor,
   fpsFor,
   frameFor,
   nextStep,
@@ -43,6 +46,9 @@ const WALK_EASING = Easing.inOut(Easing.quad);
  *
  * Cosmetic only. Taps play `happy`; care reactions arrive through the
  * `reaction` prop, which the screens set only after `care_pet()` replied ok.
+ * The `mood` prop (moodModel, derived from the server's stats by the screen)
+ * bends the walker's odds and adds a small cue — dust, a droop, sparkles —
+ * and `message` is the one line of dialogue the screen chose to show.
  * Nothing here reads or writes application state.
  *
  * Reanimated is in the project but its Babel/worklets plugin is not something
@@ -59,9 +65,18 @@ export function PetSprite({
   active = true,
   showBubbles = true,
   accessibilityLabel,
+  mood = 'balanced',
+  petId = null,
+  message = null,
 }: {
   home: HomeId;
   frames: FrameSet;
+  /** Presentation state from moodModel; drives behaviour odds and the cue overlay. */
+  mood?: Mood;
+  /** Which species — picks the flourish. */
+  petId?: PetId | null;
+  /** A line of dialogue to show in the bubble (the screen owns the cooldown). */
+  message?: string | null;
   /** Rendered size in points (the frame is 128 px, so 64 = 2× pixel density). */
   size?: number;
   /** A care reaction to play; bump `nonce` to replay the same kind. */
@@ -79,6 +94,9 @@ export function PetSprite({
   const [tick, setTick] = useState(0);
   const [bubble, setBubble] = useState<string | null>(null);
   const pos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  /** Vertical hop for the species flourish and for `happy`; separate from the walk. */
+  const hop = useRef(new Animated.Value(0)).current;
+  const hopping = useRef<Animated.CompositeAnimation | null>(null);
   const stepTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bubbleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ticker = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -152,8 +170,37 @@ export function PetSprite({
     freezeWalk();
     moving.current?.stop();
     moving.current = null;
-  }, [freezeWalk]);
+    hopping.current?.stop();
+    hopping.current = null;
+    hop.setValue(0);
+  }, [freezeWalk, hop]);
+
+  /** The species flourish (or a single small hop for `happy`). Native-driven; snaps under Reduce Motion. */
+  const playHops = useCallback(
+    (kind: 'flourish' | 'happy') => {
+      hopping.current?.stop();
+      hop.setValue(0);
+      if (reduced) return;
+      const f = flourishFor(petId);
+      const hops: [number, number][] = kind === 'flourish' && f ? f.hops : [[8, 160]];
+      const hoverMs = kind === 'flourish' && f ? f.hoverMs : 0;
+      const seq: Animated.CompositeAnimation[] = [];
+      hops.forEach(([h, up], i) => {
+        seq.push(Animated.timing(hop, { toValue: -h, duration: up, easing: Easing.out(Easing.quad), useNativeDriver: true }));
+        if (i === hops.length - 1 && hoverMs > 0) seq.push(Animated.delay(hoverMs));
+        seq.push(Animated.timing(hop, { toValue: 0, duration: up, easing: Easing.in(Easing.quad), useNativeDriver: true }));
+      });
+      hopping.current = Animated.sequence(seq);
+      hopping.current.start(() => {
+        hopping.current = null;
+      });
+    },
+    [hop, petId, reduced],
+  );
   const runRef = useRef<(step: Step) => void>(() => {});
+  /** The latest mood, read when the NEXT step is chosen — a mood change never interrupts a step. */
+  const moodRef = useRef<Mood>(mood);
+  moodRef.current = mood;
 
   /** Run one step: set the state, start the frame ticker, move if walking, then schedule the next. */
   const run = useCallback(
@@ -165,6 +212,9 @@ export function PetSprite({
 
       if (ticker.current) clearInterval(ticker.current);
       ticker.current = setInterval(() => setTick((t) => t + 1), Math.round(1000 / fpsFor(step.state)));
+
+      if (step.state === 'celebrate') playHops('flourish');
+      else if (step.state === 'happy') playHops('happy');
 
       const walking = step.state === 'walkLeft' || step.state === 'walkRight';
       if (walking) {
@@ -189,10 +239,10 @@ export function PetSprite({
         ticker.current = null;
         moving.current = null;
         walk.current = null;
-        runRef.current(nextStep(machineRef.current, home, rng, reduced));
+        runRef.current(nextStep(machineRef.current, home, rng, reduced, { mood: moodRef.current, petId }));
       }, step.durationMs);
     },
-    [home, pos, reduced, rng, toPx],
+    [home, pos, reduced, rng, toPx, playHops, petId],
   );
   runRef.current = run;
 
@@ -202,15 +252,15 @@ export function PetSprite({
       clearAll();
       return;
     }
-    run(nextStep({ ...machineRef.current, state: 'idle' }, home, rng, reduced));
+    run(nextStep({ ...machineRef.current, state: 'idle' }, home, rng, reduced, { mood: moodRef.current, petId }));
     return clearAll;
-  }, [running, home, reduced, rng, run, clearAll]);
+  }, [running, home, reduced, rng, run, clearAll, petId]);
 
   /* Reactions: interrupt whatever is happening (a walk snaps to where it was). */
-  const say = useCallback((text: string) => {
+  const say = useCallback((text: string, ms = 1400) => {
     setBubble(text);
     if (bubbleTimer.current) clearTimeout(bubbleTimer.current);
-    bubbleTimer.current = setTimeout(() => setBubble(null), 1400);
+    bubbleTimer.current = setTimeout(() => setBubble(null), ms);
   }, []);
 
   const react = useCallback(
@@ -222,6 +272,11 @@ export function PetSprite({
     },
     [running, freezeWalk, run, showBubbles, say],
   );
+
+  /* Dialogue chosen by the screen (moodModel.nextDialogue owns the cooldown). */
+  useEffect(() => {
+    if (message && showBubbles) say(message, 3200);
+  }, [message, showBubbles, say]);
 
   const lastNonce = useRef<number | null>(null);
   useEffect(() => {
@@ -237,14 +292,18 @@ export function PetSprite({
     if (width !== scene.w || height !== scene.h) setScene({ w: width, h: height });
   };
 
-  const frame = frameFor(machine.state, tick);
+  const frame = frameFor(machine.state, tick, petId);
+  const cue = machine.state === 'celebrate' ? 'sparkle' : MOOD_CUE[mood];
+  const droop = cue === 'droop' && machine.state !== 'celebrate' && machine.state !== 'happy';
 
   return (
     <View style={StyleSheet.absoluteFill} onLayout={onLayout} pointerEvents="box-none">
       <Animated.View style={[styles.sprite, { width: size, transform: pos.getTranslateTransform() }]} pointerEvents="box-none">
         {bubble ? (
           <View style={styles.bubble} accessibilityLiveRegion="polite">
-            <Text style={styles.bubbleText}>{bubble}</Text>
+            <Text style={styles.bubbleText} numberOfLines={2}>
+              {bubble}
+            </Text>
           </View>
         ) : null}
         <Pressable
@@ -255,15 +314,49 @@ export function PetSprite({
           hitSlop={6}
           style={{ width: size, height: size }}
         >
-          <Image source={frames[frame]} style={{ width: size, height: size }} contentFit="contain" allowDownscaling={false} transition={0} />
+          <Animated.View style={{ transform: [{ translateY: hop }], opacity: droop ? 0.92 : 1 }}>
+            <Image source={frames[frame]} style={{ width: size, height: size }} contentFit="contain" allowDownscaling={false} transition={0} />
+          </Animated.View>
+          <Cue cue={cue} size={size} />
         </Pressable>
       </Animated.View>
     </View>
   );
 }
 
+/**
+ * The small mood cue drawn over the sprite: a few dust puffs, restrained
+ * sparkles, or nothing. Views, not images, so no asset is needed and the
+ * pixel art underneath is never altered.
+ */
+function Cue({ cue, size }: { cue: ReturnType<typeof cueOf>; size: number }) {
+  if (cue === 'dust') {
+    return (
+      <View style={[styles.cueWrap, { width: size, height: size }]} pointerEvents="none" accessibilityElementsHidden>
+        <View style={[styles.dust, { left: size * 0.12, top: size * 0.22, width: 7, height: 7 }]} />
+        <View style={[styles.dust, { left: size * 0.78, top: size * 0.3, width: 5, height: 5 }]} />
+        <View style={[styles.dust, { left: size * 0.7, top: size * 0.12, width: 4, height: 4 }]} />
+      </View>
+    );
+  }
+  if (cue === 'sparkle') {
+    return (
+      <View style={[styles.cueWrap, { width: size, height: size }]} pointerEvents="none" accessibilityElementsHidden>
+        <Text style={[styles.sparkle, { left: size * 0.08, top: size * 0.1 }]}>✦</Text>
+        <Text style={[styles.sparkle, styles.sparkleSmall, { left: size * 0.8, top: size * 0.2 }]}>✦</Text>
+      </View>
+    );
+  }
+  return null;
+}
+const cueOf = (m: Mood) => MOOD_CUE[m];
+
 const styles = StyleSheet.create({
   sprite: { position: 'absolute', left: 0, top: 0, alignItems: 'center' },
+  cueWrap: { position: 'absolute', left: 0, top: 0 },
+  dust: { position: 'absolute', borderRadius: 99, backgroundColor: Colors.inkFaint, opacity: 0.55 },
+  sparkle: { position: 'absolute', color: Colors.accentWarm, fontSize: 12 },
+  sparkleSmall: { fontSize: 9 },
   bubble: {
     position: 'absolute',
     top: -26,

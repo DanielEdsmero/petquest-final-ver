@@ -1,5 +1,7 @@
 // Relative, not '@/…': pure models are loaded by node --test (no Metro alias).
+import { BEHAVIOUR, FLOURISH, type Mood } from './moodModel.ts';
 import { type HomeId } from './petHomeModel.ts';
+import type { PetId } from './petModel.ts';
 
 /**
  * The walking baby sprite — the pure half.
@@ -48,14 +50,20 @@ export const IDLE_FPS = 2;
 
 /* ── States ── */
 
-export type SpriteState = 'idle' | 'blink' | 'pause' | 'walkLeft' | 'walkRight' | 'happy' | 'interact';
+export type SpriteState = 'idle' | 'blink' | 'pause' | 'walkLeft' | 'walkRight' | 'happy' | 'interact' | 'rest' | 'celebrate';
 
 export type Point = { x: number; y: number }; // normalised 0–1 within the scene
 
 /** Where the pet may stand, as fractions of the scene. y is the FEET line. */
 export type WalkArea = { xMin: number; xMax: number; yMin: number; yMax: number };
 
-export type Interaction = { key: string; label: string; at: Point };
+export type Interaction = {
+  key: string;
+  label: string;
+  at: Point;
+  /** What the spot is for; drives resting and hunger. */
+  role?: 'rest' | 'food';
+};
 
 /**
  * Per-home walkable strip and points of interest. The strip is the bottom
@@ -68,7 +76,8 @@ export const HOME_LAYOUT: Record<HomeId, { area: WalkArea; interactions: Interac
     area: { xMin: 0.12, xMax: 0.88, yMin: 0.66, yMax: 0.9 },
     interactions: [
       { key: 'flower', label: 'sniffs a flower', at: { x: 0.2, y: 0.86 } },
-      { key: 'trough', label: 'visits the water trough', at: { x: 0.8, y: 0.68 } },
+      { key: 'trough', label: 'visits the water trough', at: { x: 0.8, y: 0.68 }, role: 'food' },
+      { key: 'bed', label: 'curls up on its bed', at: { x: 0.36, y: 0.84 }, role: 'rest' },
       { key: 'ball', label: 'nudges the ball', at: { x: 0.6, y: 0.88 } },
     ],
   },
@@ -76,22 +85,24 @@ export const HOME_LAYOUT: Record<HomeId, { area: WalkArea; interactions: Interac
     area: { xMin: 0.14, xMax: 0.86, yMin: 0.64, yMax: 0.9 },
     interactions: [
       { key: 'mirror', label: 'grooms by the mirror', at: { x: 0.82, y: 0.78 } },
-      { key: 'bed', label: 'visits the bed', at: { x: 0.5, y: 0.66 } },
+      { key: 'bed', label: 'curls up on the bed', at: { x: 0.5, y: 0.66 }, role: 'rest' },
+      { key: 'bowl', label: 'looks at the bowls', at: { x: 0.2, y: 0.78 }, role: 'food' },
       { key: 'fireplace', label: 'looks at the fire', at: { x: 0.76, y: 0.66 } },
     ],
   },
   ember_cavern: {
     area: { xMin: 0.14, xMax: 0.86, yMin: 0.66, yMax: 0.9 },
     interactions: [
-      { key: 'basin', label: 'checks the food basin', at: { x: 0.2, y: 0.8 } },
+      { key: 'basin', label: 'checks the food basin', at: { x: 0.2, y: 0.8 }, role: 'food' },
       { key: 'crystal', label: 'looks at a crystal', at: { x: 0.84, y: 0.7 } },
-      { key: 'nest', label: 'curls up near the nest', at: { x: 0.74, y: 0.66 } },
+      { key: 'nest', label: 'curls up near the nest', at: { x: 0.74, y: 0.66 }, role: 'rest' },
     ],
   },
   crystal_cavern: {
     area: { xMin: 0.2, xMax: 0.8, yMin: 0.62, yMax: 0.84 },
     interactions: [
       { key: 'bubble', label: 'follows a bubble', at: { x: 0.3, y: 0.7 } },
+      { key: 'shellbed', label: 'rests in the shell bed', at: { x: 0.24, y: 0.64 }, role: 'rest' },
       { key: 'crystal', label: 'examines a crystal', at: { x: 0.76, y: 0.74 } },
       { key: 'splash', label: 'makes a small splash', at: { x: 0.24, y: 0.84 } },
     ],
@@ -108,6 +119,8 @@ export const TIMING = {
   blinkMs: 260,
   happyMs: 1100,
   interactMs: 1600,
+  restMs: [4000, 8000] as const,
+  celebrateMs: 1400,
   /** Only walks this far or further, so a walk is always visibly a walk. */
   minWalk: 0.12,
 };
@@ -130,8 +143,12 @@ export const walkDurationMs = (from: Point, to: Point) => Math.max(400, Math.rou
 export const directionFor = (from: Point, to: Point): 'walkLeft' | 'walkRight' => (to.x < from.x ? 'walkLeft' : 'walkRight');
 
 /** The frame to show for a state at a given tick (ticks advance at the state's cadence). */
-export function frameFor(state: SpriteState, tick: number): FrameKey {
+export function frameFor(state: SpriteState, tick: number, petId: PetId | null = null): FrameKey {
   switch (state) {
+    case 'rest':
+      return 'interact'; // the sheets' fourth pose: curled / grooming / nose down
+    case 'celebrate':
+      return petId ? FLOURISH[petId].frame : 'happy';
     case 'blink':
       return 'blink';
     case 'walkLeft':
@@ -148,6 +165,12 @@ export function frameFor(state: SpriteState, tick: number): FrameKey {
 }
 
 export const fpsFor = (state: SpriteState) => (state === 'walkLeft' || state === 'walkRight' ? WALK_FPS : IDLE_FPS);
+
+export const pointWithRole = (home: HomeId, role: 'rest' | 'food'): Interaction | undefined =>
+  HOME_LAYOUT[home].interactions.find((i) => i.role === role);
+
+/** How the walker should behave: the mood and the species. Both optional. */
+export type MoodContext = { mood?: Mood; petId?: PetId | null };
 
 /* ── The machine ── */
 
@@ -174,11 +197,14 @@ export type Machine = {
  * a random spot in the strip. Always at least `minWalk` away, always inside
  * the area, so the walk is visible and never clips.
  */
-export function chooseDestination(from: Point, home: HomeId, rng: Rng): { to: Point; interaction?: Interaction } {
+export function chooseDestination(from: Point, home: HomeId, rng: Rng, foodBias = 0): { to: Point; interaction?: Interaction } {
   const { area, interactions } = HOME_LAYOUT[home];
+  const food = pointWithRole(home, 'food');
   for (let attempt = 0; attempt < 8; attempt++) {
-    const usePoi = interactions.length > 0 && rng() < 0.5;
-    const poi = usePoi ? interactions[Math.floor(rng() * interactions.length)] : undefined;
+    // A hungry pet drifts to the food spot; otherwise a point of interest about half the time.
+    const wantFood = food && foodBias > 0 && rng() < foodBias;
+    const usePoi = !wantFood && interactions.length > 0 && rng() < 0.5;
+    const poi = wantFood ? food : usePoi ? interactions[Math.floor(rng() * interactions.length)] : undefined;
     const raw: Point = poi ? poi.at : { x: between(rng, [area.xMin, area.xMax]), y: between(rng, [area.yMin, area.yMax]) };
     const to = clampPoint(raw, area);
     if (Math.abs(to.x - from.x) >= TIMING.minWalk) return { to, interaction: poi };
@@ -190,34 +216,55 @@ export function chooseDestination(from: Point, home: HomeId, rng: Rng): { to: Po
 
 /**
  * The next step from the current state. Pure: same machine + same rng
- * sequence → same step.
+ * sequence → same step. `ctx.mood` (from moodModel) bends the odds — a sad
+ * pet lingers, a hungry one drifts to the food spot, a happy one flourishes,
+ * an unclean one rests more — but never changes what is possible.
  *
- *   idle → blink (30 %) | pause
+ *   idle → blink (30 %) | celebrate | rest (walking to the bed first) | pause
  *   blink → idle
- *   pause → walkLeft | walkRight  (destination chosen here)
- *   walk* → interact (if the destination was a point of interest, 70 %) | idle
- *   happy / interact → idle
+ *   pause → walkLeft | walkRight  (destination chosen here; hunger biases it)
+ *   walk* → rest (at the bed) | interact (at a point of interest) | idle
+ *   happy / interact / rest / celebrate → idle
  */
-export function nextStep(m: Machine, home: HomeId, rng: Rng, reduceMotion = false): Step {
+export function nextStep(m: Machine, home: HomeId, rng: Rng, reduceMotion = false, ctx: MoodContext = {}): Step {
+  const mood = ctx.mood ?? 'balanced';
+  const b = BEHAVIOUR[mood];
   const stay = (state: SpriteState, durationMs: number): Step => ({ state, durationMs, to: m.at });
+  const idleFor = () => between(rng, TIMING.idleMs) * b.idleScale;
   switch (m.state) {
-    case 'idle':
+    case 'idle': {
       if (rng() < 0.3) return stay('blink', TIMING.blinkMs);
       // Reduce Motion: no walking at all — the pet stands, breathes and blinks.
-      if (reduceMotion) return stay('idle', between(rng, TIMING.idleMs));
+      if (reduceMotion) return stay('idle', idleFor());
+      // A flourish happens in place, from idle, and only for a happy pet.
+      if (b.celebrateChance > 0 && ctx.petId && rng() < b.celebrateChance) return stay('celebrate', TIMING.celebrateMs);
+      // Resting: walk to the bed/nest if there is one and we are not already on it.
+      const bed = pointWithRole(home, 'rest');
+      if (bed && rng() < b.restChance) {
+        if (Math.abs(bed.at.x - m.at.x) < TIMING.minWalk) return { ...stay('rest', between(rng, TIMING.restMs)), interaction: bed };
+        return { state: directionFor(m.at, bed.at), durationMs: walkDurationMs(m.at, bed.at), to: bed.at, pendingInteraction: bed };
+      }
+      if (!b.walks) return stay('idle', idleFor());
       return stay('pause', between(rng, TIMING.pauseMs));
+    }
     case 'blink':
-      return stay('idle', between(rng, TIMING.idleMs));
+      return stay('idle', idleFor());
     case 'pause': {
-      const { to, interaction } = chooseDestination(m.at, home, rng);
+      const { to, interaction } = chooseDestination(m.at, home, rng, b.foodBias);
       return { state: directionFor(m.at, to), durationMs: walkDurationMs(m.at, to), to, pendingInteraction: interaction };
     }
     case 'walkLeft':
-    case 'walkRight':
-      if (m.pendingInteraction && rng() < 0.7) return { ...stay('interact', TIMING.interactMs), interaction: m.pendingInteraction };
-      return stay('idle', between(rng, TIMING.idleMs));
-    default: // happy, interact
-      return stay('idle', between(rng, TIMING.idleMs));
+    case 'walkRight': {
+      const poi = m.pendingInteraction;
+      // Arrived at the bed: rest. Arrived at food while hungry: look at it. Otherwise 70 % interact.
+      if (poi?.role === 'rest') return { ...stay('rest', between(rng, TIMING.restMs)), interaction: poi };
+      if (poi && (poi.role === 'food' && mood === 'hungry' ? true : rng() < 0.7)) {
+        return { ...stay('interact', TIMING.interactMs), interaction: poi };
+      }
+      return stay('idle', idleFor());
+    }
+    default: // happy, interact, rest, celebrate
+      return stay('idle', idleFor());
   }
 }
 
@@ -227,6 +274,9 @@ export const applyStep = (m: Machine, s: Step): Machine => ({
   at: s.to,
   pendingInteraction: s.state === 'walkLeft' || s.state === 'walkRight' ? s.pendingInteraction : undefined,
 });
+
+/** The flourish to play for a species, for the component. */
+export const flourishFor = (petId: PetId | null | undefined) => (petId ? FLOURISH[petId] : null);
 
 /** Starting point: centre of the strip. */
 export const startPoint = (home: HomeId): Point => {

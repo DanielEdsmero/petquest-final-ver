@@ -1907,3 +1907,59 @@ word if you want a recoloured sheet instead.
 Tests updated: home budget 150 → 450 KB (a painting, not a placeholder), and
 the sprite manifest must now say `sheet` for all three. 316/316, typecheck
 clean, export clean, secret scan 0 hits.
+
+---
+
+## Stat-reactive companion and View Pet (2026-09-16)
+
+Baseline `ec46307`, 316/316. Mobile-only: nothing in the web app, SQL,
+award, verification or economy code changed. Expo Go on iPhone is the target.
+
+### What was built
+
+| Piece | File | Notes |
+|---|---|---|
+| Presentation state (pure) | `src/data/moodModel.ts` | `rawMood()` — most pressing need wins: cleanliness < 25 → **unclean**; hunger < 35 → **hungry**; cleanliness < 35 → unclean; happiness < 35 → **sad**; all ≥ 80 → **thriving**; happiness ≥ 80 → **happy**; else **balanced**. `resolveMood()` adds a 20 s cooldown and a 5-point hysteresis band so a value at a boundary cannot flicker, while a clear change (a care action landing) is accepted at once. `MOOD_FRAME` (low moods use the idle frame — no invented faces), `MOOD_CUE` (dust / glance / droop / sparkle), `BEHAVIOUR` odds per mood, `FLOURISH` per species (dragon flaps + hovers, cat jumps + stretches, wolf bounces), `LINES` + `nextDialogue()` with a 45 s message cooldown, no immediate repeats, species lines first, and a `force` path for server-confirmed events. |
+| Mood-aware walker | `src/data/spriteModel.ts` | New states **rest** (at the home's `role: 'rest'` spot — bed / nest / shell bed) and **celebrate** (the species flourish, from idle). Hunger biases destinations to the `role: 'food'` spot (trough / bowls / basin). `nextStep(…, ctx: { mood, petId })` bends the odds — sad lingers (idle × 1.8), unclean rests more, happy/thriving celebrate — but never changes what is possible. Reduce Motion still stands and blinks only. |
+| Sprite | `src/components/PetSprite.tsx` | `mood` / `petId` / `message` props. A second native-driven `Animated.Value` for the hop, played on `celebrate` (species hops + hover) and `happy`; the walk animation is untouched. Cue overlay drawn with Views (dust puffs) or two `✦` glyphs (sparkles) — no extra images, the pixel art is never altered. The mood is read only when the *next* step is chosen, so a mood change never interrupts a step. The dialogue bubble shows the screen's line for 3.2 s. |
+| Hooks | `src/hooks/useCare.ts`, `src/hooks/useMood.ts` | The care flow (confirm → `care_pet()` → show only the reply; reaction only on `ok`) moved out of the Pet tab into one hook so View Pet shares it exactly. `useMood` owns the mood cooldown and the dialogue cooldown per screen, and accepts a server-confirmed event (`verified`) once per nonce. |
+| Home | `(tabs)/index.tsx` | Passes mood + message to the sprite; "View pet" text button beside the hero line; the "You did it! I'm proud of you." line fires only when a `quest_completions` row is `status = 'verified'` with `admin_reviewed_at` today. |
+| Pet tab | `(tabs)/pet.tsx` | Uses the hooks; "View pet" button under the hero; passes mood + message + reaction to the sprite. |
+| **View Pet** | `src/app/companion/_layout.tsx`, `src/app/companion/view.tsx`, `src/components/PetExpression.tsx` | New stack route `/companion/view` with a native header (back + swipe). Large pet on a disc in the home's palette — the mood frame for a Baby, the evolution portrait otherwise — with a 2 % breathing scale (slower when low), dust/sparkle cues, the species flourish on tap or a confirmed reaction. One speech bubble + mood pill, the three rings (72 pt), Feed / Wash / Play at 80 pt, evolution line, equipped glyphs, a link to Accessories. Registered in the root Stack. |
+| Tests | `tests/mood.test.ts` (+22; suite 316 → 339) | Below. Existing care/petHome/sprite/home assertions re-pointed at the hook. |
+
+### Tests — `tests/mood.test.ts`
+
+1. Selector priority; cooldown + hysteresis hold a boundary change; a clear change (feed 20 → 50, bath 10 → 70) is accepted immediately; every mood has a frame/cue/label/behaviour and low moods never borrow the happy frame.
+2. Dialogue: ≥ 2 generic lines per mood; no line claims points/approval except the `verified` one; species lines first and never for another species; cooldown holds, forced event bypasses, no immediate repeat.
+3. Each species has its own flourish; every home has a rest spot inside the strip; every companion home has a food spot.
+4. Walker traces (seeded): happy/thriving celebrate, low/balanced never; unclean rests more than happy; hungry visits food more than balanced; rest only at the rest spot; sad idles > 1.5× happy; Reduce Motion stands and blinks whatever the mood.
+5. `useMood` reads stats only; Home's `verified` line needs a verified row with `admin_reviewed_at`; the sprite reads mood only at the next step; cues are Views; `PetExpression` scales ≤ 2 % and never rotates/skews.
+6. View Pet is a real headered route reachable from Pet and Home; one bubble, three rings, three 80 pt care controls; uses `useCare` and writes nothing; no width > 288, no `minWidth`, no horizontal scroll.
+
+### Results
+
+| Check | Result |
+|---|---|
+| Mobile `npm test` | ✅ 339/339 |
+| `npm run typecheck` | ✅ clean |
+| `npx expo export --platform ios` | ✅ |
+| Secret scan | ✅ 0 hits |
+| Web `npm test` (root) | ✅ 198/198 — nothing outside `apps/mobile/` changed |
+
+Animation library: React Native `Animated` (native driver), as before —
+Reanimated's Babel plugin is still unverified on a device from this session.
+
+### User-required iPhone checklist (Expo Go)
+
+- [ ] Baby companion in its home; idles, blinks, rests on its bed/nest, walks occasionally
+- [ ] Use the web admin cheat panel (or wait for decay) to push Cleanliness under 25: dust puffs, more resting, "Could I have a bath?"; Hunger under 35: it drifts to the food spot, "My tummy is rumbling."; Happiness under 35: slower, slightly sunk, "Can we spend time together?"
+- [ ] Happiness ≥ 80: the dragon flaps and hovers / the cat jumps and stretches / the wolf bounces, with two small sparkles; all ≥ 80: "I feel amazing!"
+- [ ] Only one bubble at a time; it never covers the quest card or a button; a second line does not appear for ~45 s
+- [ ] Pet → "View pet": native header with back; large pet with the mood's expression on the home-coloured disc; bubble; three rings; Feed / Wash / Play; evolution line; equipped glyphs
+- [ ] View Pet → Feed: confirm → the ring and the pet react only after the success notice; Cancel or "Not enough points" → nothing changes; double-tap → one dialog
+- [ ] Tap the big pet: flourish + nothing else changes
+- [ ] Leave View Pet / background the app: motion stops; return: it resumes
+- [ ] Reduce Motion: breathing, hops and walking off; frames and cues still shown
+- [ ] Nothing scrolls sideways at 320 pt on Home, Pet or View Pet
+- [ ] Wake-up loader still plays on launch and can be skipped; auth, evidence, admin, Accessories unchanged

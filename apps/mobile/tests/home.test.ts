@@ -310,7 +310,7 @@ describe('4. participant screens carry nothing admin-only', () => {
   test('Home links to profile, quests and the quest flow — nowhere else', () => {
     const home = app('(tabs)/index.tsx');
     const targets = [...home.matchAll(/router\.push\((?:\{ pathname: )?'([^']+)'/g)].map((m) => m[1]).sort();
-    assert.deepEqual([...new Set(targets)], ['/pet', '/profile', '/quest/[id]', '/quest/create', '/quest/verify', '/quests']);
+    assert.deepEqual([...new Set(targets)], ['/companion/view', '/pet', '/profile', '/quest/[id]', '/quest/create', '/quest/verify', '/quests']);
   });
 });
 
@@ -330,7 +330,8 @@ describe('5. economy and verification state are never mutated locally', () => {
   test('care still goes through care_pet only', () => {
     assert.match(read('src/data/care.ts'), /supabase\.rpc\('care_pet', \{ p_action: action \}\)/);
     assert.doesNotMatch(read('src/data/care.ts'), /\.from\(/);
-    assert.match(app('(tabs)/pet.tsx'), /const r = await carePet\(action\)/);
+    assert.match(read('src/hooks/useCare.ts'), /const r = await carePet\(action\)/);
+    assert.match(app('(tabs)/pet.tsx'), /useCare\(\{/);
   });
 
   test('no screen infers approval: "Completed"/"Approved" text is gated by server status', () => {

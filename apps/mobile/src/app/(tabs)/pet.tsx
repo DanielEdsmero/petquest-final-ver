@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AccessibilityInfo, Alert, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/auth/AuthProvider';
 import { PetHomeHero } from '@/components/PetHomeHero';
@@ -11,17 +11,18 @@ import { ErrorState } from '@/components/states';
 import { PrimaryButton, SecondaryButton, SectionLabel, Skeleton, StatusPill, Surface } from '@/components/ui';
 import { RARITY_COLORS, canEquip, countOwned, decorate, equippedGlyphs, groupByCategory, type AccessoryRow } from '@/data/accessoryModel';
 import { equipAccessory, fetchEquippedAccessories, fetchOwnedAccessories, unequipCategory } from '@/data/accessories';
-import { carePet } from '@/data/care';
-import { CARE_ACTIONS, CARE_BOOST, CARE_COST, canAfford, careErrorMessage, careSuccessMessage, type CareAction, type CareStats } from '@/data/careModel';
+import { CARE_ACTIONS, CARE_BOOST, CARE_COST, type CareAction } from '@/data/careModel';
+import { MOOD_LABEL } from '@/data/moodModel';
 import { STAT_META } from '@/data/petHomeModel';
 import { homeAndImageFor } from '@/data/petHomes';
 import { LEGENDARY_MIN, PET_CATALOG, STAGES, evolutionProgress, petIdOf, stageName } from '@/data/petModel';
 import { spriteFor } from '@/data/petSprites';
 import { framesFor } from '@/data/spriteFrames';
-import { type Reaction } from '@/data/spriteModel';
 import { fetchPetStats } from '@/data/petStats';
 import { formatMinutes, formatPct, progressMetrics } from '@/data/progressModel';
 import { fetchTasks } from '@/data/tasks';
+import { useCare } from '@/hooks/useCare';
+import { useMood } from '@/hooks/useMood';
 import { useAsyncData } from '@/lib/useAsyncData';
 import { Colors, FontSize, Radius, Spacing, TapTarget } from '@/theme';
 
@@ -79,28 +80,6 @@ export default function PetTab() {
     await Promise.all([refreshProfile(), stats.refresh(), tasks.refresh(), owned.refresh(), equipped.refresh()]);
   }, [refreshProfile, stats, tasks, owned, equipped]);
 
-  /* Live copies of the two things a care action changes. They follow the
-     fetched values and are overwritten by the server's answer to care_pet(). */
-  const [liveStats, setLiveStats] = useState<CareStats | null>(null);
-  const [livePoints, setLivePoints] = useState<number | null>(null);
-  useEffect(() => {
-    if (stats.data) setLiveStats({ hunger: stats.data.hunger, cleanliness: stats.data.cleanliness, happiness: stats.data.happiness });
-    else if (!stats.loading) setLiveStats(null);
-  }, [stats.data, stats.loading]);
-  useEffect(() => {
-    setLivePoints(typeof profile?.points === 'number' ? profile.points : null);
-  }, [profile?.points]);
-
-  const [busyAction, setBusyAction] = useState<CareAction | null>(null);
-  /* A cosmetic reaction for the walking sprite — set ONLY after care_pet() replied ok. */
-  const [reaction, setReaction] = useState<{ kind: Reaction; nonce: number } | null>(null);
-  const [notice, setNotice] = useState<{ text: string; tone: 'ok' | 'bad' } | null>(null);
-  useEffect(() => {
-    if (!notice) return;
-    const t = setTimeout(() => setNotice(null), 3500);
-    return () => clearTimeout(t);
-  }, [notice]);
-
   const petId = petIdOf(profile?.selected_pet_id);
   const meta = petId ? PET_CATALOG[petId] : null;
   const totalEarned = profile?.total_points_earned ?? null;
@@ -110,51 +89,17 @@ export default function PetTab() {
   const { home, image } = homeAndImageFor(profile?.selected_pet_id);
   const metrics = useMemo(() => progressMetrics(tasks.data), [tasks.data]);
   const glyphs = useMemo(() => equippedGlyphs(equipped.data), [equipped.data]);
+  /* Care: confirm (cost + benefit) → care_pet() → show only what it returned. Shared with View Pet. */
+  const { liveStats, livePoints, busyAction, reaction, notice, confirmCare } = useCare({
+    fetchedStats: stats.data ? { hunger: stats.data.hunger, cleanliness: stats.data.cleanliness, happiness: stats.data.happiness } : null,
+    statsLoading: stats.loading,
+    profilePoints: profile?.points,
+    petName: meta?.name ?? null,
+    refreshProfile,
+  });
+  const { mood, message } = useMood(liveStats, petId);
   // The walking sprite is baby art: only a Baby-stage companion walks; later stages keep their portrait.
-  const walking = meta && level === 1 ? { frames: framesFor(profile?.selected_pet_id), reaction } : null;
-
-  /* Care: confirm (cost + benefit) → care_pet() → show only what it returned. */
-  const runCare = useCallback(
-    async (action: CareAction) => {
-      if (busyAction) return; // a second tap while one is in flight does nothing
-      setBusyAction(action);
-      const r = await carePet(action);
-      setBusyAction(null);
-      if (typeof r.points === 'number') setLivePoints(r.points);
-      if (!r.ok) {
-        setNotice({ text: careErrorMessage(r.error), tone: 'bad' });
-        return;
-      }
-      setLiveStats(r.stats);
-      setReaction({ kind: action, nonce: Date.now() }); // the server said yes — now the pet may react
-      const text = careSuccessMessage(action, meta?.name ?? null);
-      setNotice({ text, tone: 'ok' });
-      AccessibilityInfo.announceForAccessibility(text);
-      void refreshProfile(); // re-syncs the header balance from the server
-    },
-    [busyAction, meta?.name, refreshProfile],
-  );
-
-  const confirmCare = useCallback(
-    (action: CareAction) => {
-      if (busyAction) return;
-      if (!canAfford(livePoints)) {
-        setNotice({ text: careErrorMessage('insufficient_points'), tone: 'bad' });
-        return;
-      }
-      const a = CARE_ACTIONS.find((c) => c.key === action)!;
-      const stat = STAT_META.find((s) => s.action === action)!;
-      Alert.alert(
-        `${a.label} ${meta?.name ?? 'your companion'}?`,
-        `Costs ${CARE_COST} points and raises ${stat.label} by up to ${CARE_BOOST}. The server settles it; you will see the real result.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: `${a.label} · ${CARE_COST} pts`, onPress: () => void runCare(action) },
-        ],
-      );
-    },
-    [busyAction, livePoints, meta?.name, runCare],
-  );
+  const walking = meta && level === 1 ? { frames: framesFor(profile?.selected_pet_id), reaction, mood, petId, message } : null;
 
   const levelLine =
     totalEarned == null
@@ -211,6 +156,15 @@ export default function PetTab() {
         compact={view === 'accessories'}
         walking={walking}
       />
+      {meta && (
+        <SecondaryButton
+          label="View pet"
+          icon="expand-outline"
+          accessibilityLabel={`View ${meta.name} up close — ${MOOD_LABEL[mood]}`}
+          onPress={() => router.push('/companion/view')}
+          style={styles.viewPet}
+        />
+      )}
 
       {view === 'home' ? (
         <>
@@ -544,6 +498,7 @@ const styles = StyleSheet.create({
   sectionGap: { marginTop: Spacing.lg },
   block: { marginBottom: Spacing.xs },
   blockButton: { marginTop: Spacing.md },
+  viewPet: { marginTop: Spacing.sm },
 
   rings: { flexDirection: 'row', gap: Spacing.xs },
 
