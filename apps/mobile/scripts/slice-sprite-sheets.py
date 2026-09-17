@@ -73,6 +73,21 @@ def has_alpha_edge(im: Image.Image) -> bool:
     return all(im.getpixel(p)[3] == 0 for p in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)])
 
 
+def visible_bbox(im: Image.Image, threshold: int = 16):
+    """
+    Bounding box of what is actually VISIBLE.
+
+    Not `Image.getbbox()`: these sheets carry transparent pixels that still
+    hold colour (alpha 0, RGB non-zero), and getbbox counts those, so each
+    cell got a different invisible skirt — which moved the feet by up to 20 px
+    between frames. Thresholding the alpha channel is what keeps the baseline
+    stable, and a stable baseline is the whole reason the animation does not
+    jump.
+    """
+    alpha = im.convert("RGBA").split()[3].point(lambda a: 255 if a >= threshold else 0)
+    return alpha.getbbox()
+
+
 def cells(sheet: Image.Image) -> list[Image.Image]:
     w, h = sheet.size
     cw, ch = w // COLS, h // ROWS
@@ -80,7 +95,7 @@ def cells(sheet: Image.Image) -> list[Image.Image]:
     for r in range(ROWS):
         for c in range(COLS):
             cell = sheet.crop((c * cw, r * ch, (c + 1) * cw, (r + 1) * ch))
-            bbox = cell.getbbox()
+            bbox = visible_bbox(cell)
             out.append(cell.crop(bbox) if bbox else cell)
     return out
 
@@ -106,7 +121,7 @@ def from_sheet(path: str) -> list[Image.Image]:
 
 def derived(asset: str) -> list[Image.Image]:
     base = Image.open(os.path.join(ROOT, "assets", "pets", f"{asset}_lv1_baby.png")).convert("RGBA")
-    base = base.crop(base.getbbox())
+    base = base.crop(visible_bbox(base))
     scale = (FRAME * FILL) / base.size[1]
 
     def frame(img: Image.Image, lift: int = 0) -> Image.Image:
@@ -144,10 +159,15 @@ def main() -> None:
         assert len(frames) == 8
         out_dir = os.path.join(OUT, pet)
         os.makedirs(out_dir, exist_ok=True)
+        baselines = []
         for name, f in zip(FRAME_NAMES, frames):
             assert f.size == (FRAME, FRAME)
             f.save(os.path.join(out_dir, f"{name}.png"), optimize=True)
-        manifest[pet] = {"source": source, "frame": FRAME, "frames": FRAME_NAMES}
+            box = visible_bbox(f)
+            baselines.append(box[3] if box else 0)
+        spread = max(baselines) - min(baselines)
+        assert spread <= 2, f"{pet}: feet baselines differ by {spread}px — the sprite would jump between frames"
+        manifest[pet] = {"source": source, "frame": FRAME, "frames": FRAME_NAMES, "baseline": max(baselines)}
         print(f"{pet}: 8 frames ({source})")
     with open(os.path.join(OUT, "manifest.json"), "w", encoding="utf-8") as fh:
         json.dump(manifest, fh, indent=2)

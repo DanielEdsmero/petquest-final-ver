@@ -1963,3 +1963,114 @@ Reanimated's Babel plugin is still unverified on a device from this session.
 - [ ] Reduce Motion: breathing, hops and walking off; frames and cues still shown
 - [ ] Nothing scrolls sideways at 320 pt on Home, Pet or View Pet
 - [ ] Wake-up loader still plays on launch and can be skipped; auth, evidence, admin, Accessories unchanged
+
+---
+
+## View Pet close-up: frame animation (2026-09-17)
+
+Baseline `ba092ef`, 339/339. Mobile only; no web, SQL, verification, award or
+economy file changed. The close-up previously held ONE frame per mood and
+animated the whole image with a breath + hop — the "generic scaling" the
+brief rules out. It is now a frame-by-frame clip player.
+
+### A defect fixed first: the frames were not aligned
+
+`scripts/slice-sprite-sheets.py` cropped each cell with `Image.getbbox()`.
+These sheets carry transparent pixels that still hold colour (alpha 0,
+RGB ≠ 0), and `getbbox()` counts those, so every cell got a different
+invisible skirt and the **visible foot line moved by up to 20 px between
+frames** — the pet would have jumped on every frame swap. The slicer now
+measures a thresholded alpha channel (`visible_bbox`), and asserts the
+baseline spread is ≤ 2 px before writing. Re-sliced: dragon 1 px, cat 0 px,
+wolf 0 px. The manifest records the baseline.
+
+Also verified numerically (mirror-similarity + upper-body mass centre) that
+`f3/f4` really do face **left** and `f5/f6` **right**, so the walk directions
+on Home were correct and the side poses are genuine head-turn art.
+
+### What the eight frames actually are
+
+| Frame | Content | Used for |
+|---|---|---|
+| f1 idle | sitting, front, eyes open | idle, breathe, the front beat of look-around |
+| f2 blink | sitting, front, eyes closed | blink, a beat inside grooming |
+| f3/f4 | standing side, head **left** (2-pose cycle) | look-left, the food glance, shake-off, wolf run |
+| f5/f6 | standing side, head **right** (2-pose cycle) | look-right, shake-off, wolf run |
+| f7 happy | front, mouth open, arms/wings up | happy, wing flap, paw wave |
+| f8 interact | dragon lying · cat grooming a paw · wolf nose-down | rest, grooming, eating |
+
+### New: `src/data/closeupModel.ts` (pure)
+
+A **clip** = ordered `{ frame, ms }` steps + an optional motion track + a
+breathe flag + an accessibility label. 10 fps for animated segments
+(`FRAME_MS` 100); poses are held longer on purpose.
+
+| State | How it is built from real frames |
+|---|---|
+| `breathe` | idle held, 2 % sprite scale (1.8 s; 2.6 s when low) |
+| `blink` | **f2** 160 ms → idle 120 ms |
+| `idle` | idle held |
+| `lookAround` | idle → **f3 (head left)** → idle → **f5 (head right)** → idle |
+| `rest` | **f8** held, slow breath, no travel |
+| `hungry` | idle → f3 → f4 → f3 → idle (a turn-and-look toward the food side), slow |
+| `needsCleaning` | cat: **f8 grooming** + blink + f8. dragon/wolf: f3↔f5 at 90 ms with a ±3 px wobble = shake-off |
+| `happy` | dragon: happy↔idle ×3 + hold, with a −20 px hover track. cat: f8↔f7 stretch/paw-wave + 10 px lift. wolf: f5↔f6 run cycle ×6 + 7 px bounce with a ±2 px drift |
+| `careReaction` | feed: look → f8 (head down) → blink → happy. wash: the shake, 8 cycles. play: the species happy clip |
+
+The scheduler `nextClip()` is weighted per mood and never repeats a clip back
+to back (except breathing), so the loop reads *breathe → blink → idle →
+lookAround → idle → species action*. A low mood can never draw the happy
+clip; a sad pet never draws lookAround.
+
+### Rewritten: `src/components/PetExpression.tsx`
+
+Two systems. **Frames:** a self-scheduling `setTimeout` chain walks the
+clip's steps — one state update per step, never per render. **Motion:** the
+track is played as consecutive `Animated.timing` segments on an
+`Animated.ValueXY` (native driver), so a hover/bounce/shiver interpolates
+continuously and is clamped to `MAX_OFFSET` (24 pt). Breathing is a 2 % scale
+of the sprite image, only during clips that ask for it. Stops on blur
+(`useFocusEffect`), background (`AppState`) and unmount. Reduce Motion holds
+one pose per mood (`REDUCED_FRAME`, never a walk frame) with no timers at all.
+`onStateChange` is held in a ref — passing it inline would otherwise change
+`play`'s identity each render and restart the clip in a loop.
+
+### Other changes
+
+- `moodModel.ts`: priority is now the brief's fixed order — **needsCleaning → hungry → lowHappiness → balanced → happy** (cleanliness first even when hunger is lower; `veryLow` removed). Added `resting` lines ("I'm having a little rest."); "Could I have a bath?" → "Could I have a wash?".
+- `useMood(stats, petId, event, resting)`: while the close-up plays its rest clip the *line* changes, the mood does not.
+- `companion/view.tsx`: tracks the current clip state, passes `resting`, and the stage gained top padding so a hover never clips.
+- Non-Baby stages still fall back to the evolution portrait (held pose + breath) — the sheets are baby art.
+
+### Results
+
+| Check | Result |
+|---|---|
+| Mobile `npm test` | ✅ 369/369 (was 339; +30 in `tests/closeup.test.ts`, 3 mood assertions updated) |
+| `npm run typecheck` | ✅ clean |
+| `npx expo export --platform ios` | ✅ |
+| Secret scan | ✅ 0 hits |
+| Web `npm test` + `npm run build` | ✅ 198/198, builds |
+
+### Art still to be drawn
+
+The sheets have no frames for these, so they are **not** implemented (rather
+than faked with transforms): separate ear-twitch, tail-swish, wing-fold and
+eye-direction poses; a dedicated breathing pose; a worried or embarrassed
+face; juvenile/adult/elder animation of any kind. Adding a second sheet row
+per stage would let `closeupModel` use them with no component change.
+
+### User-required iPhone checklist (Expo Go)
+
+- [ ] Pet → View pet: the correct companion, large; it breathes, blinks, and **turns its head left and right** (look-around) — not a bouncing card
+- [ ] The feet stay on one line through every frame swap (this was the alignment bug)
+- [ ] Low cleanliness: the cat grooms a paw; the dragon/wolf shake with dust
+- [ ] Low hunger: it turns and looks toward its food, slower, "My tummy is rumbling."
+- [ ] Low happiness: subdued, longer breaths, rests; "Can we spend time together?"
+- [ ] High happiness: the dragon flaps and hovers · the cat stretches and waves a paw · the wolf runs on the spot — each different
+- [ ] While resting the line reads "I'm having a little rest."
+- [ ] Feed → head down and eat, only after the success notice; Wash → shake-off; Play → the species action; Cancel / insufficient points → no reaction
+- [ ] Tap the pet → the species action
+- [ ] Leave the screen and come back, then background and resume: the animation does not double up or speed up
+- [ ] Reduce Motion: a still pose per mood, no movement; stats and message still readable
+- [ ] Narrow iPhone: nothing overflows; the pet never covers the back button, bubble, rings or buttons

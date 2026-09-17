@@ -19,6 +19,8 @@ export function useMood(
   stats: CareStats | null,
   petId: PetId | null,
   event: { kind: 'verified' | 'greet'; nonce: number } | null = null,
+  /** True while the close-up is playing its rest clip — changes the line, not the mood. */
+  resting = false,
 ): { mood: Mood; message: string | null } {
   const [moodState, setMoodState] = useState<MoodState | null>(null);
   const [dialogue, setDialogue] = useState<Dialogue>(null);
@@ -38,8 +40,8 @@ export function useMood(
       setDialogue((prev) => nextDialogue(prev, event.kind, petId, now, Math.random, true));
       return;
     }
-    setDialogue((prev) => nextDialogue(prev, mood, petId, now, Math.random));
-  }, [mood, petId, event]);
+    setDialogue((prev) => nextDialogue(prev, resting ? 'resting' : mood, petId, now, Math.random));
+  }, [mood, petId, event, resting]);
 
   return { mood, message: dialogue?.text ?? null };
 }

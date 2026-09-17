@@ -11,7 +11,8 @@
       "f6_walk_right_b",
       "f7_happy",
       "f8_interact"
-    ]
+    ],
+    "baseline": 124
   },
   "cat": {
     "source": "sheet",
@@ -25,7 +26,8 @@
       "f6_walk_right_b",
       "f7_happy",
       "f8_interact"
-    ]
+    ],
+    "baseline": 124
   },
   "wolf": {
     "source": "sheet",
@@ -39,6 +41,7 @@
       "f6_walk_right_b",
       "f7_happy",
       "f8_interact"
-    ]
+    ],
+    "baseline": 124
   }
 }

@@ -40,9 +40,10 @@ const PETS = Object.keys(PET_CATALOG) as PetId[];
 const stats = (hunger: number, cleanliness: number, happiness: number): CareStats => ({ hunger, cleanliness, happiness });
 
 describe('1. presentation state from server stats', () => {
-  test('the most pressing need wins, then celebration, then calm', () => {
-    assert.equal(rawMood(stats(80, 10, 80)), 'unclean', 'very low cleanliness first');
-    assert.equal(rawMood(stats(20, 30, 80)), 'hungry', 'low hunger beats merely-low cleanliness');
+  test('the fixed priority holds: needsCleaning → hungry → sad → balanced → happy', () => {
+    assert.equal(rawMood(stats(80, 10, 80)), 'unclean');
+    assert.equal(rawMood(stats(20, 30, 80)), 'unclean', 'cleanliness is first even when hunger is lower');
+    assert.equal(rawMood(stats(20, 60, 20)), 'hungry', 'then hunger, before happiness');
     assert.equal(rawMood(stats(50, 30, 80)), 'unclean');
     assert.equal(rawMood(stats(50, 50, 20)), 'sad');
     assert.equal(rawMood(stats(50, 50, 50)), 'balanced');
@@ -230,7 +231,7 @@ describe('5. screens: mood from server stats, reactions from confirmed replies',
   test('useMood reads only stats and a server-confirmed event; never writes', () => {
     const hook = read('src/hooks/useMood.ts');
     assert.match(hook, /resolveMood\(prev, stats, now\)/);
-    assert.match(hook, /nextDialogue\(prev, mood, petId, now, Math\.random\)/);
+    assert.match(hook, /nextDialogue\(prev, resting \? 'resting' : mood, petId, now, Math\.random\)/);
     assert.doesNotMatch(hook, /supabase|rpc|fetch\(/);
   });
 
@@ -251,11 +252,11 @@ describe('5. screens: mood from server stats, reactions from confirmed replies',
     assert.doesNotMatch(comp, /require\(/, 'cues are drawn, not extra images');
   });
 
-  test('the expression view never distorts the portrait beyond a breath and a hop', () => {
+  test('the expression view never distorts the pet beyond a 2 % breath and a bounded offset', () => {
     const src = read('src/components/PetExpression.tsx');
-    assert.match(src, /outputRange: \[1, mood === 'sad' \? 1\.012 : 1\.02\]/);
+    assert.match(src, /outputRange: \[1, 1\.02\]/);
     assert.doesNotMatch(src, /rotate|skew|scaleX|scaleY/);
-    assert.match(src, /frames \? frames\[MOOD_FRAME\[mood\]\] : portrait/);
+    assert.match(src, /frames \? frames\[shownFrame\] : portrait/);
   });
 });
 

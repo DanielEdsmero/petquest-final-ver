@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/auth/AuthProvider';
@@ -11,6 +11,7 @@ import { ProgressBar, SectionLabel, Skeleton, StatusPill, Surface, TextButton } 
 import { equippedGlyphs } from '@/data/accessoryModel';
 import { fetchEquippedAccessories } from '@/data/accessories';
 import { CARE_ACTIONS, CARE_COST } from '@/data/careModel';
+import { type CloseupState } from '@/data/closeupModel';
 import { MOOD_LABEL } from '@/data/moodModel';
 import { STAT_META, homeFor } from '@/data/petHomeModel';
 import { LEGENDARY_MIN, PET_CATALOG, evolutionProgress, petIdOf, stageName } from '@/data/petModel';
@@ -67,7 +68,9 @@ export default function ViewPetScreen() {
     petName: meta?.name ?? null,
     refreshProfile,
   });
-  const { mood, message } = useMood(liveStats, petId);
+  /* What the close-up is playing right now — the rest clip changes the line. */
+  const [closeup, setCloseup] = useState<{ state: CloseupState; label: string } | null>(null);
+  const { mood, message } = useMood(liveStats, petId, null, closeup?.state === 'rest');
 
   const onRefresh = useCallback(async () => {
     await Promise.all([refreshProfile(), stats.refresh(), equipped.refresh()]);
@@ -84,6 +87,7 @@ export default function ViewPetScreen() {
           mood={mood}
           petId={petId}
           reaction={reaction}
+          onStateChange={(state, label) => setCloseup({ state, label })}
           accessibilityLabel={meta ? `${meta.name}, your ${meta.species}, ${stageName(level)} stage, ${MOOD_LABEL[mood].toLowerCase()}` : 'No companion yet'}
         />
         <View style={styles.stageFoot}>
@@ -196,7 +200,8 @@ export default function ViewPetScreen() {
 const STAT_ICONS = { hunger: 'restaurant-outline', cleanliness: 'water-outline', happiness: 'happy-outline' } as const;
 
 const styles = StyleSheet.create({
-  stage: { alignItems: 'center', justifyContent: 'center', paddingTop: Spacing.lg, paddingBottom: Spacing.md, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden' },
+  // paddingTop leaves room for the hover/bounce offsets (MAX_OFFSET) so no clip clips.
+  stage: { alignItems: 'center', justifyContent: 'center', paddingTop: Spacing.xl, paddingBottom: Spacing.md, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden' },
   disc: { position: 'absolute', width: 210, height: 210, borderRadius: 105, opacity: 0.3, top: Spacing.lg + 10 },
   stageFoot: { alignItems: 'center', marginTop: Spacing.sm, gap: 2 },
   petName: { color: Colors.ink, fontSize: FontSize.lg, fontWeight: '700' },

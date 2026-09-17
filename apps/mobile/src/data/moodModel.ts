@@ -21,8 +21,6 @@ export type Mood = 'unclean' | 'hungry' | 'sad' | 'balanced' | 'happy' | 'thrivi
 export const THRESHOLDS = {
   /** Below this a stat is "low" (matches statState's "Needs attention"). */
   low: 35,
-  /** Cleanliness this low is the one the pet complains about first. */
-  veryLow: 25,
   /** At or above this a stat is "high". */
   high: 80,
   /** A mood only flips back once the value has moved this far past the line. */
@@ -34,15 +32,18 @@ export const THRESHOLDS = {
 } as const;
 
 /**
- * The raw mood for a set of stats, in priority order: the most pressing need
- * wins, then celebration, then calm.
+ * The raw mood for a set of stats, in the fixed priority the brief sets:
+ *
+ *   needsCleaning → hungry → lowHappiness → balanced → happy
+ *
+ * so when two stats are low the answer is deterministic and never depends on
+ * which one is lower.
  */
 export function rawMood(stats: CareStats | null): Mood {
   if (!stats) return 'balanced';
   const { hunger, cleanliness, happiness } = stats;
-  if (cleanliness < THRESHOLDS.veryLow) return 'unclean';
-  if (hunger < THRESHOLDS.low) return 'hungry';
   if (cleanliness < THRESHOLDS.low) return 'unclean';
+  if (hunger < THRESHOLDS.low) return 'hungry';
   if (happiness < THRESHOLDS.low) return 'sad';
   if (hunger >= THRESHOLDS.high && cleanliness >= THRESHOLDS.high && happiness >= THRESHOLDS.high) return 'thriving';
   if (happiness >= THRESHOLDS.high) return 'happy';
@@ -171,11 +172,11 @@ export const FLOURISH: Record<PetId, Flourish> = {
 
 /* ── Dialogue ── */
 
-export type Line = { mood: Mood | 'verified' | 'greet'; text: string; pet?: PetId };
+export type Line = { mood: Mood | 'verified' | 'greet' | 'resting'; text: string; pet?: PetId };
 
 /** Short, original, never a claim about points or approval. */
 export const LINES: Line[] = [
-  { mood: 'unclean', text: 'Could I have a bath?' },
+  { mood: 'unclean', text: 'Could I have a wash?' },
   { mood: 'unclean', text: 'I’m feeling a little dusty.' },
   { mood: 'unclean', text: 'My scales feel gritty.', pet: 'dragon' },
   { mood: 'unclean', text: 'My fur is all tangled.', pet: 'cat' },
@@ -192,6 +193,8 @@ export const LINES: Line[] = [
   { mood: 'happy', text: 'I love spending time with you!' },
   { mood: 'thriving', text: 'I feel amazing!' },
   { mood: 'thriving', text: 'Nothing could be better than this.' },
+  { mood: 'resting', text: 'I’m having a little rest.' },
+  { mood: 'resting', text: 'Just resting my eyes.' },
   { mood: 'verified', text: 'You did it! I’m proud of you.' },
   { mood: 'greet', text: 'Hello again!' },
 ];
