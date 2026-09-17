@@ -1,22 +1,26 @@
 /*
- * View Pet close-up animation.
+ * View Pet close-up animation, on the supplied dedicated close-up frames.
  *
- * Blocks 1–3 drive the clip model: real frames, timings inside the frame
- * rate, bounded motion, per-species actions, a scheduler that never repeats
- * one effect. Block 4 checks the frames on disk — above all that the feet
- * baseline is identical across frames, which is what stops the pet jumping.
- * Blocks 5–6 guard the player and the screen.
+ * Blocks 1–3 drive the clip model: every step is one of the eight real
+ * frames, timings respect the frame rate, motion is bounded and continuous,
+ * each species has its own action, and the scheduler never repeats one
+ * effect. Block 4 checks the imported art on disk — above all the shared
+ * baseline, which is what stops the pet jumping between frames. Blocks 5–6
+ * guard the player and the screen.
  */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
   CLIPS,
   CLIP_FPS,
+  CLOSEUP_FILES,
+  CLOSEUP_FRAMES,
   FRAME_MS,
+  LOOK_AROUND_NEEDS_ART,
   MAX_OFFSET,
   REDUCED_FRAME,
   careClip,
@@ -25,11 +29,12 @@ import {
   motionAt,
   nextClip,
   type Clip,
+  type CloseupFrame,
   type CloseupState,
 } from '../src/data/closeupModel.ts';
 import { MOOD_LABEL, type Mood } from '../src/data/moodModel.ts';
 import { PET_CATALOG, type PetId } from '../src/data/petModel.ts';
-import { FRAME_KEYS, FRAME_SIZE, seededRng, type FrameKey } from '../src/data/spriteModel.ts';
+import { seededRng } from '../src/data/spriteModel.ts';
 
 const MOBILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p: string) => readFileSync(path.join(MOBILE, p), 'utf8');
@@ -45,47 +50,65 @@ function allClips(pet: PetId): Clip[] {
     let prev: Clip | null = null;
     for (let i = 0; i < 200; i++) {
       prev = nextClip(prev, mood, pet, rng);
-      if (!out.some((c) => c.state === prev!.state && c.label === prev!.label)) out.push(prev);
+      if (!out.some((c) => c.label === prev!.label)) out.push(prev);
     }
   }
   return out;
 }
 
-describe('1. clips are built from real frames at a real frame rate', () => {
-  test('every step names one of the eight sheet frames', () => {
+describe('1. clips are built from the real close-up frames', () => {
+  test('every step names one of the eight supplied frames', () => {
+    assert.deepEqual([...CLOSEUP_FRAMES], ['idle', 'breathe', 'blink', 'idleReturn', 'happy', 'hungry', 'needsCleaning', 'careReaction']);
     for (const pet of PETS) {
       for (const clip of allClips(pet)) {
         assert.ok(clip.steps.length > 0, `${pet}/${clip.state} has no steps`);
-        for (const s of clip.steps) assert.ok((FRAME_KEYS as readonly string[]).includes(s.frame), `${pet}/${clip.state}: unknown frame ${s.frame}`);
+        for (const s of clip.steps) assert.ok((CLOSEUP_FRAMES as readonly string[]).includes(s.frame), `${pet}/${clip.state}: unknown frame ${s.frame}`);
       }
     }
   });
 
-  test('animated segments run at 10 fps; nothing is faster than the frame rate', () => {
+  test('animated beats respect 10 fps; poses are held, not stalled', () => {
     assert.equal(CLIP_FPS, 10);
     assert.equal(FRAME_MS, 100);
     for (const pet of PETS) {
       for (const clip of allClips(pet)) {
         for (const s of clip.steps) {
-          assert.ok(s.ms >= 80, `${pet}/${clip.state}: ${s.ms}ms step is faster than 12 fps`);
-          assert.ok(s.ms <= 2600, `${pet}/${clip.state}: ${s.ms}ms is a stall, not a pose`);
+          assert.ok(s.ms >= 100, `${pet}/${clip.state}: ${s.ms}ms step is faster than the frame rate`);
+          assert.ok(s.ms <= 2000, `${pet}/${clip.state}: ${s.ms}ms is a stall`);
         }
-        assert.ok(clipMs(clip) >= 200 && clipMs(clip) <= 4000, `${pet}/${clip.state}: ${clipMs(clip)}ms total`);
+        assert.ok(clipMs(clip) >= 400 && clipMs(clip) <= 4600, `${pet}/${clip.state}: ${clipMs(clip)}ms total`);
       }
     }
   });
 
+  test('breathing is a real four-frame cycle, not a scale', () => {
+    const breathe = allClips('cat').filter((c) => c.state === 'breathe');
+    assert.ok(breathe.length >= 2, 'a normal and a slow breath');
+    for (const c of breathe) {
+      assert.deepEqual(c.steps.map((s) => s.frame), ['idle', 'breathe', 'idleReturn', 'idle']);
+      assert.equal(c.motion, undefined, 'breathing does not move the pet');
+    }
+    const fast = breathe.find((c) => c.label.includes('quietly'))!;
+    const slow = breathe.find((c) => c.label.includes('slowly'))!;
+    assert.ok(clipMs(slow) > clipMs(fast), 'the slow breath is slower');
+  });
+
+  test('blink uses the eyes-closed frame and returns through the settle pose', () => {
+    const blink = allClips('wolf').find((c) => c.state === 'blink')!;
+    assert.deepEqual(blink.steps.map((s) => s.frame), ['idle', 'blink', 'idleReturn']);
+    assert.ok(blink.steps.find((s) => s.frame === 'blink')!.ms <= 200, 'a blink is quick');
+  });
+
   test('frameAt walks the steps in order and holds the last frame past the end', () => {
-    const clip: Clip = { state: 'idle', steps: [{ frame: 'idle', ms: 100 }, { frame: 'blink', ms: 200 }], breathe: true, label: 'x' };
+    const clip: Clip = { state: 'idle', steps: [{ frame: 'idle', ms: 100 }, { frame: 'blink', ms: 200 }], label: 'x' };
     assert.equal(frameAt(clip, 0).frame, 'idle');
     assert.equal(frameAt(clip, 99).frame, 'idle');
     assert.equal(frameAt(clip, 100).frame, 'blink');
-    assert.equal(frameAt(clip, 299).frame, 'blink');
     assert.equal(frameAt(clip, 5000).frame, 'blink');
     assert.deepEqual([0, 100].map((t) => frameAt(clip, t).index), [0, 1]);
   });
 
-  test('a clip that moves interpolates continuously and stays inside the stage', () => {
+  test('a clip that moves interpolates continuously, stays in the stage and returns to rest', () => {
     for (const pet of PETS) {
       for (const clip of allClips(pet)) {
         if (!clip.motion) continue;
@@ -94,12 +117,9 @@ describe('1. clips are built from real frames at a real frame rate', () => {
         for (let t = 0; t <= total; t += 20) {
           const m = motionAt(clip, t);
           assert.ok(Math.abs(m.dx) <= MAX_OFFSET && Math.abs(m.dy) <= MAX_OFFSET, `${pet}/${clip.state} leaves the stage at ${t}ms`);
-          // No step bigger than a few points per 20 ms — i.e. no teleporting.
           assert.ok(Math.abs(m.dx - prev.dx) <= 4 && Math.abs(m.dy - prev.dy) <= 4, `${pet}/${clip.state} jumps at ${t}ms`);
           prev = m;
         }
-        // It genuinely moves on at least one axis (a shake is a ±3 px wobble,
-        // a hover is a ~20 px lift), and it comes back to rest.
         const peak = Math.max(
           ...Array.from({ length: 60 }, (_, i) => {
             const m = motionAt(clip, (total * i) / 60);
@@ -111,74 +131,80 @@ describe('1. clips are built from real frames at a real frame rate', () => {
         assert.ok(Math.abs(end.dx) <= 1 && Math.abs(end.dy) <= 1, `${pet}/${clip.state} ends off-centre`);
       }
     }
-    assert.deepEqual(motionAt({ state: 'idle', steps: [{ frame: 'idle', ms: 100 }], breathe: true, label: 'x' }, 50), { dx: 0, dy: 0 });
+    assert.deepEqual(motionAt({ state: 'idle', steps: [{ frame: 'idle', ms: 100 }], label: 'x' }, 50), { dx: 0, dy: 0 });
   });
 });
 
-describe('2. the required states exist and are species-appropriate', () => {
-  test('all nine states from the brief are reachable', () => {
-    const required: CloseupState[] = ['breathe', 'blink', 'idle', 'lookAround', 'rest', 'happy', 'hungry', 'needsCleaning', 'careReaction'];
+describe('2. the states the art supports, and the one it does not', () => {
+  test('the implemented states are reachable for every companion', () => {
+    const required: CloseupState[] = ['breathe', 'blink', 'idle', 'settle', 'rest', 'happy', 'hungry', 'needsCleaning', 'careReaction'];
     for (const pet of PETS) {
       const seen = new Set(allClips(pet).map((c) => c.state));
       for (const s of required) assert.ok(seen.has(s), `${pet} never reaches ${s}`);
     }
   });
 
-  test('look-around is a genuine head turn: front → left pose → front → right pose → front', () => {
-    const look = allClips('cat').find((c) => c.state === 'lookAround')!;
-    assert.deepEqual(look.steps.map((s) => s.frame), ['idle', 'walkLeftA', 'idle', 'walkRightA', 'idle']);
-    // Both side poses are used, so the head turns each way.
-    assert.ok(look.steps.some((s) => s.frame.startsWith('walkLeft')) && look.steps.some((s) => s.frame.startsWith('walkRight')));
+  test('look-around is declared as missing art rather than faked', () => {
+    // The supplied set has no head-turn pose, so nothing simulates one.
+    assert.equal(LOOK_AROUND_NEEDS_ART, true);
+    const states = new Set(PETS.flatMap((p) => allClips(p).map((c) => c.state)));
+    assert.ok(!states.has('lookAround' as CloseupState));
+    assert.match(read('src/data/closeupModel.ts'), /head-turn \(look-around\) pose/);
   });
 
-  test('each species has its own happy action, and it is not a shared bounce', () => {
+  test('each state uses its own dedicated frame', () => {
+    const hungry = allClips('dragon').find((c) => c.state === 'hungry')!;
+    assert.ok(hungry.steps.some((s) => s.frame === 'hungry'));
+    assert.equal(hungry.motion, undefined, 'a glance does not travel');
+    for (const pet of PETS) {
+      assert.ok(CLIPS[pet].needsCleaning.steps.some((s) => s.frame === 'needsCleaning'));
+      assert.ok(CLIPS[pet].happy.steps.some((s) => s.frame === 'happy'));
+      assert.ok(careClip(pet, 'feed').steps.some((s) => s.frame === 'careReaction'));
+      assert.ok(careClip(pet, 'feed').steps.some((s) => s.frame === 'hungry'), 'feeding starts by looking at the food');
+      assert.ok(careClip(pet, 'wash').steps.some((s) => s.frame === 'needsCleaning'), 'washing starts from the dusty pose');
+    }
+  });
+
+  test('rest is a long eyes-closed hold with a stir, and no movement', () => {
+    const rest = allClips('cat').find((c) => c.state === 'rest')!;
+    assert.deepEqual(rest.steps.map((s) => s.frame), ['blink', 'idleReturn', 'blink', 'idle']);
+    assert.ok(rest.steps.filter((s) => s.frame === 'blink').every((s) => s.ms >= 1500), 'the eyes stay closed');
+    assert.equal(rest.motion, undefined);
+    assert.match(rest.label, /rest/i);
+  });
+
+  test('each species has a distinct happy action', () => {
     const dragon = CLIPS.dragon.happy;
     const cat = CLIPS.cat.happy;
     const wolf = CLIPS.wolf.happy;
-    // Dragon: wing-flap cycle plus a sustained hover (the deepest lift of the three).
-    assert.match(dragon.label, /wing|hover/i);
     const lift = (c: Clip) => Math.max(...Array.from({ length: 40 }, (_, i) => -motionAt(c, (clipMs(c) * i) / 40).dy));
-    assert.ok(lift(dragon) > lift(cat) && lift(dragon) > lift(wolf), 'only the dragon really leaves the ground');
-    // Cat: uses its own stretch/paw pose, not a wing flap.
+    // Only the dragon really leaves the ground, and it holds the hover.
+    assert.ok(lift(dragon) > lift(cat) && lift(dragon) > lift(wolf), `lifts: dragon ${lift(dragon)}, cat ${lift(cat)}, wolf ${lift(wolf)}`);
+    assert.match(dragon.label, /wing|hover/i);
     assert.match(cat.label, /stretch|paw/i);
-    assert.ok(cat.steps.some((s) => s.frame === 'interact'));
-    // Wolf: a grounded run-in-place cycle, no hover.
     assert.match(wolf.label, /bounc/i);
-    assert.ok(wolf.steps.filter((s) => s.frame.startsWith('walkRight')).length >= 6, 'the wolf uses a run cycle');
-    assert.ok(!/hover|fly|flap/i.test(wolf.label), 'the wolf must not fly');
+    assert.ok(!/hover|fl(y|ap)/i.test(wolf.label), 'the wolf must not fly');
+    // The wolf's is the quickest cycle (a run-in-place feel).
+    const beats = (c: Clip) => c.steps.filter((s) => s.ms <= 160).length;
+    assert.ok(beats(wolf) > beats(cat), 'the wolf bounces faster than the cat stretches');
     for (const [a, b] of [[dragon, cat], [cat, wolf], [dragon, wolf]] as [Clip, Clip][]) {
-      assert.notDeepEqual(a.steps.map((s) => s.frame), b.steps.map((s) => s.frame), 'two species share a happy clip');
+      assert.notDeepEqual(
+        a.steps.map((s) => `${s.frame}:${s.ms}`),
+        b.steps.map((s) => `${s.frame}:${s.ms}`),
+        'two species share a happy clip',
+      );
     }
   });
 
-  test('rest is the low pose with a slow breath, and no travel', () => {
+  test('a wash shakes side to side; a hover only goes up', () => {
     for (const pet of PETS) {
-      const rest = CLIPS[pet].rest;
-      assert.equal(rest.steps[0].frame, 'interact');
-      assert.equal(rest.breathe, true);
-      assert.equal(rest.slow, true);
-      assert.equal(rest.motion, undefined);
-      assert.match(rest.label, /rest|curl/i);
+      const wash = careClip(pet, 'wash');
+      const dxPeak = Math.max(...Array.from({ length: 60 }, (_, i) => Math.abs(motionAt(wash, (clipMs(wash) * i) / 60).dx)));
+      assert.ok(dxPeak >= 2.5, `${pet}: the wash does not shake (${dxPeak})`);
     }
-  });
-
-  test('needs-cleaning uses grooming for the cat and a shake for the others', () => {
-    assert.ok(CLIPS.cat.needsCleaning.steps.some((s) => s.frame === 'interact'), 'the cat grooms');
-    assert.match(CLIPS.cat.needsCleaning.label, /groom/i);
-    for (const pet of ['dragon', 'wolf'] as PetId[]) {
-      const c = CLIPS[pet].needsCleaning;
-      assert.match(c.label, /shak/i);
-      // A shake alternates the two side poses quickly.
-      assert.ok(c.steps.length >= 8 && c.steps.every((s) => s.ms <= 100));
-      assert.ok(c.steps.some((s) => s.frame.startsWith('walkLeft')) && c.steps.some((s) => s.frame.startsWith('walkRight')));
-    }
-  });
-
-  test('hungry looks toward the food side and is slower', () => {
-    const h = allClips('wolf').find((c) => c.state === 'hungry')!;
-    assert.ok(h.steps.some((s) => s.frame.startsWith('walkLeft')), 'it turns to look');
-    assert.equal(h.slow, true);
-    assert.equal(h.motion, undefined, 'a glance does not travel');
+    const hover = CLIPS.dragon.happy;
+    const dragonDx = Math.max(...Array.from({ length: 60 }, (_, i) => Math.abs(motionAt(hover, (clipMs(hover) * i) / 60).dx)));
+    assert.equal(dragonDx, 0, 'the hover is vertical only');
   });
 });
 
@@ -194,10 +220,9 @@ describe('3. the scheduler', () => {
     return out;
   };
 
-  test('the calm loop mixes breathing, blinking, idling and looking around', () => {
+  test('the calm loop mixes breathing, blinking, settling and idling', () => {
     const t = trace('balanced', 'cat');
-    for (const s of ['breathe', 'blink', 'idle', 'lookAround'] as CloseupState[]) assert.ok(t.includes(s), `balanced never ${s}`);
-    // No single clip dominates: the most frequent is under half of the loop.
+    for (const s of ['breathe', 'blink', 'settle', 'idle'] as CloseupState[]) assert.ok(t.includes(s), `balanced never ${s}`);
     const counts = new Map<CloseupState, number>();
     for (const s of t) counts.set(s, (counts.get(s) ?? 0) + 1);
     assert.ok(Math.max(...counts.values()) / t.length < 0.5, 'one effect repeats too much');
@@ -224,12 +249,12 @@ describe('3. the scheduler', () => {
     }
   });
 
-  test('each low mood leads with its own clip', () => {
+  test('each low mood leads with its own clip and is subdued', () => {
     for (const pet of PETS) {
       assert.ok(trace('unclean', pet).filter((s) => s === 'needsCleaning').length > 20, `${pet} rarely cleans while unclean`);
       assert.ok(trace('hungry', pet).filter((s) => s === 'hungry').length > 20, `${pet} rarely looks at food while hungry`);
       const sad = trace('sad', pet);
-      assert.ok(!sad.includes('lookAround'), 'a sad pet does not look around brightly');
+      assert.ok(!sad.includes('happy') && !sad.includes('hungry'));
       assert.ok(sad.filter((s) => s === 'rest' || s === 'breathe').length > 200, 'a sad pet is subdued');
     }
   });
@@ -240,61 +265,86 @@ describe('3. the scheduler', () => {
       assert.equal(careClip(pet, 'feed').state, 'careReaction');
       assert.equal(careClip(pet, 'wash').state, 'careReaction');
       assert.equal(careClip(pet, 'play'), CLIPS[pet].happy, 'play is the species happy action');
-      assert.ok(careClip(pet, 'feed').steps.some((s) => s.frame === 'interact'), 'feeding puts its head down');
-      assert.match(careClip(pet, 'wash').label, /water|shak/i);
     }
   });
 
-  test('reduced motion has a held pose for every mood, and never a walk frame', () => {
+  test('reduced motion has a held pose per mood, and it shows the mood', () => {
     for (const mood of MOODS) {
-      const f: FrameKey = REDUCED_FRAME[mood];
-      assert.ok((FRAME_KEYS as readonly string[]).includes(f), mood);
-      assert.ok(!f.startsWith('walk'), `${mood} holds a walking pose while motion is reduced`);
+      const f: CloseupFrame = REDUCED_FRAME[mood];
+      assert.ok((CLOSEUP_FRAMES as readonly string[]).includes(f), mood);
     }
+    assert.equal(REDUCED_FRAME.unclean, 'needsCleaning');
+    assert.equal(REDUCED_FRAME.hungry, 'hungry');
+    assert.equal(REDUCED_FRAME.happy, 'happy');
+    assert.equal(REDUCED_FRAME.balanced, 'idle');
   });
 });
 
-describe('4. the frames on disk support the animation', () => {
-  /** Visible bounding box from the alpha channel — the same rule the slicer uses. */
-  function alphaBox(file: string): { left: number; right: number; bottom: number } {
-    const b = readFileSync(file);
-    // Minimal PNG reader would be overkill; the slicer asserts the baseline and
-    // records it, so trust its manifest for geometry and check the header here.
-    assert.equal(b.toString('ascii', 1, 4), 'PNG', `${file} is not a PNG`);
-    return { left: 0, right: b.readUInt32BE(16), bottom: b.readUInt32BE(20) };
-  }
+describe('4. the imported art on disk', () => {
+  const manifest = JSON.parse(read('assets/closeup/manifest.json')) as Record<
+    string,
+    { width: number; height: number; baseline: number; resampled: boolean; source: string; asset: string; frames: string[] }
+  >;
 
-  test('every frame is 128×128 RGBA', () => {
+  test('eight frames per companion, from the supplied close-up art', () => {
     for (const pet of PETS) {
-      for (const key of FRAME_KEYS) {
-        const file = path.join(MOBILE, 'assets', 'sprites', pet, `${key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)}`);
-        // The file names are recorded in FRAME_FILES; resolve through it instead.
-        void file;
+      assert.ok(manifest[pet], `${pet} missing from the manifest`);
+      assert.equal(manifest[pet].source, 'supplied_closeup_frames');
+      assert.deepEqual(
+        manifest[pet].frames.slice().sort(),
+        Object.values(CLOSEUP_FILES)
+          .map((f) => f.replace('.png', ''))
+          .sort(),
+      );
+      for (const file of Object.values(CLOSEUP_FILES)) {
+        const p = path.join(MOBILE, 'assets', 'closeup', pet, file);
+        assert.ok(existsSync(p), `${pet}/${file} missing`);
+        const b = readFileSync(p);
+        assert.equal(b.toString('ascii', 1, 4), 'PNG');
+        assert.equal(b.readUInt32BE(16), manifest[pet].width, `${pet}/${file} width`);
+        assert.equal(b.readUInt32BE(20), manifest[pet].height, `${pet}/${file} height`);
+        assert.equal(b[25], 6, `${pet}/${file} is not RGBA — a transparent background would render as a box`);
+        assert.ok(statSync(p).size <= 320 * 1024, `${pet}/${file} is ${Math.round(statSync(p).size / 1024)}KB`);
       }
-      const manifest = JSON.parse(read('assets/sprites/manifest.json')) as Record<string, { frame: number; baseline: number; source: string }>;
-      assert.equal(manifest[pet].frame, FRAME_SIZE);
-      assert.equal(manifest[pet].source, 'sheet');
     }
   });
 
-  test('the slicer aligns the feet: one baseline per set, recorded in the manifest', () => {
-    const manifest = JSON.parse(read('assets/sprites/manifest.json')) as Record<string, { baseline: number }>;
+  test('the art maps to the real PetQuest companions', () => {
+    assert.equal(manifest.dragon.asset, 'arcane_dragon');
+    assert.equal(manifest.cat.asset, 'mystic_cat');
+    assert.equal(manifest.wolf.asset, 'spirit_wolf');
+  });
+
+  test('one shared baseline per companion, and no resampling', () => {
     for (const pet of PETS) {
-      assert.ok(manifest[pet].baseline >= FRAME_SIZE - 8 && manifest[pet].baseline <= FRAME_SIZE, `${pet} baseline ${manifest[pet].baseline}`);
+      assert.equal(manifest[pet].resampled, false, `${pet} was resampled — that softens the art`);
+      assert.ok(manifest[pet].baseline >= manifest[pet].height - 10, `${pet} baseline ${manifest[pet].baseline} of ${manifest[pet].height}`);
+      assert.ok(manifest[pet].height >= 440, `${pet} is only ${manifest[pet].height}px tall for a 220pt view`);
     }
-    // Baselines must agree across companions too, so a swap never shifts the pet.
-    const all = PETS.map((p) => manifest[p].baseline);
-    assert.ok(Math.max(...all) - Math.min(...all) <= 2, `baselines differ across pets: ${all.join(', ')}`);
   });
 
-  test('the slicer measures visible alpha, not getbbox, and refuses a jumpy set', () => {
-    const script = read('scripts/slice-sprite-sheets.py');
-    assert.match(script, /def visible_bbox/);
-    assert.match(script, /alpha = im\.convert\("RGBA"\)\.split\(\)\[3\]\.point/);
-    assert.match(script, /bbox = visible_bbox\(cell\)/);
-    assert.match(script, /assert spread <= 2/);
-    assert.doesNotMatch(script, /bbox = cell\.getbbox\(\)/, 'getbbox counts invisible coloured pixels');
-    void alphaBox(path.join(MOBILE, 'assets', 'sprites', 'cat', 'f1_idle.png'));
+  test('the importer never crops a frame on its own, and checks registration', () => {
+    const script = read('scripts/import-closeup-frames.py');
+    assert.match(script, /one SHARED box, the union of all/);
+    assert.match(script, /frames are not registered/);
+    assert.match(script, /the pet would jump/);
+    assert.match(script, /no transparent border/);
+    assert.match(script, /output frames differ in size/);
+  });
+
+  test('the frame table requires exactly those files and needs a companion', () => {
+    const src = read('src/data/closeupFrames.ts');
+    for (const pet of PETS) {
+      for (const file of Object.values(CLOSEUP_FILES)) assert.match(src, new RegExp(`require\\('@/assets/closeup/${pet}/${file}'\\)`));
+    }
+    assert.equal((src.match(/require\(/g) || []).length, PETS.length * CLOSEUP_FRAMES.length);
+    assert.match(src, /if \(!pet\) return null;/);
+    assert.match(src, /for \(const k of CLOSEUP_FRAMES\) if \(!out\[k\]\) out\[k\] = set\.idle;/);
+  });
+
+  test('the close-up art is a separate set from the home-scene walking sprites', () => {
+    assert.ok(existsSync(path.join(MOBILE, 'assets', 'sprites', 'dragon', 'f1_idle.png')), 'the walking set still exists');
+    assert.match(read('src/data/closeupFrames.ts'), /DIFFERENT set from the walking sprites/);
   });
 });
 
@@ -308,7 +358,7 @@ describe('5. the player', () => {
     assert.match(comp, /playRef\.current\(nextClip\(c, moodRef\.current, petId \?\? 'dragon', rng\)\)/);
   });
 
-  test('motion is a sequence of timings on the native driver, clamped to the stage', () => {
+  test('motion is a sequence of native-driver timings, clamped to the stage', () => {
     assert.match(comp, /Animated\.timing\(offset, \{/);
     assert.match(comp, /duration: Math\.max\(1, b\.at - a\.at\)/);
     assert.match(comp, /useNativeDriver: true/);
@@ -316,14 +366,15 @@ describe('5. the player', () => {
     assert.match(comp, /Animated\.sequence\(segments\)/);
   });
 
-  test('breathing is a scale of the sprite, only while a clip asks for it', () => {
-    assert.match(comp, /if \(!c\.breathe\) \{\s*breath\.setValue\(0\)/);
-    assert.match(comp, /outputRange: \[1, 1\.02\]/);
-    // The card is never scaled or bounced: the transform sits on the image wrapper.
-    assert.doesNotMatch(comp, /styles\.card|Animated\.loop\([\s\S]*?translateY: new Animated\.Value/);
+  test('a Baby companion is animated by frames alone — no scaling', () => {
+    // The only scale is the portrait fallback's breath, and it cannot run for a Baby.
+    assert.match(comp, /if \(animatable \|\| reduced\) \{\s*breath\.setValue\(0\)/);
+    assert.match(comp, /outputRange: \[1, 1\.015\]/);
+    assert.match(comp, /const animatable = !!frames && !!petId;/);
+    assert.doesNotMatch(comp, /c\.breathe|c\.slow/, 'clips no longer carry a breathe flag');
   });
 
-  test('a care clip plays only from the reaction prop, and a tap plays the species action', () => {
+  test('a care clip plays only from the reaction prop, and never touches data', () => {
     assert.match(comp, /if \(!reaction \|\| reaction\.nonce === lastNonce\.current\) return;/);
     assert.match(comp, /playCare\(reaction\.kind\)/);
     assert.match(comp, /careClip\(petId, kind\)/);
@@ -343,24 +394,27 @@ describe('5. the player', () => {
   });
 
   test('the loop cannot be restarted by a parent re-render', () => {
-    // onStateChange is held in a ref, so `play` keeps its identity.
     assert.match(comp, /const onStateRef = useRef\(onStateChange\);/);
     assert.match(comp, /onStateRef\.current\?\.\(c\.state, c\.label\)/);
-    assert.match(comp, /\[runBreath, runMotion, runSteps\],/);
+    assert.match(comp, /\[runMotion, runSteps\],/);
   });
 
-  test('reduced motion and non-Baby stages hold one pose', () => {
-    assert.match(comp, /const shownFrame = reduced \|\| !running \? REDUCED_FRAME\[mood\] : \(frame as keyof FrameSet\);/);
+  test('reduced motion and the portrait fallback hold one pose', () => {
+    assert.match(comp, /const shownFrame = reduced \|\| !running \? REDUCED_FRAME\[mood\] : \(frame as CloseupFrame\);/);
     assert.match(comp, /frames \? frames\[shownFrame\] : portrait/);
-    assert.match(comp, /const animatable = !!frames && !!petId;/);
+  });
+
+  test('the drawn cue is only for the portrait — the frames carry their own', () => {
+    assert.match(comp, /const cue = frames \? null : MOOD_CUE\[mood\];/);
   });
 });
 
 describe('6. the screen', () => {
   const view = app('companion/view.tsx');
 
-  test('only a Baby gets frames; other stages fall back to the portrait', () => {
-    assert.match(view, /const frames = meta && level === 1 \? framesFor\(profile\?\.selected_pet_id\) : null;/);
+  test('only a Baby gets close-up frames; other stages keep the portrait', () => {
+    assert.match(view, /closeupFramesFor\(profile\?\.selected_pet_id\)/);
+    assert.match(view, /meta && level === 1 \?/);
     assert.match(view, /portrait=\{portrait\}/);
     assert.match(view, /spriteFor\(profile\?\.selected_pet_id, level\)/);
   });

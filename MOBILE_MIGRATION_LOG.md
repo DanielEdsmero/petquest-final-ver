@@ -2074,3 +2074,117 @@ per stage would let `closeupModel` use them with no component change.
 - [ ] Leave the screen and come back, then background and resume: the animation does not double up or speed up
 - [ ] Reduce Motion: a still pose per mood, no movement; stats and message still readable
 - [ ] Narrow iPhone: nothing overflows; the pet never covers the back button, bubble, rings or buttons
+
+---
+
+## The supplied close-up frames are in (2026-09-17)
+
+Baseline `d884fbc`, 369/369. Mobile only; no web, SQL, verification, award or
+economy file changed.
+
+### What arrived, and what it replaced
+
+Two folders in `~/Downloads`, eight frames per companion:
+
+| Frame | Content |
+|---|---|
+| `idle` | neutral, sitting, eyes open |
+| `breathe` | chest/head raised — the inhale |
+| `blink` | eyes closed, content |
+| `idle_return` | a second settled pose, measurably distinct from `idle` |
+| `hungry` | eyes lowered, looking toward its food |
+| `needs_cleaning` | dragon: dust motes · cat: squinting mid-groom · wolf: fur dulled |
+| `happy` | open smile, brighter effects |
+| `care_reaction` | eyes closed, blushing, sparkles |
+
+These are the **real PetQuest companions** — purple Arcane Dragon, cream
+Mystic Cat with its crescent, blue Spirit Wolf with its spirit flames. The
+close-up previously reused the home-scene walking sheets, whose identity is
+wrong (teal dragon, purple cat, orange fox). The close-up now uses this set;
+the walking sheets still drive the home scene (see "Still to do").
+
+### Import — `scripts/import-closeup-frames.py`
+
+The supplied frames are already registered: 512 × 512, subject on the same
+vertical band (y 20…500) in all 24. That registration is the reason the
+close-up can cut between frames without the pet shifting, so the importer
+protects it:
+
+- frames are **never cropped individually** — one shared box (the union of the
+  eight visible boxes for that companion) is applied to all of them;
+- **no resampling at all**, so no interpolation and no softening;
+- only RGB is quantised (128 colours, no dither); the 8-bit alpha is kept, so
+  the soft outline survives;
+- it asserts: one canvas size in, tops and baselines within 2 px (else "the
+  frames are not registered" / "the pet would jump"), one output size, a
+  transparent border on every written frame, and baselines still shared after
+  writing.
+
+Output `assets/closeup/<pet>/`: dragon 386 × 492 (1.5 MB), cat 421 × 492
+(1.6 MB), wolf 392 × 492 (1.8 MB) — 4.8 MB for all three, ~1.6 MB decoded for
+the one companion on screen. The iOS export grew 11 MB → 16 MB. Lowering that
+is one constant (`COLOURS`) or an added resize in the importer; native
+resolution was chosen because the pet is this screen's whole subject and
+220 pt needs 660 px on a 3× iPhone.
+
+### Clips rebuilt on the real frames — `src/data/closeupModel.ts`
+
+| State | Frames |
+|---|---|
+| `breathe` | **idle → breathe → idle_return → idle** — a real cycle. The 2 % scale hack is gone. |
+| `blink` | idle → blink → idle_return |
+| `idle` / `settle` | idle held / idle_return held then idle — two genuine resting poses |
+| `rest` | blink 1.9 s → idle_return → blink 1.9 s → idle (dozing with a stir), no movement |
+| `hungry` | idle → **hungry** (held) → idle_return |
+| `needsCleaning` | idle → **needs_cleaning** → blink → needs_cleaning → idle_return; dragon/wolf add a ±3 px shiver |
+| `happy` | dragon: happy↔care_reaction ×2 then held, on a −20 px **hover** · cat: care_reaction↔happy with a 10 px lift (stretch/paw) · wolf: six fast beats with a ±7 px bounce and a ±2 px drift |
+| `careReaction` | feed: hungry → care_reaction → happy → idle · wash: needs_cleaning → care_reaction → happy, with a side-to-side shake · play: the species happy clip |
+
+A Baby companion is now animated by **frames alone — no scaling anywhere**.
+The single remaining scale is a 1.5 % breath used only by the portrait
+fallback (juvenile and older have no close-up art), and it cannot run for a
+Baby: `if (animatable || reduced) breath.setValue(0)`.
+
+`LOOK_AROUND_NEEDS_ART = true`: the set has no head-turn pose, so look-around
+is **not implemented** rather than simulated with a transform. A test asserts
+no clip claims that state.
+
+### Other changes
+
+- `src/data/closeupFrames.ts` — 24 literal `require`s; `closeupFramesFor()` returns null without a companion and falls back to `idle` for a missing key.
+- `PetExpression.tsx` — takes `CloseupFrameSet`; the drawn dust/sparkle overlay now only applies to the portrait fallback, since these frames carry their own effects.
+- `companion/view.tsx` — uses `closeupFramesFor`.
+
+### Results
+
+| Check | Result |
+|---|---|
+| Mobile `npm test` | ✅ 375/375 (was 369; `closeup.test.ts` rewritten for the new frames, 2 assertions in `mood.test.ts` updated) |
+| `npm run typecheck` | ✅ clean |
+| `npx expo export --platform ios` | ✅ (16 MB, was 11 MB) |
+| Secret scan | ✅ 0 hits |
+| Web `npm test` + `npm run build` | ✅ 198/198, builds |
+
+### Still to do (art)
+
+1. **A head-turn pose** per companion — the one required close-up state with no art.
+2. **Juvenile / adult / elder close-up frames** — those stages still show the static evolution portrait.
+3. **The home-scene walking sprites are the wrong companions**: teal dragon, purple cat, orange fox, against the correct purple/cream/blue close-up art. Redrawing the 4 × 2 walking sheets in the real identities would make the two screens agree; `scripts/slice-sprite-sheets.py` re-imports them unchanged.
+
+### User-required iPhone checklist (Expo Go)
+
+- [ ] Pet → View pet: the **correct** companion — purple dragon / cream cat / blue wolf
+- [ ] It breathes as a real 4-frame cycle, blinks with eyes fully closed, and shifts between two settled poses; nothing pulses or scales
+- [ ] The feet/body stay on one line through every frame change
+- [ ] Low cleanliness → the dedicated dusty/grooming pose (cat squints mid-groom; dragon shows dust; wolf's fur dulls), dragon/wolf also shiver
+- [ ] Low hunger → the eyes-lowered "looking at food" pose
+- [ ] Low happiness → slow breathing and long eyes-closed rests; the line reads "I'm having a little rest."
+- [ ] High happiness → dragon flaps and **hovers**; cat stretches and waves a paw; wolf bounces fast on the spot — all three clearly different
+- [ ] Feed → looks at food, then the blushing care pose, then happy — only after the success notice
+- [ ] Wash → dusty pose, then care pose, with a side-to-side shake
+- [ ] Play / tap → the species happy action
+- [ ] Cancel or "Not enough points" → no reaction at all
+- [ ] Leave and return, then background and resume: no doubled or faster animation
+- [ ] Reduce Motion: a still pose that still shows the mood (dusty when unclean, hungry when hungry)
+- [ ] A Juvenile+ companion still shows its portrait with a gentle breath
+- [ ] Narrow iPhone: nothing overflows; the pet never covers the back button, bubble, rings or buttons

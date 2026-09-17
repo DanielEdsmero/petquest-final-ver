@@ -17,7 +17,7 @@ import { STAT_META, homeFor } from '@/data/petHomeModel';
 import { LEGENDARY_MIN, PET_CATALOG, evolutionProgress, petIdOf, stageName } from '@/data/petModel';
 import { spriteFor } from '@/data/petSprites';
 import { fetchPetStats } from '@/data/petStats';
-import { framesFor } from '@/data/spriteFrames';
+import { closeupFramesFor } from '@/data/closeupFrames';
 import { useCare } from '@/hooks/useCare';
 import { useMood } from '@/hooks/useMood';
 import { useAsyncData } from '@/lib/useAsyncData';
@@ -58,7 +58,9 @@ export default function ViewPetScreen() {
   const level = profile?.pet_level ?? progress.level;
   const portrait = spriteFor(profile?.selected_pet_id, level);
   const home = homeFor(profile?.selected_pet_id);
-  const frames = meta && level === 1 ? framesFor(profile?.selected_pet_id) : null;
+  // The supplied close-up art is BABY art: only a Baby-stage companion gets
+  // frames. Juvenile and older keep the evolution portrait (see PetExpression).
+  const frames = meta && level === 1 ? closeupFramesFor(profile?.selected_pet_id) : null;
   const glyphs = useMemo(() => equippedGlyphs(equipped.data), [equipped.data]);
 
   const { liveStats, livePoints, busyAction, reaction, notice, confirmCare } = useCare({

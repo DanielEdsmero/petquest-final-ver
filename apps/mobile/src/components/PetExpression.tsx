@@ -3,10 +3,10 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, AppState, Easing, Pressable, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 
-import { MAX_OFFSET, REDUCED_FRAME, careClip, nextClip, type CareKind, type Clip, type CloseupState } from '@/data/closeupModel';
+import { MAX_OFFSET, REDUCED_FRAME, careClip, nextClip, type CareKind, type Clip, type CloseupFrame, type CloseupState } from '@/data/closeupModel';
+import { type CloseupFrameSet } from '@/data/closeupFrames';
 import { MOOD_CUE, type Mood } from '@/data/moodModel';
 import { type PetId } from '@/data/petModel';
-import { type FrameSet } from '@/data/spriteFrames';
 import { type Reaction } from '@/data/spriteModel';
 import useReducedMotion from '@/hooks/useReducedMotion';
 import { Colors } from '@/theme';
@@ -14,23 +14,27 @@ import { Colors } from '@/theme';
 /**
  * The close-up companion: a frame-by-frame clip player.
  *
- * Two systems, as the brief requires, and the FRAMES are the animation — the
- * card is never scaled or bounced to fake life:
+ * Two systems, and the FRAMES are the animation — the card is never scaled
+ * or bounced to fake life:
  *
  *   A. frames — a self-scheduling timeout chain walks the current clip's
- *      `{ frame, ms }` steps (animated segments at 10 fps, poses held
- *      longer). One state update per step, never per render.
+ *      `{ frame, ms }` steps (animated beats at 10 fps, poses held longer).
+ *      One state update per step, never per render.
  *   B. motion — an `Animated.ValueXY` driven through the clip's motion track
  *      with a sequence of `Animated.timing` segments (native driver), so a
  *      hover, a bounce or a shiver interpolates continuously between points
  *      instead of teleporting. Offsets are bounded by `MAX_OFFSET`.
  *
- * Breathing is a 2 % scale of the sprite image itself, running only during
- * clips that ask for it (there is no breathing frame in the sheets).
+ * Breathing is a real four-frame cycle (idle → breathe → idle_return →
+ * idle), so a Baby companion is animated with **no scaling at all**. The one
+ * exception is the portrait fallback used by juvenile and older stages: no
+ * close-up frames exist for them, so there a slow 1.5 % breath is the only
+ * way to keep the pet from looking like a static image. That is documented
+ * as art still to be drawn rather than hidden.
  *
  * When a clip ends the scheduler picks the next one for the current mood, so
- * the loop reads `breathe → blink → idle → lookAround → idle → species
- * action`. A confirmed care reaction interrupts and then hands control back.
+ * the loop reads `breathe → blink → settle → breathe → species action`. A
+ * confirmed care reaction interrupts and then hands control back.
  *
  * Everything stops on blur, on backgrounding and on unmount. Reduce Motion
  * holds one pose per mood with no timers and no movement at all.
@@ -51,8 +55,8 @@ export function PetExpression({
   accessibilityLabel,
   rng = Math.random,
 }: {
-  /** Sheet frames for a Baby companion, or null to hold the portrait. */
-  frames: FrameSet | null;
+  /** Close-up frames for a Baby companion, or null to hold the portrait. */
+  frames: CloseupFrameSet | null;
   portrait: ImageSourcePropType | null;
   mood: Mood;
   petId: PetId | null;
@@ -68,7 +72,7 @@ export function PetExpression({
   const animatable = !!frames && !!petId;
 
   const [clip, setClip] = useState<Clip | null>(null);
-  const [frame, setFrame] = useState<string>('idle');
+  const [frame, setFrame] = useState<CloseupFrame>('idle');
   const offset = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const breath = useRef(new Animated.Value(0)).current;
 
@@ -157,26 +161,31 @@ export function PetExpression({
     [offset],
   );
 
-  /** The breathing scale: a slow loop, only while the clip asks for it. */
-  const runBreath = useCallback(
-    (c: Clip) => {
-      breathLoop.current?.stop();
-      if (!c.breathe) {
-        breath.setValue(0);
-        breathLoop.current = null;
-        return;
-      }
-      const period = c.slow ? 2600 : 1800;
-      breathLoop.current = Animated.loop(
-        Animated.sequence([
-          Animated.timing(breath, { toValue: 1, duration: period, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-          Animated.timing(breath, { toValue: 0, duration: period, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        ]),
-      );
-      breathLoop.current.start();
-    },
-    [breath],
-  );
+  /**
+   * The portrait-only breath. A Baby companion breathes through real frames,
+   * so this never runs for one; it exists because juvenile and older stages
+   * have no close-up frames and a completely still portrait reads as broken.
+   */
+  const runPortraitBreath = useCallback(() => {
+    breathLoop.current?.stop();
+    if (animatable || reduced) {
+      breath.setValue(0);
+      breathLoop.current = null;
+      return;
+    }
+    breathLoop.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breath, { toValue: 1, duration: 2400, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(breath, { toValue: 0, duration: 2400, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]),
+    );
+    breathLoop.current.start();
+  }, [animatable, reduced, breath]);
+
+  useEffect(() => {
+    runPortraitBreath();
+    return () => breathLoop.current?.stop();
+  }, [runPortraitBreath]);
 
   const play = useCallback(
     (c: Clip) => {
@@ -184,11 +193,10 @@ export function PetExpression({
       clipRef.current = c;
       setClip(c);
       onStateRef.current?.(c.state, c.label);
-      runBreath(c);
       runMotion(c);
       runSteps(c, 0);
     },
-    [runBreath, runMotion, runSteps],
+    [runMotion, runSteps],
   );
   playRef.current = play;
 
@@ -220,12 +228,14 @@ export function PetExpression({
     else playCare(reaction.kind);
   }, [reaction, playCare]);
 
-  /* What to draw. Reduce Motion and non-Baby stages hold a single pose. */
-  const shownFrame = reduced || !running ? REDUCED_FRAME[mood] : (frame as keyof FrameSet);
+  /* What to draw. Reduce Motion holds one pose; a portrait has only itself. */
+  const shownFrame = reduced || !running ? REDUCED_FRAME[mood] : (frame as CloseupFrame);
   const source = frames ? frames[shownFrame] : portrait;
-  const cue = clip?.state === 'happy' || mood === 'happy' || mood === 'thriving' ? 'sparkle' : MOOD_CUE[mood];
-  const scale = breath.interpolate({ inputRange: [0, 1], outputRange: [1, 1.02] });
-  const droop = mood === 'sad' ? 3 : 0;
+  // The frames carry their own sparkles and dust; only the portrait fallback
+  // needs the drawn cue to show a mood at all.
+  const cue = frames ? null : MOOD_CUE[mood];
+  const scale = breath.interpolate({ inputRange: [0, 1], outputRange: [1, 1.015] });
+  const droop = !frames && mood === 'sad' ? 3 : 0;
 
   return (
     <Pressable

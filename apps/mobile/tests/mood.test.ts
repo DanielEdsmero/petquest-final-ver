@@ -252,9 +252,11 @@ describe('5. screens: mood from server stats, reactions from confirmed replies',
     assert.doesNotMatch(comp, /require\(/, 'cues are drawn, not extra images');
   });
 
-  test('the expression view never distorts the pet beyond a 2 % breath and a bounded offset', () => {
+  test('the close-up never distorts the pet: frames for a Baby, a 1.5 % breath only for a portrait', () => {
     const src = read('src/components/PetExpression.tsx');
-    assert.match(src, /outputRange: \[1, 1\.02\]/);
+    // A Baby is animated by frames alone; the scale cannot run for one.
+    assert.match(src, /if \(animatable \|\| reduced\) \{\s*breath\.setValue\(0\)/);
+    assert.match(src, /outputRange: \[1, 1\.015\]/);
     assert.doesNotMatch(src, /rotate|skew|scaleX|scaleY/);
     assert.match(src, /frames \? frames\[shownFrame\] : portrait/);
   });
