@@ -190,7 +190,7 @@ export default function DashboardPage() {
         </AnimatePresence>
 
         {/* Right: points + user + logout */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1 sm:gap-3">
           <ConnectionStatus connection={connection} pendingCount={pendingCount} />
           <StreakCounter streak={currentStreak} longest={longestStreak} />
           <PointsDisplay points={points} />
