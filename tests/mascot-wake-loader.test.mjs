@@ -549,7 +549,7 @@ describe('20. existing flows are untouched', () => {
   test('the dashboard is not mounted behind the loader', () => {
     // Its evolution celebration auto-dismisses after 9s; running it behind a
     // loading screen would burn it unseen.
-    assert.match(APP, /\{showRoutes && <Routes>/)
+    assert.match(APP, /\{showRoutes && (<Suspense[^>]*>)?<Routes>/)
     assert.match(read('src/components/animations/EvolutionOverlay.jsx'), /setTimeout\(\(\) => onDone\?\.\(\), 9000\)/)
   })
   test('quest verification and the validity check still have their own loaders', () => {

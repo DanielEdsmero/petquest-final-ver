@@ -209,7 +209,7 @@ export default function DashboardPage() {
           {/* Leaderboard */}
           <motion.button
             onClick={() => navigate('/leaderboard')}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-nunito font-bold"
+            className="tap-target flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-nunito font-bold"
             style={{ background: 'rgba(245,163,26,0.1)', border: '1px solid rgba(245,163,26,0.25)', color: '#f5a31a' }}
             whileHover={{ background: 'rgba(245,163,26,0.2)' }}
             whileTap={{ scale: 0.93 }}
@@ -241,7 +241,7 @@ export default function DashboardPage() {
           {isAdmin && (
             <motion.button
               onClick={() => navigate('/admin')}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-nunito font-bold"
+              className="tap-target flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-nunito font-bold"
               style={{ background: 'rgba(245,163,26,0.12)', border: '1px solid rgba(245,163,26,0.35)', color: '#f5a31a' }}
               whileHover={{ background: 'rgba(245,163,26,0.22)' }}
               whileTap={{ scale: 0.93 }}
@@ -254,7 +254,8 @@ export default function DashboardPage() {
 
           <motion.button
             onClick={logout}
-            className="p-2 rounded-xl transition-colors"
+            className="tap-target p-2 rounded-xl transition-colors"
+            aria-label="Log out"
             style={{ background: 'rgba(244, 63, 94, 0.08)', border: '1px solid rgba(244, 63, 94, 0.2)', color: '#fb7185' }}
             whileHover={{ background: 'rgba(244, 63, 94, 0.18)' }}
             whileTap={{ scale: 0.93 }}

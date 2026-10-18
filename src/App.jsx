@@ -1,16 +1,18 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { GameProvider, useGame } from './context/GameContext'
 import PageTransition from './components/animations/PageTransition'
 import { MascotWakeScreen } from './components/animations/MascotWakeLoader'
 import ErrorBoundary from './components/ErrorBoundary'
+import LandingPage        from './pages/LandingPage'
 import LoginPage          from './pages/LoginPage'
-import EggHatchingPage    from './pages/EggHatchingPage'
-import GameModeSelectPage from './pages/GameModeSelectPage'
 import DashboardPage      from './pages/DashboardPage'
-import AccessoriesPage    from './pages/AccessoriesPage'
-import LeaderboardPage    from './pages/LeaderboardPage'
-import AdminPage          from './pages/AdminPage'
+// Loaded on demand: most visits never open these, and Admin pulls in the charts library.
+const EggHatchingPage    = lazy(() => import('./pages/EggHatchingPage'))
+const GameModeSelectPage = lazy(() => import('./pages/GameModeSelectPage'))
+const AccessoriesPage    = lazy(() => import('./pages/AccessoriesPage'))
+const LeaderboardPage    = lazy(() => import('./pages/LeaderboardPage'))
+const AdminPage          = lazy(() => import('./pages/AdminPage'))
 import Notifications      from './components/Notifications'
 
 function AppRoutes() {
@@ -69,14 +71,17 @@ function AppRoutes() {
   return (
     <>
       <Notifications />
-      {showRoutes && <Routes>
+      {showRoutes && <Suspense fallback={null}><Routes>
         <Route path="/"
           element={
-            !loggedIn ? <PageTransition variant="fade"><LoginPage /></PageTransition> :
+            !loggedIn ? <LandingPage /> :
             !hasPet   ? <Navigate to="/select"      replace /> :
             !hasMode  ? <Navigate to="/mode-select" replace /> :
             <Navigate to="/dashboard" replace />
           }
+        />
+        <Route path="/login"
+          element={loggedIn ? <Navigate to="/" replace /> : <PageTransition variant="fade"><LoginPage /></PageTransition>}
         />
         <Route path="/select"
           element={
@@ -123,7 +128,7 @@ function AppRoutes() {
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>}
+      </Routes></Suspense>}
 
       {/* The account-loading screen, over the top. Same element position in
           both branches above, so it is one continuous instance from boot

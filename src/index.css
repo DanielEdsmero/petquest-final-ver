@@ -608,7 +608,15 @@ body.has-dot-cursor * {
 /* Responsive */
 @media (max-width: 768px) {
   .dashboard-grid {
-    grid-template-columns: 1fr !important;
+    /* minmax(0,…) stops wide content (accessory chips) pushing the column past the screen */
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .tap-target {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 }
 
