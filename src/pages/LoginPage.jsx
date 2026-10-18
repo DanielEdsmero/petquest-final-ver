@@ -1,20 +1,16 @@
 import { useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useGame } from '../context/GameContext'
-import CinematicBackground from '../components/CinematicBackground'
-import Magnet from '../components/reactbits/Magnet'
 
-const STARS = Array.from({ length: 60 }, (_, i) => ({
-  id: i,
-  x: Math.random() * 100,
-  y: Math.random() * 100,
-  size: Math.random() * 2 + 0.5,
-  delay: Math.random() * 3,
-  duration: Math.random() * 3 + 2,
-}))
+/* Light palette shared with the landing page and the mobile app. */
+const INK = '#102A43', SOFT = '#3E5165', TEAL = '#3F8580', LINE = '#CBD5D0'
+const inputCls = 'w-full min-h-[44px] rounded-xl border px-3.5 text-[15px] bg-white outline-none focus:ring-2 focus:ring-[#3F8580]/40 focus:border-[#3F8580]'
+const labelCls = 'block text-xs font-bold mb-1.5 uppercase tracking-widest'
 
 export default function LoginPage() {
-  const [tab,      setTab]      = useState('login')
+  const [params] = useSearchParams()
+  const [tab,      setTab]      = useState(params.get('mode') === 'register' ? 'register' : 'login')
   const [username, setUsername] = useState('')
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
@@ -65,41 +61,28 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden" style={{ background: 'var(--bg-deep)' }}>
-      {/* Cinematic video + Ken Burns + magical-dust backdrop */}
-      <CinematicBackground />
+    <div className="relative z-10 min-h-screen flex flex-col items-center justify-center px-4 py-10 font-nunito" style={{ background: '#FAF8F0', color: INK }}>
+      <Link to="/" className="self-start sm:self-center sm:w-full sm:max-w-md mb-4 inline-flex items-center min-h-[44px] text-sm font-bold" style={{ color: '#2F6F6B' }}>
+        ← Back to PetQuest
+      </Link>
 
-      {/* Twinkling stars layered over the scene */}
-      {STARS.map(s => (
-        <motion.div key={s.id} className="absolute rounded-full pointer-events-none z-[1]"
-          style={{ left: `${s.x}%`, top: `${s.y}%`, width: s.size, height: s.size,
-            background: s.id % 3 === 0 ? '#f5a31a' : s.id % 5 === 0 ? '#7c3aed' : '#e2e2ff' }}
-          animate={{ opacity: [0.2, 1, 0.2] }}
-          transition={{ duration: s.duration, delay: s.delay, repeat: Infinity, ease: 'easeInOut' }} />
-      ))}
-
-      {/* Login card — slides up and fades in, staggered 0.5s after the video fade */}
-      <motion.div initial={{ opacity: 0, y: 48, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.7, delay: 0.5, ease: 'easeOut' }} className="glass-card glass-card--cinematic w-full max-w-md mx-4 p-8 relative z-10">
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: 'easeOut' }}
+        className="w-full max-w-md rounded-3xl border bg-white p-7 sm:p-8" style={{ borderColor: '#E1E7E3', boxShadow: '0 10px 30px rgba(16,42,67,.08)' }}>
         <div className="text-center mb-6">
-          <motion.div className="text-6xl mb-3 block"
-            animate={{ rotate: [0,-5,5,-3,3,0] }} transition={{ duration: 3, repeat: Infinity, repeatDelay: 2 }}>🐾</motion.div>
-          <h1 className="font-cinzel font-black text-4xl tracking-wider gradient-text-gold title-shimmer">Pet Quest</h1>
-          <p className="text-sm mt-1 font-nunito" style={{ color: 'var(--text-muted)' }}>Companion Chronicles</p>
+          <img src="/landing/mystic_cat.webp" alt="" width="72" height="72" className="w-[72px] h-[72px] mx-auto" />
+          <h1 className="text-3xl font-extrabold mt-2">PetQuest</h1>
+          <p className="text-sm mt-1" style={{ color: SOFT }}>{tab === 'login' ? 'Welcome back. Your pet missed you.' : 'Create your account to meet your companion.'}</p>
         </div>
 
         {/* Tabs */}
-        <div className="flex rounded-xl overflow-hidden mb-6"
-          style={{ background: 'rgba(19,19,58,0.8)', border: '1px solid rgba(124,58,237,0.2)' }}>
+        <div className="flex rounded-xl p-1 mb-6" role="tablist" style={{ background: '#F3F5F2' }}>
           {['login','register'].map(t => (
-            <button key={t} onClick={() => { setTab(t); setError(''); setInfo('') }}
-              className="flex-1 py-2.5 text-sm font-nunito font-bold transition-all"
-              style={{
-                background: tab === t ? 'rgba(245,163,26,0.18)' : 'transparent',
-                color: tab === t ? '#f5a31a' : '#6060aa',
-                borderBottom: tab === t ? '2px solid #f5a31a' : '2px solid transparent',
-              }}>
-              {t === 'login' ? '⚔️ Log In' : '🌟 Register'}
+            <button key={t} type="button" role="tab" aria-selected={tab === t}
+              onClick={() => { setTab(t); setError(''); setInfo('') }}
+              className="flex-1 min-h-[44px] rounded-lg text-sm font-bold transition-colors"
+              style={{ background: tab === t ? '#FFFFFF' : 'transparent', color: tab === t ? INK : SOFT,
+                boxShadow: tab === t ? '0 1px 3px rgba(16,42,67,.12)' : 'none' }}>
+              {t === 'login' ? 'Log in' : 'Create account'}
             </button>
           ))}
         </div>
@@ -110,64 +93,48 @@ export default function LoginPage() {
           <AnimatePresence mode="wait">
             {tab === 'register' && (
               <motion.div key="username" initial={{ opacity:0, height:0 }} animate={{ opacity:1, height:'auto' }} exit={{ opacity:0, height:0 }}>
-                <label className="block text-xs font-semibold mb-1.5 font-nunito uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                  Adventurer Name
-                </label>
-                <input type="text" className="input-field" placeholder="Your hero's name..." autoComplete="off"
+                <label htmlFor="username" className={labelCls} style={{ color: SOFT }}>Adventurer Name</label>
+                <input id="username" type="text" className={inputCls} style={{ borderColor: LINE }} placeholder="What should we call you?" autoComplete="off"
                   value={username} onChange={e => setUsername(e.target.value)} />
               </motion.div>
             )}
           </AnimatePresence>
 
           <div>
-            <label className="block text-xs font-semibold mb-1.5 font-nunito uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Email</label>
-            <input type="email" className="input-field" placeholder="your@email.com" autoComplete="petquest-email" name="petquest-email"
+            <label htmlFor="email" className={labelCls} style={{ color: SOFT }}>Email</label>
+            <input id="email" type="email" className={inputCls} style={{ borderColor: LINE }} placeholder="your@email.com" autoComplete="petquest-email" name="petquest-email"
               value={email} onChange={e => setEmail(e.target.value)} autoFocus />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold mb-1.5 font-nunito uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Password</label>
-            <input type="password" className="input-field" placeholder="6+ characters" autoComplete="new-password"
+            <label htmlFor="password" className={labelCls} style={{ color: SOFT }}>Password</label>
+            <input id="password" type="password" className={inputCls} style={{ borderColor: LINE }} placeholder="6+ characters" autoComplete="new-password"
               value={password} onChange={e => setPassword(e.target.value)} />
           </div>
 
           {error && (
-            <motion.p initial={{ opacity:0, y:-5 }} animate={{ opacity:1, y:0 }}
-              className="text-sm font-nunito text-center py-2 px-3 rounded-lg"
-              style={{ background:'rgba(244,63,94,0.1)', color:'#f43f5e', border:'1px solid rgba(244,63,94,0.2)' }}>
-              ⚠️ {error}
-            </motion.p>
+            <p role="alert" className="text-sm text-center py-2 px-3 rounded-lg" style={{ background: '#FBE8E3', color: '#A3412A' }}>
+              {error}
+            </p>
           )}
 
           {info && (
-            <motion.p initial={{ opacity:0, y:-5 }} animate={{ opacity:1, y:0 }}
-              className="text-sm font-nunito text-center py-2 px-3 rounded-lg"
-              style={{ background:'rgba(34,197,94,0.1)', color:'#4ade80', border:'1px solid rgba(34,197,94,0.2)' }}>
-              ✅ {info}
-            </motion.p>
+            <p role="status" className="text-sm text-center py-2 px-3 rounded-lg" style={{ background: '#E6F4EA', color: '#2F7A4D' }}>
+              {info}
+            </p>
           )}
 
-          {/* Gentle magnetic pull toward the cursor. `display:block` overrides
-              Magnet's inline-block wrapper so the button keeps its full width;
-              the pull is weak (strength 6) because a login form shouldn't feel
-              slippery. */}
-          <Magnet
-            padding={70}
-            magnetStrength={6}
-            disabled={loading}
-            style={{ position: 'relative', display: 'block', width: '100%' }}
-          >
-          <motion.button type="submit" className="btn-gold w-full py-3 text-base font-nunito font-bold"
-            disabled={loading} whileTap={{ scale: 0.97 }}>
+          <motion.button type="submit" disabled={loading} whileTap={{ scale: 0.98 }}
+            className="w-full min-h-[48px] rounded-xl text-white font-bold text-base disabled:opacity-70"
+            style={{ background: TEAL }}>
             {loading
               ? <span className="flex items-center justify-center gap-2">
                   <motion.span animate={{ rotate:360 }} transition={{ duration:0.8, repeat:Infinity, ease:'linear' }}>⚙️</motion.span>
-                  {tab === 'login' ? 'Opening the Portal...' : 'Creating your legend...'}
+                  {tab === 'login' ? 'Signing in...' : 'Creating your account...'}
                 </span>
-              : tab === 'login' ? '⚔️  Begin Adventure' : '🌟  Create Account'
+              : tab === 'login' ? 'Log in' : 'Create account'
             }
           </motion.button>
-          </Magnet>
         </form>
       </motion.div>
     </div>

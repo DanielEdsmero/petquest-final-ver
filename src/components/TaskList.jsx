@@ -164,7 +164,7 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, onRevise, onRecheck
           ref={btnRef}
           onClick={handleComplete}
           disabled={task.completed || !ready}
-          className="flex-shrink-0 relative"
+          className="flex-shrink-0 relative tap-target"
           whileTap={ready ? { scale: 0.85 } : {}}
           animate={ready ? { scale: [1, 1.12, 1] } : { scale: 1 }}
           transition={ready
@@ -312,8 +312,8 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, onRevise, onRecheck
         )}
 
         <motion.button
-          onClick={() => onDelete(task.id)}
-          className="flex-shrink-0 p-1 rounded-lg"
+          onClick={() => { if (window.confirm(`Delete "${task.text}"? This can't be undone.`)) onDelete(task.id) }}
+          className="flex-shrink-0 p-1 rounded-lg tap-target"
           style={{ color: '#5050aa' }}
           whileHover={{ color: '#f43f5e', scale: 1.1 }}
           whileTap={{ scale: 0.9 }}

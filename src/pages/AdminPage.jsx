@@ -7,7 +7,7 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis,
   Cell,
 } from 'recharts'
-import { ArrowLeft, Users, CheckSquare, Clock, TrendingDown, RefreshCw, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Users, CheckSquare, Clock, TrendingDown, RefreshCw, ChevronDown, ChevronUp, ShieldCheck, Download } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { jsonPost } from '../lib/authHeaders'
 import { useGame } from '../context/GameContext'
@@ -814,9 +814,33 @@ function QuestValidityQueue() {
   )
 }
 
+/* Research export: one row per quest, keyed by the participant's account id.
+   No usernames, emails or quest text, per the study's no-identifiers rule. */
+const EXPORT_COLS = ['user_id', 'difficulty', 'priority', 'evidence_type', 'validity_status', 'created_at',
+  'planned_completion_date', 'completed', 'completed_at', 'completion_duration_minutes', 'is_procrastinated']
+
+async function exportResearchCsv() {
+  const rows = []
+  for (let from = 0; ; from += 1000) {   // the API returns at most 1000 rows per request
+    const { data, error } = await supabase.from('tasks').select(EXPORT_COLS.join(','))
+      .order('created_at', { ascending: true }).range(from, from + 999)
+    if (error) throw error
+    rows.push(...data)
+    if (data.length < 1000) break
+  }
+  const cell = v => v == null ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v)
+  const csv = [EXPORT_COLS.join(','), ...rows.map(r => EXPORT_COLS.map(c => cell(r[c])).join(','))].join('\n')
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+  a.download = `petquest-quests-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(a.href)
+  return rows.length
+}
+
 export default function AdminPage() {
   const navigate  = useNavigate()
-  const { profile } = useGame()
+  const { profile, addNotification } = useGame()
 
   const [tab,      setTab]      = useState('overview')  // overview | queue | validity
   const [users,    setUsers]    = useState([])
@@ -919,12 +943,25 @@ export default function AdminPage() {
             </p>
           </div>
         </div>
-        <motion.button onClick={loadData}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
-          style={{ background: 'rgba(245,163,26,0.1)', border: '1px solid rgba(245,163,26,0.25)', color: '#f5a31a' }}
-          whileTap={{ scale: 0.9, rotate: 180 }}>
-          <RefreshCw size={14} /> Refresh
-        </motion.button>
+        <div className="flex items-center gap-2">
+          <motion.button
+            onClick={async () => {
+              try { addNotification(`Exported ${await exportResearchCsv()} quests.`, 'success') }
+              catch (e) { addNotification(`Export failed: ${e.message}`, 'error') }
+            }}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
+            style={{ background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.3)', color: '#22d3ee' }}
+            whileTap={{ scale: 0.95 }}
+            title="Download every quest as a CSV for analysis (no names or quest text)">
+            <Download size={14} /> Export CSV
+          </motion.button>
+          <motion.button onClick={loadData}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
+            style={{ background: 'rgba(245,163,26,0.1)', border: '1px solid rgba(245,163,26,0.25)', color: '#f5a31a' }}
+            whileTap={{ scale: 0.9, rotate: 180 }}>
+            <RefreshCw size={14} /> Refresh
+          </motion.button>
+        </div>
       </motion.nav>
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
