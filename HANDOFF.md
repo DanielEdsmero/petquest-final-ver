@@ -18,7 +18,11 @@ Read this first in a new session. It replaces re-reading the old chat.
 - Dislikes the old website look (dark purple space, gold glow, neon).
 - Keep forms short: he removed goal + priority inputs from the quest form twice (commits 803b7db, fdf694d). Don't re-add them without asking.
 
-## Done this session (ALL UNCOMMITTED — nothing is live yet)
+## Done this session — LIVE since 2026-10-18
+Website items (1–6, 8) were cherry-picked onto `main` (commits 832a102, 19cfaff) and deployed. The working branch
+`mobile-expo-migration` is pushed too but NOT merged: it also carries `GameContext.jsx` changes that need
+`supabase-phase13-spend-points.sql` and `-phase13b-signup-role.sql` run in Supabase first (not confirmed run).
+Merging that branch into `main` before running them would break pet care and the shop on the live site.
 1. Phone layout: `.dashboard-grid` used `1fr` → `minmax(0,1fr)` so the pet card no longer overflows 375px (`src/index.css`).
 2. Speed: Admin/Leaderboard/Accessories/onboarding pages lazy-loaded (`src/App.jsx`). Main JS 1,086 KB → ~611 KB (gzip 316 → 183 KB).
 3. Tap targets: `.tap-target` (44px min, phone only) on quest complete/delete + dashboard header buttons. Delete asks to confirm.
