@@ -48,7 +48,8 @@ const anonKey = isEnvConfigured() ? Env.supabaseAnonKey : 'placeholder-anon-key'
 
 export const supabase = createClient(url, anonKey, {
   auth: {
-    storage: sessionStorage,
+    // SecureStore has no web build; on web supabase-js falls back to localStorage (or memory during static render).
+    storage: Platform.OS === 'web' ? undefined : sessionStorage,
     autoRefreshToken: true,
     persistSession: true,
     // No browser URL to parse a session out of — and leaving this on makes
