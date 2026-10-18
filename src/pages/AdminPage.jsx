@@ -386,12 +386,14 @@ function CheatPanel({ players = [], onChanged }) {
    MAIN ADMIN PAGE
 ════════════════════════════════════════════ */
 /* ────── verification queue (pending quest completions) ────── */
-const AI_COLOR = { pass: '#4ade80', fail: '#fb7185', error: '#22d3ee', pending: '#8080aa' }
+/* Light theme (app palette); every colour passes 4.5:1 as text on white or its tint. */
+const AI_COLOR = { pass: '#2F7A4D', fail: '#A3412A', error: '#2F6F6B', pending: '#667085' }
 const STATUS_META = {
-  pending:  { label: 'Pending',  color: '#f5a31a' },
-  verified: { label: 'Verified', color: '#4ade80' },
-  reverted: { label: 'Reverted', color: '#fb7185' },
+  pending:  { label: 'Pending',  color: '#8A4B12', bg: '#FBEEDF' },
+  verified: { label: 'Verified', color: '#2F7A4D', bg: '#E6F4EA' },
+  reverted: { label: 'Reverted', color: '#A3412A', bg: '#FBE8E3' },
 }
+const Q = { ink: '#102A43', soft: '#3E5165', muted: '#667085', line: '#E1E7E3', mist: '#F3F5F2', teal: '#2F6F6B', tint: '#E4EFEE' }
 const qcAgo = (iso) => {
   if (!iso) return ''
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
@@ -402,13 +404,41 @@ const qcAgo = (iso) => {
 }
 const qcAbs = (iso) => iso ? new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
+/* The queue's buttons: solid green approve, outlined reject/suspicious, tinted AI re-run. */
+const Q_BTN = {
+  approve:    { background: '#2F7A4D', color: '#FFFFFF', border: '1px solid #2F7A4D' },
+  reject:     { background: '#FFFFFF', color: '#A3412A', border: '1px solid #E58A73' },
+  suspicious: { background: '#FFFFFF', color: '#8A4B12', border: '1px solid #EBA66E' },
+  ai:         { background: Q.tint, color: Q.teal, border: `1px solid ${Q.tint}` },
+}
+function QButton({ kind, onClick, disabled, children }) {
+  return (
+    <motion.button onClick={onClick} disabled={disabled}
+      className="min-h-[44px] px-4 rounded-xl text-sm font-nunito font-bold disabled:opacity-50"
+      style={Q_BTN[kind]} whileTap={!disabled ? { scale: 0.96 } : {}}>
+      {children}
+    </motion.button>
+  )
+}
+
+const isStuckRow = r => !r.ai_verdict || r.ai_verdict === 'pending' || r.ai_verdict === 'error'
+
+/* What the list row says about the AI side, in one chip. */
+function rowChip(r) {
+  if (r.source === 'upload') return { text: 'Upload', color: '#8A4B12', bg: '#FBEEDF' }
+  if (r.ai_verdict === 'pass') return { text: 'AI pass', color: '#2F7A4D', bg: '#E6F4EA' }
+  if (r.ai_verdict === 'fail') return { text: 'AI fail', color: '#A3412A', bg: '#FBE8E3' }
+  return { text: 'No verdict', color: Q.soft, bg: Q.mist }
+}
+
 function VerificationQueue() {
   const { addNotification } = useGame()
   const [rows, setRows]     = useState([])
   const [signed, setSigned] = useState({})
   const [loading, setLoad]  = useState(true)
   const [busy, setBusy]     = useState(null)
-  const [filter, setFilter] = useState('all')  // all | pending | pass | fail
+  const [filter, setFilter] = useState('pending')  // all | pending | pass | fail
+  const [selId, setSelId]   = useState(null)       // null on phone = show the list
   const [rerunProg, setRerunProg] = useState(null)  // { done, total } while bulk re-running
   const [imgFailed, setImgFailed] = useState({})    // proof URLs that failed to load → show placeholder
 
@@ -453,7 +483,7 @@ function VerificationQueue() {
      row can never freeze the whole batch, live progress, and a summary toast
      that classifies each row as re-verdicted (pass/fail) vs queued for review. */
   const rerunAllStuck = async () => {
-    const stuck = rows.filter(r => !r.ai_verdict || r.ai_verdict === 'pending' || r.ai_verdict === 'error')
+    const stuck = rows.filter(isStuckRow)
     if (!stuck.length) { addNotification('No stuck entries to re-run.', 'info'); return }
     setBusy('rerun-all')
     setRerunProg({ done: 0, total: stuck.length })
@@ -476,19 +506,6 @@ function VerificationQueue() {
     load()
   }
 
-  const review = async (id, action) => {
-    setBusy(id + action)
-    const { data, error } = await supabase.rpc('admin_review_completion', { p_completion_id: id, p_action: action, p_reason: null })
-    setBusy(null)
-    if (error || !data?.ok) return addNotification(`Review failed: ${error?.message || data?.error || 'unknown'}`, 'error')
-    addNotification(
-      action === 'approved' ? '🏆 Quest verified — permanent.'
-      : action === 'rejected' ? '🚨 Completion rejected — data reverted.'
-      : '⚠️ Flagged as suspicious.',
-      action === 'approved' ? 'success' : action === 'rejected' ? 'error' : 'info')
-    load()
-  }
-
   const counts = {
     all: rows.length,
     pending: rows.filter(r => r.status === 'pending').length,
@@ -500,132 +517,181 @@ function VerificationQueue() {
     : filter === 'pending' ? r.status === 'pending'
     : r.ai_verdict === filter)
 
+  const review = async (id, action) => {
+    // Open the next one in the list after a decision (review one at a time).
+    const i = shown.findIndex(r => r.id === id)
+    const next = shown[i + 1] ?? shown[i - 1] ?? null
+    setBusy(id + action)
+    const { data, error } = await supabase.rpc('admin_review_completion', { p_completion_id: id, p_action: action, p_reason: null })
+    setBusy(null)
+    if (error || !data?.ok) return addNotification(`Review failed: ${error?.message || data?.error || 'unknown'}`, 'error')
+    addNotification(
+      action === 'approved' ? '🏆 Quest verified — permanent.'
+      : action === 'rejected' ? '🚨 Completion rejected — data reverted.'
+      : '⚠️ Flagged as suspicious.',
+      action === 'approved' ? 'success' : action === 'rejected' ? 'error' : 'info')
+    if (selId) setSelId(next?.id ?? null)
+    load()
+  }
+
   if (loading) {
     return <div className="glass-card p-8 text-center">
       <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="text-2xl inline-block">⚙️</motion.div>
     </div>
   }
 
-  return (
-    <div className="space-y-3">
-      <h3 className="font-cinzel font-bold text-base flex items-center gap-2">
-        <Clock size={16} style={{ color: '#f5a31a' }} /> Verification Queue
-        <span className="font-nunito font-normal text-sm" style={{ color: 'var(--text-muted)' }}>({rows.length} total)</span>
-      </h3>
+  // Desktop always shows a detail (the first row by default); phone shows it only once a row is tapped.
+  const sel = shown.find(r => r.id === selId) ?? shown[0] ?? null
+  const phoneDetail = !!selId && !!shown.find(r => r.id === selId)
 
-      {/* Filter chips */}
-      <div className="flex flex-wrap gap-2">
-        {[['all', 'All'], ['pending', 'Pending'], ['pass', 'Passed'], ['fail', 'Failed']].map(([k, label]) => (
-          <button key={k} onClick={() => setFilter(k)}
-            className="px-3 py-1 rounded-lg text-xs font-nunito font-bold"
-            style={{
-              background: filter === k ? 'rgba(245,163,26,0.18)' : 'rgba(19,19,58,0.5)',
-              color: filter === k ? '#f5a31a' : '#8080aa',
-              border: `1px solid ${filter === k ? 'rgba(245,163,26,0.45)' : 'rgba(124,58,237,0.15)'}`,
-            }}>
-            {label} ({counts[k]})
-          </button>
-        ))}
+  return (
+    <div className="space-y-3 font-nunito">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="font-extrabold text-lg flex items-center gap-2 mr-2" style={{ color: Q.ink }}>
+          <Clock size={16} style={{ color: Q.teal }} /> Verification
+          <span className="font-normal text-sm" style={{ color: Q.muted }}>({rows.length} total)</span>
+        </h3>
         {/* Phase 3: batch-recover entries stuck without a real verdict. */}
         <button onClick={rerunAllStuck} disabled={busy === 'rerun-all'}
-          className="px-3 py-1 rounded-lg text-xs font-nunito font-bold ml-auto disabled:opacity-50"
-          style={{ background: 'rgba(6,182,212,0.15)', color: '#22d3ee', border: '1px solid rgba(6,182,212,0.4)' }}>
+          className="min-h-[44px] px-3 rounded-xl text-sm font-bold ml-auto disabled:opacity-50"
+          style={Q_BTN.ai}>
           {busy === 'rerun-all'
             ? `⏳ Re-running ${rerunProg ? `${rerunProg.done}/${rerunProg.total}` : ''}…`
             : '🔁 Re-run stuck (pending/error)'}
         </button>
       </div>
 
-      {shown.length === 0 && (
-        <div className="glass-card p-10 text-center font-nunito" style={{ color: 'var(--text-muted)' }}>
-          <div className="text-3xl mb-2">✅</div>Nothing here.
-        </div>
-      )}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
+        {/* ── List ── */}
+        <div className={`glass-card p-2 lg:col-span-2 ${phoneDetail ? 'hidden lg:block' : ''}`}>
+          <div className="flex flex-wrap gap-1.5 p-1 mb-1">
+            {[['pending', 'Pending'], ['all', 'All'], ['pass', 'Passed'], ['fail', 'Failed']].map(([k, label]) => (
+              <button key={k} onClick={() => { setFilter(k); setSelId(null) }}
+                className="min-h-[44px] px-3 rounded-xl text-sm font-bold"
+                style={filter === k
+                  ? { background: Q.tint, color: Q.teal, border: '1px solid #3F858055' }
+                  : { background: '#FFFFFF', color: Q.soft, border: `1px solid ${Q.line}` }}>
+                {label} ({counts[k]})
+              </button>
+            ))}
+          </div>
 
-      {shown.map(r => {
-        const st = STATUS_META[r.status] || { label: r.status, color: '#8080aa' }
-        const planned = r.tasks?.planned_completion_date
-        // Phase 5: real active work time = verification opened → submitted, NOT
-        // the quest's age since creation (which produced the bogus "34523m").
-        const activeMs = r.verification_started_at
-          ? Math.max(0, new Date(r.created_at).getTime() - new Date(r.verification_started_at).getTime())
-          : null
-        const activeLabel = activeMs == null ? '—'
-          : activeMs < 60000 ? `${Math.round(activeMs / 1000)}s`
-          : `${Math.floor(activeMs / 60000)}m ${Math.floor((activeMs % 60000) / 1000)}s`
-        const stuck = !r.ai_verdict || r.ai_verdict === 'pending' || r.ai_verdict === 'error'
-        return (
-          <div key={r.id} className="glass-card p-4">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3">
-              <span className="font-nunito font-bold text-sm" style={{ color: '#e2e2ff' }}>
-                {r.profiles?.username || 'Unknown'}
-                {/* Disambiguate duplicate usernames with a short user-id suffix. */}
-                <span style={{ color: '#6060aa', fontWeight: 400 }}> · {String(r.user_id || '').slice(0, 6)}</span>
-                {!r.profiles?.selected_pet_id && <span style={{ color: '#f5a31a' }}> · 👤 no pet</span>}
-              </span>
-              <span className="text-sm font-nunito" style={{ color: '#c0c0e0' }}>{r.tasks?.text || '(quest)'}</span>
-              {/* status + source badges */}
-              <span className="text-xs font-nunito font-bold px-1.5 py-0.5 rounded"
-                style={{ background: st.color + '22', color: st.color }}>{st.label}</span>
-              {r.source === 'upload' && (
-                <span className="text-xs font-nunito px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,163,26,0.15)', color: '#f5a31a' }}>
-                  ⚠️ File upload (not live)
-                </span>
-              )}
-              <span className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
-                {r.difficulty} · +{r.points_earned} pts
-              </span>
+          {shown.length === 0 && (
+            <div className="p-10 text-center" style={{ color: Q.muted }}>
+              <div className="text-3xl mb-2">✅</div>Nothing here.
             </div>
+          )}
 
-            <div className="grid sm:grid-cols-2 gap-3 mb-3">
-              <div className="rounded-lg overflow-hidden" style={{ background: '#000', aspectRatio: '4/3' }}>
+          <ul className="lg:max-h-[70vh] lg:overflow-y-auto">
+            {shown.map(r => {
+              const chip = rowChip(r)
+              const on = sel?.id === r.id
+              return (
+                <li key={r.id}>
+                  <button onClick={() => setSelId(r.id)}
+                    className="w-full flex items-center gap-3 p-2 rounded-xl text-left"
+                    style={{ background: on ? Q.tint : 'transparent', border: `1px solid ${on ? '#3F858055' : 'transparent'}` }}
+                    aria-current={on ? 'true' : undefined}>
+                    <span className="w-12 h-9 rounded-lg overflow-hidden flex-none flex items-center justify-center text-sm" style={{ background: Q.mist }}>
+                      {signed[r.id] && !imgFailed[r.id]
+                        ? <img src={signed[r.id]} alt="" className="w-full h-full object-cover"
+                            onError={() => setImgFailed(prev => ({ ...prev, [r.id]: true }))} />
+                        : '🖼️'}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-bold text-sm truncate" style={{ color: Q.ink }}>{r.profiles?.username || 'Unknown'}</span>
+                      <span className="block text-sm truncate" style={{ color: Q.soft }}>{r.tasks?.text || '(quest)'}</span>
+                    </span>
+                    <span className="flex-none text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: chip.color, background: chip.bg }}>{chip.text}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+
+        {/* ── Detail ── */}
+        {sel && (() => {
+          const r = sel
+          const st = STATUS_META[r.status] || { label: r.status, color: Q.soft, bg: Q.mist }
+          const planned = r.tasks?.planned_completion_date
+          // Phase 5: real active work time = verification opened → submitted, NOT
+          // the quest's age since creation (which produced the bogus "34523m").
+          const activeMs = r.verification_started_at
+            ? Math.max(0, new Date(r.created_at).getTime() - new Date(r.verification_started_at).getTime())
+            : null
+          const activeLabel = activeMs == null ? '—'
+            : activeMs < 60000 ? `${Math.round(activeMs / 1000)}s`
+            : `${Math.floor(activeMs / 60000)}m ${Math.floor((activeMs % 60000) / 1000)}s`
+          return (
+            <div className={`glass-card p-4 lg:col-span-3 ${phoneDetail ? '' : 'hidden lg:block'}`}>
+              <button onClick={() => setSelId(null)} className="lg:hidden min-h-[44px] flex items-center gap-1.5 text-sm font-bold mb-2" style={{ color: Q.teal }}>
+                <ArrowLeft size={15} /> Back to list
+              </button>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3">
+                <span className="font-bold text-base" style={{ color: Q.ink }}>
+                  {r.profiles?.username || 'Unknown'}
+                  {/* Disambiguate duplicate usernames with a short user-id suffix. */}
+                  <span style={{ color: Q.muted, fontWeight: 400 }}> · {String(r.user_id || '').slice(0, 6)}</span>
+                  {!r.profiles?.selected_pet_id && <span style={{ color: '#8A4B12' }}> · 👤 no pet</span>}
+                </span>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: st.bg, color: st.color }}>{st.label}</span>
+                {r.source === 'upload' && (
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: '#FBEEDF', color: '#8A4B12' }}>
+                    ⚠️ File upload (not live)
+                  </span>
+                )}
+                <span className="text-sm" style={{ color: Q.muted }}>{r.difficulty} · +{r.points_earned} pts</span>
+              </div>
+              <p className="text-base mb-3" style={{ color: Q.ink }}>{r.tasks?.text || '(quest)'}</p>
+
+              <div className="rounded-xl overflow-hidden mb-3" style={{ background: Q.mist, aspectRatio: '4/3', maxHeight: 420 }}>
                 {signed[r.id] && !imgFailed[r.id]
-                  ? <img src={signed[r.id]} alt="Proof" className="w-full h-full object-cover"
+                  ? <img src={signed[r.id]} alt="Proof photo" className="w-full h-full object-contain"
                       onError={() => setImgFailed(prev => ({ ...prev, [r.id]: true }))} />
-                  : <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-xs font-nunito" style={{ color: '#5050aa' }}>
+                  : <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-sm" style={{ color: Q.muted }}>
                       <span style={{ fontSize: 22 }}>🖼️</span>
                       {r.proof_photo_url ? 'image unavailable' : 'no photo'}
                     </div>}
               </div>
-              <div>
-                <p className="text-xs font-nunito font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-muted)' }}>Progress log</p>
-                <p className="text-sm font-nunito mb-2" style={{ color: '#c0c0e0' }}>{r.progress_log}</p>
-                <p className="text-xs font-nunito">
-                  <span style={{ color: 'var(--text-muted)' }}>AI verdict: </span>
-                  <span style={{ color: AI_COLOR[r.ai_verdict] || '#8080aa', fontWeight: 700 }}>
-                    {r.ai_verdict}{r.ai_confidence != null ? ` (${Math.round(r.ai_confidence * 100)}%)` : ''}
-                  </span>
+
+              <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: Q.muted }}>Progress log</p>
+              <p className="text-sm mb-3" style={{ color: Q.soft }}>{r.progress_log}</p>
+              <p className="text-sm">
+                <span style={{ color: Q.muted }}>AI verdict: </span>
+                <span style={{ color: AI_COLOR[r.ai_verdict] || Q.soft, fontWeight: 700 }}>
+                  {r.ai_verdict}{r.ai_confidence != null ? ` (${Math.round(r.ai_confidence * 100)}%)` : ''}
+                </span>
+              </p>
+              {/* Never surface raw model names / HTTP codes. Error rows show a
+                  friendly line; the raw reason stays in the hover tooltip. */}
+              {(r.ai_reason || r.ai_verdict === 'error') && (
+                <p className="text-sm mt-1" style={{ color: Q.soft }} title={r.ai_reason || ''}>
+                  {r.ai_verdict === 'error' ? 'AI service busy — queued for manual review.' : r.ai_reason}
                 </p>
-                {/* Never surface raw model names / HTTP codes. Error rows show a
-                    friendly line; the raw reason stays in the hover tooltip. */}
-                {(r.ai_reason || r.ai_verdict === 'error') && (
-                  <p className="text-xs font-nunito mt-1" style={{ color: 'var(--text-soft)' }} title={r.ai_reason || ''}>
-                    {r.ai_verdict === 'error' ? 'AI service busy — queued for manual review.' : r.ai_reason}
-                  </p>
+              )}
+
+              {/* Timestamps / research metadata */}
+              <div className="text-sm my-3 grid sm:grid-cols-2 gap-x-4 gap-y-0.5" style={{ color: Q.muted }}>
+                <div>Submitted: <span style={{ color: Q.ink }}>{qcAgo(r.created_at)}</span> · {qcAbs(r.created_at)}</div>
+                <div>Active time (verify → submit): <span style={{ color: Q.ink }}>{activeLabel}</span></div>
+                {r.ai_verdict_at && <div>AI verdict at: {qcAbs(r.ai_verdict_at)}</div>}
+                {planned && <div>Planned finish: {qcAbs(planned)}</div>}
+                {r.admin_reviewed_at && <div>Admin reviewed: {qcAbs(r.admin_reviewed_at)}</div>}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <QButton kind="approve" onClick={() => review(r.id, 'approved')} disabled={!!busy}>✅ Approve</QButton>
+                <QButton kind="reject" onClick={() => review(r.id, 'rejected')} disabled={!!busy}>❌ Reject (rollback)</QButton>
+                <QButton kind="suspicious" onClick={() => review(r.id, 'suspicious')} disabled={!!busy}>⚠️ Suspicious</QButton>
+                {isStuckRow(r) && (
+                  <QButton kind="ai" onClick={() => rerunAI(r.id)} disabled={!!busy}>🔁 Re-run AI</QButton>
                 )}
               </div>
             </div>
-
-            {/* Timestamps / research metadata */}
-            <div className="text-xs font-nunito mb-3 grid grid-cols-2 gap-x-4 gap-y-0.5" style={{ color: 'var(--text-muted)' }}>
-              <div>Submitted: <span style={{ color: '#c0c0e0' }}>{qcAgo(r.created_at)}</span> · {qcAbs(r.created_at)}</div>
-              <div>Active time (verify → submit): <span style={{ color: '#c0c0e0' }}>{activeLabel}</span></div>
-              {r.ai_verdict_at && <div>AI verdict at: {qcAbs(r.ai_verdict_at)}</div>}
-              {planned && <div>Planned finish: {qcAbs(planned)}</div>}
-              {r.admin_reviewed_at && <div>Admin reviewed: {qcAbs(r.admin_reviewed_at)}</div>}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <CheatButton onClick={() => review(r.id, 'approved')} busy={busy} color="#22c55e">✅ Approve</CheatButton>
-              <CheatButton onClick={() => review(r.id, 'rejected')} busy={busy} color="#f43f5e">❌ Reject (rollback)</CheatButton>
-              <CheatButton onClick={() => review(r.id, 'suspicious')} busy={busy} color="#f5a31a">⚠️ Suspicious</CheatButton>
-              {stuck && (
-                <CheatButton onClick={() => rerunAI(r.id)} busy={busy} color="#06b6d4">🔁 Re-run AI</CheatButton>
-              )}
-            </div>
-          </div>
-        )
-      })}
+          )
+        })()}
+      </div>
     </div>
   )
 }
@@ -923,21 +989,26 @@ export default function AdminPage() {
     )
   }
 
+  /* shortcut: only the Verification tab is light so far; drop this flag once
+     Overview and Quest Validity are restyled (next step). */
+  const light = tab === 'queue'
+  const navBtn = (dark) => light ? { background: '#FFFFFF', border: '1px solid #E1E7E3', color: '#3E5165' } : dark
+
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg-deep)' }}>
+    <div className={`min-h-screen ${light ? 'theme-light relative z-10' : ''}`} style={light ? undefined : { background: 'var(--bg-deep)' }}>
       {/* Nav */}
       <motion.nav initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-        className="relative z-20 flex items-center justify-between px-4 md:px-8 py-4"
-        style={{ borderBottom: '1px solid var(--card-border)', background: '#0d1120' }}>
+        className="relative z-20 flex flex-wrap gap-2 items-center justify-between px-4 md:px-8 py-3"
+        style={{ borderBottom: `1px solid ${light ? '#E1E7E3' : 'var(--card-border)'}`, background: light ? '#FFFFFF' : '#0d1120' }}>
         <div className="flex items-center gap-3">
           <motion.button onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
-            style={{ background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.25)', color: '#a78bfa' }}
-            whileHover={{ background: 'rgba(124,58,237,0.2)' }} whileTap={{ scale: 0.95 }}>
+            className="min-h-[44px] flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
+            style={navBtn({ background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.25)', color: '#a78bfa' })}
+            whileTap={{ scale: 0.95 }}>
             <ArrowLeft size={15} /> Dashboard
           </motion.button>
           <div>
-            <h1 className="font-cinzel font-black text-lg" style={{ color: '#ffd166', textShadow: '0 0 16px rgba(245,163,26,0.3)' }}>Admin Control Room</h1>
+            <h1 className="font-cinzel font-black text-lg" style={light ? { color: '#102A43' } : { color: '#ffd166', textShadow: '0 0 16px rgba(245,163,26,0.3)' }}>Admin Control Room</h1>
             <p className="text-xs font-nunito hidden sm:block" style={{ color: 'var(--text-muted)' }}>
               Logged in as {profile?.username}
             </p>
@@ -949,15 +1020,15 @@ export default function AdminPage() {
               try { addNotification(`Exported ${await exportResearchCsv()} quests.`, 'success') }
               catch (e) { addNotification(`Export failed: ${e.message}`, 'error') }
             }}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
-            style={{ background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.3)', color: '#22d3ee' }}
+            className="min-h-[44px] flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
+            style={navBtn({ background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.3)', color: '#22d3ee' })}
             whileTap={{ scale: 0.95 }}
             title="Download every quest as a CSV for analysis (no names or quest text)">
             <Download size={14} /> Export CSV
           </motion.button>
           <motion.button onClick={loadData}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
-            style={{ background: 'rgba(245,163,26,0.1)', border: '1px solid rgba(245,163,26,0.25)', color: '#f5a31a' }}
+            className="min-h-[44px] flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
+            style={navBtn({ background: 'rgba(245,163,26,0.1)', border: '1px solid rgba(245,163,26,0.25)', color: '#f5a31a' })}
             whileTap={{ scale: 0.9, rotate: 180 }}>
             <RefreshCw size={14} /> Refresh
           </motion.button>
@@ -973,11 +1044,13 @@ export default function AdminPage() {
         )}
 
         {/* ── Tab bar ── */}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {[['overview', '📊 Overview'], ['queue', '🔍 Verification Queue'], ['validity', '🛡️ Quest Validity']].map(([key, label]) => (
             <button key={key} onClick={() => setTab(key)}
-              className="px-4 py-2 rounded-xl text-sm font-nunito font-bold transition-all"
-              style={{
+              className="min-h-[44px] px-4 py-2 rounded-xl text-sm font-nunito font-bold transition-all"
+              style={light ? (tab === key
+                ? { background: '#E4EFEE', color: '#2F6F6B', border: '1px solid #3F858055' }
+                : { background: '#FFFFFF', color: '#3E5165', border: '1px solid #E1E7E3' }) : {
                 background: tab === key ? 'rgba(245,163,26,0.18)' : 'rgba(19,19,58,0.5)',
                 color:      tab === key ? '#f5a31a' : '#8080aa',
                 border:     `1px solid ${tab === key ? 'rgba(245,163,26,0.45)' : 'rgba(124,58,237,0.15)'}`,

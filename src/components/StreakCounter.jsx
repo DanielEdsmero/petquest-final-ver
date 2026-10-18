@@ -21,8 +21,8 @@ export default function StreakCounter({ streak = 0, longest = 0 }) {
     <motion.div
       className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-2 rounded-xl relative flex-shrink-0"
       style={{
-        background: active ? 'rgba(249, 115, 22, 0.12)' : 'rgba(30, 30, 60, 0.5)',
-        border: `1px solid ${active ? 'rgba(249, 115, 22, 0.35)' : 'rgba(80, 80, 120, 0.35)'}`,
+        background: active ? '#FBEEDF' : '#F3F5F2',
+        border: `1px solid ${active ? '#EBA66E55' : '#E1E7E3'}`,
       }}
       title={title}
       animate={milestone && !reduceMotion ? { scale: [1, 1.07, 1] } : { scale: 1 }}
@@ -53,7 +53,7 @@ export default function StreakCounter({ streak = 0, longest = 0 }) {
       <div className="relative leading-none" style={{ zIndex: 1 }}>
         <div
           className="font-cinzel font-black text-base"
-          style={{ color: active ? '#fb923c' : 'var(--text-muted)' }}
+          style={{ color: active ? '#8A4B12' : 'var(--text-muted)' }}
         >
           {streak}
         </div>

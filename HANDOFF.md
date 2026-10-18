@@ -37,6 +37,18 @@ Merging that branch into `main` before running them would break pet care and the
 
 Checked in the browser at 1440px and 375px: landing (no sideways scroll, nothing past the edge), login, register, the empty-form error.
 
+## Restyle progress (2026-10-18, local, not committed)
+- **Dashboard done** (approved layout A): `.theme-light` scope in `src/index.css` re-points the dark tokens; pages opt in with
+  `className="theme-light ... relative z-10"`. Dashboard grid = `.dash-layout` (phone: pet → quests → care → evolution → shop).
+- `src/components/PetRoom.jsx`: painted home + wandering pet. It imports the phone app's pure models
+  (`apps/mobile/src/data/spriteModel.ts`, `moodModel.ts`, `petHomeModel.ts`) so habits live in one place. Assets: `public/homes/*.webp`,
+  `public/sprites/{cat,dragon,wolf}/*.webp` (converted from `apps/mobile/assets`). Older stages: evolution art moves, no walk frames.
+- `StatBar.jsx` deleted (rings in the Dashboard instead). TaskList uses local light difficulty/validity colours (comment says why).
+- **Accessories done** (approved layout B: room banner + one sideways shelf per category). Equipped glyphs float over the pet (PetRoom `accessories` prop), on Dashboard too. `PetAvatar.jsx` deleted; `RARITY_COLORS` now light.
+- **Admin Verification queue done** (approved list + detail; "verification panel" = the admin queue, not the student modal). Light only while on that tab: `light` flag in `AdminPage` (shortcut comment).
+- Next: **Admin panel** (Overview + Quest Validity tabs), mockup first; then drop the `light` flag.
+  Still dark: loader (`MascotWakeLoader`), Notifications toasts, EggHatching, GameModeSelect, PetSelect, Leaderboard.
+
 ## Next task: restyle the signed-in website pages to match the app
 - Pages: Dashboard, Accessories, Leaderboard, EggHatching, GameModeSelect, PetSelect, Admin (+ components: TaskList, StatBar,
   EvolutionBar, PetAvatar, Notifications, VerificationModal, MascotWakeLoader). All built on the dark theme in `src/index.css`

@@ -24,11 +24,12 @@ export const ACCESSORIES = [
   { id: 'star', name: 'Star Badge', category: 'misc', emoji: '⭐', displayEmoji: '⭐', cost: 30, description: 'Sheriff of the enchanted realm', rarity: 'Common' },
 ]
 
+/* Light theme (app palette); text passes 4.5:1 on its tint. */
 export const RARITY_COLORS = {
-  Common: { text: '#94a3b8', bg: 'rgba(148, 163, 184, 0.1)', border: 'rgba(148, 163, 184, 0.3)' },
-  Rare: { text: '#38bdf8', bg: 'rgba(56, 189, 248, 0.1)', border: 'rgba(56, 189, 248, 0.3)' },
-  Epic: { text: '#a78bfa', bg: 'rgba(167, 139, 250, 0.1)', border: 'rgba(167, 139, 250, 0.3)' },
-  Legendary: { text: '#f5a31a', bg: 'rgba(245, 163, 26, 0.1)', border: 'rgba(245, 163, 26, 0.3)' },
+  Common: { text: '#4B5563', bg: '#F3F5F2', border: '#E1E7E3' },
+  Rare: { text: '#2F6690', bg: '#E4EDF7', border: '#C9DAEE' },
+  Epic: { text: '#5B4C9A', bg: '#ECE8F6', border: '#D6CFEE' },
+  Legendary: { text: '#8A4B12', bg: '#FBEEDF', border: '#F1D4B4' },
 }
 
 export const CATEGORIES = [

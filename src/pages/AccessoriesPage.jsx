@@ -1,118 +1,73 @@
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, ShoppingCart, CheckCircle, Sparkles } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { ArrowLeft, Check, X } from 'lucide-react'
 import { useGame } from '../context/GameContext'
 import { ACCESSORIES, RARITY_COLORS, CATEGORIES } from '../data/accessories'
-import PetAvatar from '../components/PetAvatar'
-import GlareHover from '../components/reactbits/GlareHover'
+import PetRoom from '../components/PetRoom'
 import CountUp from '../components/reactbits/CountUp'
+
+/* Light palette — same values as apps/mobile/src/theme.ts. */
+const INK = '#102A43'
+const SOFT = '#3E5165'
+const MUTED = '#667085'
+const TEAL = '#3F8580'
+const TEAL_DEEP = '#2F6F6B'
+const TEAL_TINT = '#E4EFEE'
+const MIST = '#F3F5F2'
+const LINE = '#E1E7E3'
+const APRICOT = '#EBA66E'
+const APRICOT_TINT = '#FBEEDF'
 
 function AccessoryCard({ accessory, owned, equipped, onBuy, onEquip, points }) {
   const rarity = RARITY_COLORS[accessory.rarity]
-  const canAfford = points >= accessory.cost || owned
+  const canAfford = points >= accessory.cost
 
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
+    <div
+      className="w-40 flex-none md:flex-1 md:w-auto md:min-w-[150px] md:max-w-[200px] snap-start rounded-2xl p-3 flex flex-col gap-2 bg-white"
+      style={{ border: equipped ? `2px solid ${TEAL}` : `1px solid ${LINE}`, padding: equipped ? 11 : 12 }}
     >
-      {/* The layout/enter/exit animation stays on the wrapper above; GlareHover
-          owns the card surface so a highlight rakes across the item on hover.
-          Equipped items catch gold, everything else plain white. */}
-      <GlareHover
-        baseClassName={`acc-card p-4 flex flex-col gap-3 ${owned ? 'owned' : ''} ${equipped ? 'equipped' : ''}`}
-        background={equipped
-          ? 'rgba(245, 163, 26, 0.07)'
-          : owned
-          ? 'rgba(34, 197, 94, 0.04)'
-          : 'rgba(14, 14, 46, 0.7)'}
-        borderRadius="14px"
-        borderColor={equipped
-          ? 'rgba(245, 163, 26, 0.7)'
-          : owned
-          ? 'rgba(34, 197, 94, 0.3)'
-          : 'rgba(124, 58, 237, 0.15)'}
-        glareColor={equipped ? '#f5a31a' : '#ffffff'}
-        glareOpacity={0.22}
-        glareAngle={-35}
-        glareSize={200}
-        transitionDuration={700}
-      >
-      {/* Top: emoji + rarity badge */}
       <div className="flex items-start justify-between">
-        <div
-          className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
-          style={{
-            background: equipped
-              ? 'rgba(245, 163, 26, 0.15)'
-              : `${rarity.bg}`,
-            border: `1px solid ${equipped ? 'rgba(245, 163, 26, 0.4)' : rarity.border}`,
-          }}
-        >
+        <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl" style={{ background: MIST }}>
           {accessory.emoji}
         </div>
-        <div
-          className="text-xs font-bold font-nunito px-2 py-0.5 rounded-full"
-          style={{ color: rarity.text, background: rarity.bg, border: `1px solid ${rarity.border}` }}
-        >
+        <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+          style={{ color: rarity.text, background: rarity.bg, border: `1px solid ${rarity.border}` }}>
           {accessory.rarity}
-        </div>
+        </span>
       </div>
 
-      {/* Info */}
       <div className="flex-1">
-        <h4 className="font-nunito font-bold text-sm" style={{ color: '#e2e2ff' }}>
-          {accessory.name}
-        </h4>
-        <p className="text-xs font-nunito mt-0.5 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-          {accessory.description}
-        </p>
+        <h4 className="font-bold text-sm" style={{ color: INK }}>{accessory.name}</h4>
+        <p className="text-xs mt-0.5 leading-snug" style={{ color: MUTED }}>{accessory.description}</p>
       </div>
 
-      {/* Category tag */}
-      <div className="text-xs font-nunito font-semibold uppercase tracking-wider" style={{ color: '#5050aa' }}>
-        {accessory.category}
-      </div>
-
-      {/* Action button */}
       {owned ? (
         <motion.button
           onClick={() => onEquip(accessory)}
-          className="w-full py-2 rounded-xl text-xs font-bold font-nunito transition-all"
-          style={{
-            background: equipped ? 'rgba(245, 163, 26, 0.15)' : 'rgba(34, 197, 94, 0.1)',
-            border: `1px solid ${equipped ? 'rgba(245, 163, 26, 0.4)' : 'rgba(34, 197, 94, 0.3)'}`,
-            color: equipped ? '#f5a31a' : '#4ade80',
-          }}
+          className="w-full min-h-[44px] rounded-xl text-sm font-bold flex items-center justify-center gap-1.5"
+          style={equipped
+            ? { background: '#FFFFFF', border: `1px solid ${TEAL}`, color: TEAL_DEEP }
+            : { background: TEAL_TINT, border: `1px solid ${TEAL_TINT}`, color: TEAL_DEEP }}
           whileTap={{ scale: 0.95 }}
-          whileHover={{ scale: 1.02 }}
+          aria-label={equipped ? `Take off ${accessory.name}` : `Equip ${accessory.name}`}
         >
-          {equipped ? '✦ Equipped' : '⚙ Equip'}
+          {equipped ? <><Check size={15} /> Equipped</> : 'Equip'}
         </motion.button>
       ) : (
         <motion.button
           onClick={() => onBuy(accessory)}
           disabled={!canAfford}
-          className="w-full py-2 rounded-xl text-xs font-bold font-nunito flex items-center justify-center gap-1.5 transition-all"
-          style={{
-            background: canAfford ? 'rgba(245, 163, 26, 0.12)' : 'rgba(30, 30, 60, 0.4)',
-            border: `1px solid ${canAfford ? 'rgba(245, 163, 26, 0.35)' : 'rgba(50,50,80,0.5)'}`,
-            color: canAfford ? '#f5a31a' : '#404060',
-            cursor: canAfford ? 'pointer' : 'not-allowed',
-          }}
+          className="w-full min-h-[44px] rounded-xl text-sm font-bold"
+          style={canAfford
+            ? { background: TEAL_DEEP, color: '#FFFFFF', cursor: 'pointer' }
+            : { background: MIST, color: MUTED, cursor: 'not-allowed' }}
           whileTap={canAfford ? { scale: 0.95 } : {}}
-          whileHover={canAfford ? { scale: 1.02 } : {}}
         >
-          <span>⭐</span>
-          {accessory.cost} pts
-          {!canAfford && <span className="ml-1 opacity-70">(Need more)</span>}
+          {canAfford ? `Buy · ${accessory.cost} pts` : `Need ${accessory.cost} pts`}
         </motion.button>
       )}
-      </GlareHover>
-    </motion.div>
+    </div>
   )
 }
 
@@ -122,230 +77,109 @@ export default function AccessoriesPage() {
     selectedPet,
     points,
     petLevel,
+    petStats,
     ownedAccessories,
     equippedAccessories,
     buyAccessory,
     equipAccessory,
   } = useGame()
 
-  const [activeCategory, setActiveCategory] = useState('all')
-  const [previewEquipped, setPreviewEquipped] = useState(null)
-
-  const filteredAccessories = activeCategory === 'all'
-    ? ACCESSORIES
-    : ACCESSORIES.filter(a => a.category === activeCategory)
-
-  const handleBuy = (accessory) => {
-    buyAccessory(accessory)
-  }
-
-  const handleEquip = (accessory) => {
-    equipAccessory(accessory)
-  }
-
-  // Count owned by rarity
-  const ownedCount = ownedAccessories.length
-  const equippedCount = Object.keys(equippedAccessories).length
+  // Category order, so the floating glyphs read hat → eyewear → outfit → misc.
+  const equipped = CATEGORIES
+    .map(c => ACCESSORIES.find(a => a.id === equippedAccessories[c.id]))
+    .filter(Boolean)
+  const shelves = CATEGORIES.filter(c => c.id !== 'all')
 
   return (
-    <div className="min-h-screen relative" style={{ background: 'var(--bg-deep)' }}>
-      {/* Ambient */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-1/4 right-1/4 w-96 h-96 rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(245, 163, 26, 0.07) 0%, transparent 70%)', filter: 'blur(80px)' }} />
-        <div className="absolute bottom-1/4 left-1/4 w-72 h-72 rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(124, 58, 237, 0.08) 0%, transparent 70%)', filter: 'blur(60px)' }} />
-      </div>
-
+    <div className="theme-light min-h-screen relative z-10 font-nunito">
       {/* Top nav */}
       <motion.nav
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="relative z-20 flex items-center justify-between px-4 md:px-8 py-4"
-        style={{ borderBottom: '1px solid rgba(124, 58, 237, 0.12)', background: 'rgba(6, 6, 26, 0.8)', backdropFilter: 'blur(20px)' }}
+        className="relative z-20 flex items-center justify-between gap-3 px-4 md:px-8 py-3"
+        style={{ borderBottom: `1px solid ${LINE}`, background: '#FFFFFF' }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <motion.button
             onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
-            style={{ background: 'rgba(124, 58, 237, 0.1)', border: '1px solid rgba(124, 58, 237, 0.25)', color: '#a78bfa' }}
-            whileHover={{ background: 'rgba(124, 58, 237, 0.2)' }}
+            className="min-h-[44px] flex items-center gap-2 px-3 rounded-xl text-sm font-semibold"
+            style={{ background: '#FFFFFF', border: `1px solid ${LINE}`, color: SOFT }}
+            whileHover={{ borderColor: TEAL }}
             whileTap={{ scale: 0.95 }}
           >
             <ArrowLeft size={15} />
             Dashboard
           </motion.button>
-          <div className="hidden sm:block">
-            <h1 className="font-cinzel font-bold text-lg gradient-text-gold">Accessories Shop</h1>
-          </div>
+          <h1 className="font-extrabold text-lg truncate" style={{ color: INK }}>Accessories</h1>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Stats */}
-          <div className="hidden sm:flex items-center gap-2 text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
-            <span className="px-2 py-1 rounded-lg" style={{ background: 'rgba(34, 197, 94, 0.08)', color: '#4ade80', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
-              {ownedCount} owned
-            </span>
-            <span className="px-2 py-1 rounded-lg" style={{ background: 'rgba(245, 163, 26, 0.08)', color: '#f5a31a', border: '1px solid rgba(245, 163, 26, 0.2)' }}>
-              {equippedCount} equipped
-            </span>
-          </div>
-
-          {/* Points */}
-          <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
-            style={{ background: 'rgba(245, 163, 26, 0.1)', border: '1px solid rgba(245, 163, 26, 0.3)' }}>
-            <span className="text-lg">⭐</span>
-            {/* Ticks down as you spend, so the cost of a purchase is felt. */}
-            <span className="font-cinzel font-black gradient-text-gold">
-              <CountUp to={points} separator="," duration={0.9} />
-            </span>
-            <span className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>pts</span>
-          </div>
+        <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl flex-shrink-0"
+          style={{ background: APRICOT_TINT, border: `1px solid ${APRICOT}55` }}>
+          <span>⭐</span>
+          {/* Ticks down as you spend, so the cost of a purchase is felt. */}
+          <span className="font-extrabold" style={{ color: INK }}>
+            <CountUp to={points} separator="," duration={0.9} />
+          </span>
+          <span className="text-xs" style={{ color: SOFT }}>pts</span>
         </div>
       </motion.nav>
 
-      <div className="relative z-10 max-w-6xl mx-auto px-4 md:px-6 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* === LEFT: Pet Preview === */}
-          <motion.div
-            className="lg:col-span-1"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <div className="glass-card p-6 text-center sticky top-6">
-              <h3 className="font-cinzel font-bold text-sm uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>
-                Preview
-              </h3>
-
-              {/* Pet with currently equipped accessories */}
-              <div className="py-4">
-                <PetAvatar
-                  pet={selectedPet}
-                  equippedAccessories={equippedAccessories}
-                  size="lg"
-                  glowing={true}
-                  level={petLevel}
-                />
-              </div>
-
-              <h2 className="font-cinzel font-bold text-lg mt-2" style={{ color: selectedPet?.color }}>
-                {selectedPet?.name}
-              </h2>
-              <p className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
-                {selectedPet?.species}
-              </p>
-
-              {/* Equipped list */}
-              {Object.keys(equippedAccessories).length > 0 && (
-                <div className="mt-5 space-y-2 text-left">
-                  <p className="text-xs font-nunito uppercase tracking-widest font-semibold" style={{ color: 'var(--text-muted)' }}>
-                    Equipped
-                  </p>
-                  {Object.entries(equippedAccessories).map(([cat, id]) => {
-                    const acc = ACCESSORIES.find(a => a.id === id)
-                    if (!acc) return null
-                    return (
-                      <motion.div
-                        key={cat}
-                        initial={{ opacity: 0, x: -5 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="flex items-center gap-2 px-2 py-1.5 rounded-lg"
-                        style={{ background: 'rgba(245, 163, 26, 0.08)', border: '1px solid rgba(245, 163, 26, 0.15)' }}
-                      >
-                        <span className="text-base">{acc.emoji}</span>
-                        <span className="text-xs font-nunito font-semibold" style={{ color: '#f5a31a' }}>{acc.name}</span>
-                      </motion.div>
-                    )
-                  })}
-                </div>
-              )}
-
-              {Object.keys(equippedAccessories).length === 0 && (
-                <p className="text-xs font-nunito mt-4" style={{ color: 'var(--text-muted)' }}>
-                  No accessories equipped yet
-                </p>
-              )}
-            </div>
-          </motion.div>
-
-          {/* === RIGHT: Accessories Grid === */}
-          <motion.div
-            className="lg:col-span-3"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-          >
-            {/* Page title (mobile) */}
-            <div className="lg:hidden mb-4">
-              <h1 className="font-cinzel font-bold text-2xl gradient-text-gold">Accessories Shop</h1>
-              <p className="text-sm font-nunito mt-1" style={{ color: 'var(--text-muted)' }}>
-                Customize {selectedPet?.name} with unique items
-              </p>
-            </div>
-
-            {/* Category filter */}
-            <div className="flex items-center gap-2 mb-5 flex-wrap">
-              {CATEGORIES.map(cat => (
-                <motion.button
-                  key={cat.id}
-                  onClick={() => setActiveCategory(cat.id)}
-                  className="px-4 py-2 rounded-xl text-sm font-nunito font-bold transition-all"
-                  style={{
-                    background: activeCategory === cat.id ? 'rgba(245, 163, 26, 0.15)' : 'rgba(19, 19, 58, 0.6)',
-                    border: `1px solid ${activeCategory === cat.id ? 'rgba(245, 163, 26, 0.5)' : 'rgba(124, 58, 237, 0.2)'}`,
-                    color: activeCategory === cat.id ? '#f5a31a' : '#8080aa',
-                  }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  {cat.label}
-                  <span className="ml-1.5 text-xs opacity-60">
-                    ({cat.id === 'all' ? ACCESSORIES.length : ACCESSORIES.filter(a => a.category === cat.id).length})
-                  </span>
-                </motion.button>
-              ))}
-            </div>
-
-            {/* Info banner */}
-            <div className="mb-4 px-4 py-3 rounded-xl flex items-center gap-3"
-              style={{ background: 'rgba(124, 58, 237, 0.08)', border: '1px solid rgba(124, 58, 237, 0.2)' }}>
-              <Sparkles size={16} style={{ color: '#a78bfa', flexShrink: 0 }} />
-              <p className="text-xs font-nunito" style={{ color: '#9090bb' }}>
-                <strong style={{ color: '#c4b5fd' }}>Buy</strong> an item to add it to your collection, then <strong style={{ color: '#c4b5fd' }}>Equip</strong> it on your companion.
-                Click an equipped item to unequip it.
-              </p>
-            </div>
-
-            {/* Accessories grid */}
-            <motion.div
-              layout
-              className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-4"
-            >
-              <AnimatePresence mode="popLayout">
-                {filteredAccessories.map(acc => (
-                  <AccessoryCard
-                    key={acc.id}
-                    accessory={acc}
-                    owned={ownedAccessories.includes(acc.id)}
-                    equipped={equippedAccessories[acc.category] === acc.id}
-                    onBuy={handleBuy}
-                    onEquip={handleEquip}
-                    points={points}
-                  />
+      <div className="relative max-w-6xl mx-auto px-4 md:px-6 py-6 space-y-6">
+        {/* Room banner: the pet wearing what's equipped */}
+        <motion.section
+          className="glass-card p-3 flex flex-col md:flex-row md:items-center gap-4"
+          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
+        >
+          <PetRoom pet={selectedPet} level={petLevel} stats={petStats} accessories={equipped}
+            className="w-full md:w-80 flex-none" />
+          <div className="px-1 pb-1 md:pb-0">
+            <h2 className="font-extrabold text-xl" style={{ color: INK }}>{selectedPet?.name} is wearing</h2>
+            {equipped.length > 0 ? (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {equipped.map(acc => (
+                  <button key={acc.id} onClick={() => equipAccessory(acc)}
+                    className="min-h-[44px] inline-flex items-center gap-1.5 pl-3 pr-2 rounded-xl text-sm font-bold"
+                    style={{ background: MIST, color: INK, border: `1px solid ${LINE}` }}
+                    aria-label={`Take off ${acc.name}`} title="Take off">
+                    <span>{acc.emoji}</span>{acc.name}<X size={14} style={{ color: MUTED }} />
+                  </button>
                 ))}
-              </AnimatePresence>
-            </motion.div>
-
-            {filteredAccessories.length === 0 && (
-              <div className="text-center py-16">
-                <div className="text-5xl mb-3">🎭</div>
-                <p className="font-nunito" style={{ color: 'var(--text-muted)' }}>
-                  No items in this category yet
-                </p>
               </div>
+            ) : (
+              <p className="text-sm mt-2" style={{ color: MUTED }}>Nothing yet.</p>
             )}
-          </motion.div>
-        </div>
+            <p className="text-sm mt-3" style={{ color: SOFT }}>
+              Buy an item with your quest points, then equip it. Tap an equipped item to take it off.
+            </p>
+          </div>
+        </motion.section>
+
+        {/* One shelf per category; each scrolls sideways */}
+        {shelves.map((cat, i) => {
+          const items = ACCESSORIES.filter(a => a.category === cat.id)
+          return (
+            <motion.section key={cat.id}
+              initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.05 * (i + 1) }}>
+              <h3 className="font-extrabold text-lg mb-3" style={{ color: INK }}>
+                {cat.label} <span className="text-sm font-semibold" style={{ color: MUTED }}>{items.length}</span>
+              </h3>
+              <div className="flex gap-3 overflow-x-auto snap-x pb-2 -mx-4 px-4 md:mx-0 md:px-0" role="list" aria-label={cat.label}>
+                {items.map(acc => (
+                  <div role="listitem" key={acc.id} className="flex md:flex-1 md:max-w-[200px]">
+                    <AccessoryCard
+                      accessory={acc}
+                      owned={ownedAccessories.includes(acc.id)}
+                      equipped={equippedAccessories[acc.category] === acc.id}
+                      onBuy={buyAccessory}
+                      onEquip={equipAccessory}
+                      points={points}
+                    />
+                  </div>
+                ))}
+              </div>
+            </motion.section>
+          )
+        })}
       </div>
     </div>
   )
