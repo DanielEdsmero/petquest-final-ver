@@ -297,7 +297,7 @@ describe('13. errors never trap the participant behind the animation', () => {
     assert.equal(shouldRevealAccount({ accountDataReady: true, minimumDone: true, error: true }), false)
   })
   test('an error stops the sequence instead of running timers', () => {
-    assert.match(LOADER, /if \(error\) return\n/)
+    assert.match(LOADER, /if \(error\) return\r?\n/)   // \r? : Windows checkouts use CRLF
     assert.match(LOADER, /const shownPhase = error \? 'error' : phase/)
   })
   test('a failed sign-in drops the gate immediately', () => {
