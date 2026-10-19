@@ -51,7 +51,8 @@ Checked in the browser at 1440px and 375px: landing (no sideways scroll, nothing
   Checked via a temporary mock-data preview (`.preview/` + `preview-egg.html`, launch entry `petquest-preview`; not committed — delete when done).
 - **Mode select done** (approved B: three steps mode → difficulty → quests). Shared light `DIFFICULTY_TEXT` in `src/data/difficulty.js`.
 - **Loader done** (approved B: pet wakes up in its home, `inHome` prop on MascotWakeLoader). Tests updated (Skip 44px, size 96).
-- Next, in journey order: **Notifications toasts → EvolutionOverlay → Leaderboard** (ask: paper excludes leaderboards).
+- **Toasts + evolution done** (toasts B: navy pill bottom-centre; celebration A: white reveal card).
+- Next: **Leaderboard** (ask first: the paper excludes leaderboards).
   `PetSelectPage.jsx` is not routed anywhere (dead code; delete with Daniel's OK).
 
 ## Next task: restyle the signed-in website pages to match the app

@@ -258,12 +258,6 @@ select.input-field option { background: #13133a; color: #e2e2ff; }
   border-color: var(--muted-border);
 }
 
-/* Notification — solid, no blur. */
-.notification {
-  background: var(--card-bg-2);
-  border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
-}
 
 /* Custom checkbox */
 .custom-check {
@@ -464,9 +458,9 @@ select.input-field option { background: #13133a; color: #e2e2ff; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(6, 6, 26, 0.92);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(16, 42, 67, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   /* Interactive modal: MUST capture clicks so its buttons work and clicks can't
      fall through to the task list behind it (that leak opened the verify modal). */
   pointer-events: auto;
@@ -474,7 +468,7 @@ select.input-field option { background: #13133a; color: #e2e2ff; }
 .evolution-flash {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle, #fff 0%, var(--gold-light) 45%, transparent 75%);
+  background: radial-gradient(circle, #fff 0%, #FBEEDF 45%, transparent 75%);
   pointer-events: none;
   z-index: 1;
 }
@@ -482,8 +476,8 @@ select.input-field option { background: #13133a; color: #e2e2ff; }
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 3px solid rgba(var(--gold-rgb), 0.8);
-  box-shadow: 0 0 30px rgba(var(--gold-rgb), 0.6), inset 0 0 30px rgba(var(--gold-rgb), 0.3);
+  border: 3px solid rgba(235, 166, 110, 0.8);
+  box-shadow: 0 0 24px rgba(235, 166, 110, 0.35);
   pointer-events: none;
 }
 
