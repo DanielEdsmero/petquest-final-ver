@@ -21,9 +21,9 @@ export const PRIORITIES = [
 
 /* Row badges. `exempt` (starter quests) and `accepted` show nothing. */
 export const VALIDITY_META = {
-  pending_ai_review:   { label: 'Awaiting check', color: '#22d3ee', hint: 'Saved — the quality check will run shortly. You can complete it once it’s accepted.' },
-  needs_clarification: { label: 'Needs changes',  color: '#f5a31a', hint: 'The quality check asked for a clearer task. Revise it to continue.' },
-  rejected:            { label: 'Not accepted',   color: '#fb7185', hint: 'This quest was not accepted. Revise it or delete it.' },
+  pending_ai_review:   { label: 'Awaiting check', color: '#2F6F6B', hint: 'Saved — the quality check will run shortly. You can complete it once it’s accepted.' },
+  needs_clarification: { label: 'Needs changes',  color: '#8A4B12', hint: 'The quality check asked for a clearer task. Revise it to continue.' },
+  rejected:            { label: 'Not accepted',   color: '#A3412A', hint: 'This quest was not accepted. Revise it or delete it.' },
 }
 
 /* A quest can be verified/completed only once it has passed (or is exempt from)

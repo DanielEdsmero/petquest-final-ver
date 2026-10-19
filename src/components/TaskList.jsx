@@ -11,10 +11,9 @@ import {
   EVIDENCE_TYPES, evidenceMeta, VALIDITY_META, isQuestEligible, CHECK_STEPS, CHECK_EXPLAINER,
 } from '../data/questValidity'
 
-/* Light-theme text colours (4.5:1+ on white), same meaning as the shared
-   DIFFICULTY_COLORS / VALIDITY_META. shortcut: local until every page is light, then move into those files. */
+/* Light-theme text colours (4.5:1+ on white), same meaning as the shared DIFFICULTY_COLORS.
+   shortcut: local until Leaderboard / mode select are light, then move into src/data/difficulty.js. */
 const DIFFICULTY_COLORS = { easy: '#2F7A4D', medium: '#9A6213', hard: '#B5443E' }
-const VALIDITY_COLORS = { pending_ai_review: '#2F6F6B', needs_clarification: '#8A4B12', rejected: '#A3412A' }
 
 const DIFF_CONFIG = {
   easy:   { label: 'Easy',   emoji: '🌱', pts: 10, color: DIFFICULTY_COLORS.easy,   limit: null, desc: 'Unlimited · Daily quests' },
@@ -135,8 +134,7 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, onRevise, onRecheck
      accepted it (or it is an exempt starter quest). Mirrored server-side by the
      tasks_validity_guard trigger, so this is UX, not the enforcement. */
   const eligible = isQuestEligible(task)
-  const validityBase = !task.completed && !eligible ? VALIDITY_META[task.validity_status] : null
-  const validity = validityBase && { ...validityBase, color: VALIDITY_COLORS[task.validity_status] ?? validityBase.color }
+  const validity = !task.completed && !eligible ? VALIDITY_META[task.validity_status] : null
   const ready = !task.completed && !pending && !verifying && !gated && eligible && stage === 'idle'
   const evidence = task.evidence_type ? evidenceMeta(task.evidence_type) : null
 

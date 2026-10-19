@@ -17,17 +17,19 @@ import { ACCESSORIES } from '../data/accessories'
 import { PET_LEVELS, levelFromPoints } from '../data/progression'
 
 /* ────── colour palette ────── */
-const CHART_COLORS = ['#f5a31a', '#7c3aed', '#06b6d4', '#4ade80', '#f43f5e', '#fbbf24', '#a78bfa']
+/* App palette mid-tones (marks, not text). */
+const CHART_COLORS = ['#3F8580', '#EBA66E', '#5EAF7B', '#E58A73', '#5D8FC6', '#7C6FB8', '#C98A2B']
 
 /* ────── custom tooltip ────── */
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
     <div className="px-3 py-2 rounded-xl text-xs font-nunito"
-      style={{ background: 'rgba(14,14,46,0.97)', border: '1px solid rgba(124,58,237,0.4)', color: '#e2e2ff' }}>
-      <p className="font-bold mb-1" style={{ color: '#f5a31a' }}>{label}</p>
+      style={{ background: '#FFFFFF', border: '1px solid #E1E7E3', color: '#102A43', boxShadow: '0 2px 8px rgba(16,42,67,0.08)' }}>
+      <p className="font-bold mb-1">{label}</p>
       {payload.map(p => (
-        <p key={p.name} style={{ color: p.color }}>
+        <p key={p.name} className="flex items-center gap-1.5">
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: p.color, display: 'inline-block' }} />
           {p.name}: <strong>{typeof p.value === 'number' ? p.value.toLocaleString() : p.value}</strong>
           {p.name === 'Efficiency' ? '%' : ''}
         </p>
@@ -45,7 +47,7 @@ function StatCard({ icon, label, value, sub, color }) {
           style={{ background: `${color}18` }}>{icon}</div>
       </div>
       <div className="font-cinzel font-black text-2xl" style={{ color }}>{value}</div>
-      <div className="font-nunito font-semibold text-sm mt-0.5" style={{ color: '#c0c0e0' }}>{label}</div>
+      <div className="font-nunito font-semibold text-sm mt-0.5" style={{ color: '#3E5165' }}>{label}</div>
       {sub && <div className="text-xs mt-1 font-nunito" style={{ color: 'var(--text-muted)' }}>{sub}</div>}
     </div>
   )
@@ -57,7 +59,7 @@ function UserRow({ user, index, onResetPeriod }) {
   const [resetting,  setResetting]  = useState(null)
   const pet = PETS.find(p => p.id === user.selected_pet_id)
   const effPct = Number(user.efficiency_pct) || 0
-  const effColor = effPct >= 70 ? '#4ade80' : effPct >= 40 ? '#f5a31a' : '#f43f5e'
+  const effColor = effPct >= 70 ? '#2F7A4D' : effPct >= 40 ? '#8A4B12' : '#A3412A'
 
   const handleReset = async (type) => {
     setResetting(type)
@@ -69,7 +71,7 @@ function UserRow({ user, index, onResetPeriod }) {
     <motion.div
       layout
       className="rounded-2xl overflow-hidden mb-2"
-      style={{ background: 'rgba(14,14,46,0.7)', border: '1px solid rgba(124,58,237,0.15)' }}
+      style={{ background: '#FFFFFF', border: '1px solid #E1E7E3' }}
     >
       {/* Header row */}
       <button
@@ -78,8 +80,8 @@ function UserRow({ user, index, onResetPeriod }) {
       >
         {/* Rank */}
         <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm font-cinzel font-black flex-shrink-0"
-          style={{ background: index < 3 ? 'rgba(245,163,26,0.15)' : 'rgba(80,80,120,0.3)',
-            color: index < 3 ? '#f5a31a' : '#8080aa' }}>
+          style={{ background: index < 3 ? '#FBEEDF' : '#F3F5F2',
+            color: index < 3 ? '#8A4B12' : '#667085' }}>
           {index + 1}
         </div>
 
@@ -88,11 +90,11 @@ function UserRow({ user, index, onResetPeriod }) {
 
         {/* Name */}
         <div className="flex-1 min-w-0">
-          <p className="font-nunito font-bold text-sm truncate" style={{ color: '#e2e2ff' }}>
+          <p className="font-nunito font-bold text-sm truncate" style={{ color: '#102A43' }}>
             {user.username}
-            <span style={{ color: '#6060aa', fontWeight: 400 }}> · {String(user.user_id || '').slice(0, 6)}</span>
+            <span style={{ color: '#667085', fontWeight: 400 }}> · {String(user.user_id || '').slice(0, 6)}</span>
             {user.role === 'admin' && <span className="ml-2 text-xs px-1.5 py-0.5 rounded"
-              style={{ background: 'rgba(245,163,26,0.15)', color: '#f5a31a' }}>Admin</span>}
+              style={{ background: '#FBEEDF', color: '#8A4B12' }}>Admin</span>}
           </p>
           <p className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
             {pet ? `${pet.species}` : 'No pet selected'} · {user.points} pts
@@ -105,16 +107,16 @@ function UserRow({ user, index, onResetPeriod }) {
             <span className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>Efficiency</span>
             <span className="text-xs font-bold font-nunito" style={{ color: effColor }}>{effPct}%</span>
           </div>
-          <div className="h-1.5 rounded-full" style={{ background: 'rgba(30,30,74,0.8)' }}>
+          <div className="h-1.5 rounded-full" style={{ background: '#E1E7E3' }}>
             <div className="h-full rounded-full transition-all" style={{ width: `${effPct}%`, background: effColor }} />
           </div>
         </div>
 
         {/* Tasks */}
         <div className="hidden md:flex items-center gap-1 text-sm font-nunito flex-shrink-0">
-          <span style={{ color: '#4ade80' }}>{user.completed_tasks}</span>
+          <span style={{ color: '#2F7A4D' }}>{user.completed_tasks}</span>
           <span style={{ color: 'var(--text-muted)' }}>/</span>
-          <span style={{ color: '#e2e2ff' }}>{user.total_tasks}</span>
+          <span style={{ color: '#102A43' }}>{user.total_tasks}</span>
         </div>
 
         {/* Expand toggle */}
@@ -133,20 +135,20 @@ function UserRow({ user, index, onResetPeriod }) {
             transition={{ duration: 0.25 }}
             className="overflow-hidden"
           >
-            <div className="px-5 pb-5 pt-0 border-t" style={{ borderColor: 'rgba(124,58,237,0.1)' }}>
+            <div className="px-5 pb-5 pt-0 border-t" style={{ borderColor: '#E1E7E3' }}>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
                 {[
-                  { label: 'Total Tasks',    value: user.total_tasks,         color: '#e2e2ff' },
-                  { label: 'Completed',      value: user.completed_tasks,     color: '#4ade80' },
-                  { label: 'Pending',        value: user.pending_tasks,       color: '#f5a31a' },
-                  { label: 'Procrastinated', value: user.procrastinated_tasks, color: '#f43f5e' },
-                  { label: 'Avg Time',       value: user.avg_completion_hours != null ? `${user.avg_completion_hours}h` : 'N/A', color: '#06b6d4' },
+                  { label: 'Total Tasks',    value: user.total_tasks,         color: '#102A43' },
+                  { label: 'Completed',      value: user.completed_tasks,     color: '#2F7A4D' },
+                  { label: 'Pending',        value: user.pending_tasks,       color: '#8A4B12' },
+                  { label: 'Procrastinated', value: user.procrastinated_tasks, color: '#A3412A' },
+                  { label: 'Avg Time',       value: user.avg_completion_hours != null ? `${user.avg_completion_hours}h` : 'N/A', color: '#2F6F6B' },
                   { label: 'Efficiency',     value: `${effPct}%`,             color: effColor },
-                  { label: 'Points',         value: user.points,              color: '#f5a31a' },
-                  { label: 'Joined',         value: new Date(user.created_at).toLocaleDateString(), color: '#8080aa' },
+                  { label: 'Points',         value: user.points,              color: '#8A4B12' },
+                  { label: 'Joined',         value: new Date(user.created_at).toLocaleDateString(), color: '#667085' },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="p-3 rounded-xl"
-                    style={{ background: 'rgba(19,19,58,0.5)', border: '1px solid rgba(124,58,237,0.1)' }}>
+                    style={{ background: '#F3F5F2', border: '1px solid #E1E7E3' }}>
                     <div className="font-cinzel font-bold text-base" style={{ color }}>{value}</div>
                     <div className="text-xs font-nunito mt-0.5" style={{ color: 'var(--text-muted)' }}>{label}</div>
                   </div>
@@ -154,7 +156,7 @@ function UserRow({ user, index, onResetPeriod }) {
               </div>
 
               {/* Quest period resets */}
-              <div className="mt-4 pt-3 border-t" style={{ borderColor: 'rgba(124,58,237,0.08)' }}>
+              <div className="mt-4 pt-3 border-t" style={{ borderColor: '#E1E7E3' }}>
                 <p className="text-xs font-nunito font-bold uppercase tracking-widest mb-2"
                   style={{ color: 'var(--text-muted)' }}>
                   Quest Period Resets
@@ -163,9 +165,9 @@ function UserRow({ user, index, onResetPeriod }) {
                   <motion.button
                     onClick={() => handleReset('hard')}
                     disabled={resetting === 'hard'}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-nunito font-bold"
-                    style={{ background: 'rgba(244,63,94,0.12)', border: '1px solid rgba(244,63,94,0.3)', color: '#f43f5e' }}
-                    whileHover={{ background: 'rgba(244,63,94,0.22)' }}
+                    className="min-h-[44px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-nunito font-bold"
+                    style={{ background: '#FBE8E3', border: '1px solid #E58A73', color: '#A3412A' }}
+                    whileHover={{ background: '#FBE8E3' }}
                     whileTap={{ scale: 0.95 }}
                   >
                     {resetting === 'hard' ? '...' : '🔥 Reset Hard Period'}
@@ -173,9 +175,9 @@ function UserRow({ user, index, onResetPeriod }) {
                   <motion.button
                     onClick={() => handleReset('medium')}
                     disabled={resetting === 'medium'}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-nunito font-bold"
-                    style={{ background: 'rgba(245,163,26,0.12)', border: '1px solid rgba(245,163,26,0.3)', color: '#f5a31a' }}
-                    whileHover={{ background: 'rgba(245,163,26,0.22)' }}
+                    className="min-h-[44px] flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-nunito font-bold"
+                    style={{ background: '#FBEEDF', border: '1px solid #EBA66E', color: '#8A4B12' }}
+                    whileHover={{ background: '#FBEEDF' }}
                     whileTap={{ scale: 0.95 }}
                   >
                     {resetting === 'medium' ? '...' : '⚡ Reset Medium Period'}
@@ -194,12 +196,12 @@ function UserRow({ user, index, onResetPeriod }) {
 }
 
 /* ────── testing & cheats (operates on the admin's OWN account) ────── */
-function CheatButton({ children, onClick, busy, color = '#f5a31a' }) {
+function CheatButton({ children, onClick, busy, color = '#8A4B12' }) {
   return (
     <motion.button
       onClick={onClick}
       disabled={busy}
-      className="px-3 py-2 rounded-xl text-xs font-nunito font-bold text-left"
+      className="min-h-[44px] px-3 py-2 rounded-xl text-sm font-nunito font-bold text-left"
       style={{ background: `${color}18`, border: `1px solid ${color}40`, color, opacity: busy ? 0.5 : 1 }}
       whileHover={!busy ? { background: `${color}28` } : {}}
       whileTap={!busy ? { scale: 0.96 } : {}}
@@ -301,7 +303,7 @@ function CheatPanel({ players = [], onChanged }) {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
       className="glass-card p-5"
-      style={{ border: '1px solid rgba(244,63,94,0.25)' }}>
+      style={{ border: '1px solid #E58A73' }}>
       <h3 className="font-cinzel font-bold text-base flex items-center gap-2 mb-1">
         🧪 Admin Test
       </h3>
@@ -319,7 +321,7 @@ function CheatPanel({ players = [], onChanged }) {
           value={targetId}
           onChange={e => setTargetId(e.target.value)}
           className="input-field"
-          style={{ width: 'auto', minWidth: 200, paddingTop: 6, paddingBottom: 6 }}
+          style={{ width: 'auto', minWidth: 200, minHeight: 44 }}
         >
           {players.map(p => (
             <option key={p.user_id} value={p.user_id}>
@@ -330,16 +332,16 @@ function CheatPanel({ players = [], onChanged }) {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-        <CheatButton onClick={() => runRpc('admin_skip_timers', 'Skip timers')} busy={busy} color="#06b6d4">
+        <CheatButton onClick={() => runRpc('admin_skip_timers', 'Skip timers')} busy={busy} color="#2F6F6B">
           ⏩ Skip all quest timers
         </CheatButton>
-        <CheatButton onClick={() => runRpc('admin_reset_my_tasks', 'Reset quests')} busy={busy} color="#06b6d4">
+        <CheatButton onClick={() => runRpc('admin_reset_my_tasks', 'Reset quests')} busy={busy} color="#2F6F6B">
           🔄 Un-complete quests
         </CheatButton>
-        <CheatButton onClick={unlockBoss} busy={busy} color="#7c3aed">
+        <CheatButton onClick={unlockBoss} busy={busy} color="#5B4C9A">
           💀 Unlock Boss Battles
         </CheatButton>
-        <CheatButton onClick={grantAllAccessories} busy={busy} color="#a78bfa">
+        <CheatButton onClick={grantAllAccessories} busy={busy} color="#5B4C9A">
           🎁 Grant all accessories
         </CheatButton>
       </div>
@@ -358,9 +360,9 @@ function CheatPanel({ players = [], onChanged }) {
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         <input type="number" value={streakDays} onChange={e => setStreakDays(Number(e.target.value) || 0)}
           className="input-field" style={{ width: 90 }} />
-        <CheatButton onClick={() => setStreak(streakDays)} busy={busy} color="#fb923c">🔥 Set streak</CheatButton>
+        <CheatButton onClick={() => setStreak(streakDays)} busy={busy} color="#9A4A12">🔥 Set streak</CheatButton>
         {[7, 30, 100, 365].map(d => (
-          <CheatButton key={d} onClick={() => setStreak(d)} busy={busy} color="#fb923c">{d}d</CheatButton>
+          <CheatButton key={d} onClick={() => setStreak(d)} busy={busy} color="#9A4A12">{d}d</CheatButton>
         ))}
       </div>
 
@@ -368,13 +370,13 @@ function CheatPanel({ players = [], onChanged }) {
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         <span className="text-xs font-nunito font-bold" style={{ color: 'var(--text-muted)' }}>🐉 Set level:</span>
         {[1, 2, 3, 4, 5].map(l => (
-          <CheatButton key={l} onClick={() => setLevel(l)} busy={busy} color="#22c55e">Lv {l}</CheatButton>
+          <CheatButton key={l} onClick={() => setLevel(l)} busy={busy} color="#2F7A4D">Lv {l}</CheatButton>
         ))}
       </div>
 
       {/* Danger */}
-      <div className="mt-3 pt-3 border-t" style={{ borderColor: 'rgba(124,58,237,0.1)' }}>
-        <CheatButton onClick={resetProgression} busy={busy} color="#f43f5e">
+      <div className="mt-3 pt-3 border-t" style={{ borderColor: '#E1E7E3' }}>
+        <CheatButton onClick={resetProgression} busy={busy} color="#A3412A">
           ♻️ Reset progression to zero
         </CheatButton>
       </div>
@@ -703,8 +705,8 @@ function VerificationQueue() {
    RLS admin-read-only, so the internal admin_reason / risk flags / model only
    ever render here). */
 const DECISION_COLOR = {
-  accept: '#4ade80', clarify: '#f5a31a', reject: '#fb7185', pending: '#22d3ee',
-  admin_accept: '#4ade80', admin_reject: '#fb7185',
+  accept: '#2F7A4D', clarify: '#8A4B12', reject: '#A3412A', pending: '#2F6F6B',
+  admin_accept: '#2F7A4D', admin_reject: '#A3412A',
 }
 const UNRESOLVED = ['pending_ai_review', 'needs_clarification', 'rejected']
 
@@ -715,6 +717,7 @@ function QuestValidityQueue() {
   const [loading, setLoad]  = useState(true)
   const [busy, setBusy]     = useState(null)
   const [filter, setFilter] = useState('pending_ai_review')   // pending_ai_review | needs_clarification | rejected | all
+  const [selId, setSelId]   = useState(null)   // null on phone = show the list
 
   const load = async () => {
     setLoad(true)
@@ -759,10 +762,18 @@ function QuestValidityQueue() {
     if (error || !data?.ok) return addNotification(`Resolve failed: ${error?.message || data?.error || 'unknown'}`, 'error')
     addNotification(status === 'accepted' ? '✅ Quest accepted — participant can work on it.' : '❌ Quest rejected.', status === 'accepted' ? 'success' : 'error')
     load()
+    return true
   }
 
   const counts = Object.fromEntries(UNRESOLVED.map(k => [k, quests.filter(q => q.validity_status === k).length]))
   const shown = filter === 'all' ? quests : quests.filter(q => q.validity_status === filter)
+
+  const resolveAndNext = async (id, status) => {
+    // Open the next one in the list after a decision, like the verification queue.
+    const i = shown.findIndex(q => q.id === id)
+    const next = shown[i + 1] ?? shown[i - 1] ?? null
+    if (await resolve(id, status) && selId) setSelId(next?.id ?? null)
+  }
 
   if (loading) {
     return <div className="glass-card p-8 text-center">
@@ -770,109 +781,146 @@ function QuestValidityQueue() {
     </div>
   }
 
-  return (
-    <div className="space-y-3">
-      <h3 className="font-cinzel font-bold text-base flex items-center gap-2">
-        <ShieldCheck size={16} style={{ color: '#f5a31a' }} /> Quest Validity
-        <span className="font-nunito font-normal text-sm" style={{ color: 'var(--text-muted)' }}>({quests.length} unresolved)</span>
-      </h3>
+  // Desktop always shows a detail (the first row by default); phone only once a row is tapped.
+  const sel = shown.find(q => q.id === selId) ?? shown[0] ?? null
+  const phoneDetail = !!selId && !!shown.find(q => q.id === selId)
 
-      <div className="flex flex-wrap gap-2">
-        {[['pending_ai_review', 'Awaiting AI'], ['needs_clarification', 'Needs changes'], ['rejected', 'Rejected'], ['all', 'All']].map(([k, label]) => (
-          <button key={k} onClick={() => setFilter(k)}
-            className="px-3 py-1 rounded-lg text-xs font-nunito font-bold"
-            style={{
-              background: filter === k ? 'rgba(245,163,26,0.18)' : 'rgba(19,19,58,0.5)',
-              color: filter === k ? '#f5a31a' : '#8080aa',
-              border: `1px solid ${filter === k ? 'rgba(245,163,26,0.45)' : 'rgba(124,58,237,0.15)'}`,
-            }}>
-            {label} ({k === 'all' ? quests.length : counts[k]})
-          </button>
-        ))}
-        <button onClick={load} className="px-3 py-1 rounded-lg text-xs font-nunito font-bold ml-auto"
-          style={{ background: 'rgba(6,182,212,0.15)', color: '#22d3ee', border: '1px solid rgba(6,182,212,0.4)' }}>
+  return (
+    <div className="space-y-3 font-nunito">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="font-extrabold text-lg flex items-center gap-2 mr-2" style={{ color: Q.ink }}>
+          <ShieldCheck size={16} style={{ color: Q.teal }} /> Quest Validity
+          <span className="font-normal text-sm" style={{ color: Q.muted }}>({quests.length} unresolved)</span>
+        </h3>
+        <button onClick={load} className="min-h-[44px] px-3 rounded-xl text-sm font-bold ml-auto" style={Q_BTN.ai}>
           ↻ Reload
         </button>
       </div>
 
-      {shown.length === 0 && (
-        <div className="glass-card p-10 text-center font-nunito" style={{ color: 'var(--text-muted)' }}>
-          <div className="text-3xl mb-2">✅</div>Nothing to resolve.
-        </div>
-      )}
-
-      {shown.map(q => {
-        const meta = VALIDITY_META[q.validity_status] || { label: q.validity_status, color: '#8080aa' }
-        const ev = evidenceMeta(q.evidence_type)
-        const lastReview = log.find(r => r.task_id === q.id)
-        return (
-          <div key={q.id} className="glass-card p-4">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
-              <span className="font-nunito font-bold text-sm" style={{ color: '#e2e2ff' }}>
-                {q.profiles?.username || 'Unknown'}
-                <span style={{ color: '#6060aa', fontWeight: 400 }}> · {String(q.user_id || '').slice(0, 6)}</span>
-              </span>
-              <span className="text-xs font-nunito font-bold px-1.5 py-0.5 rounded" style={{ background: meta.color + '22', color: meta.color }}>{meta.label}</span>
-              <span className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
-                {q.difficulty} · {q.priority} · {ev.emoji} {ev.label}{q.validity_score != null ? ` · score ${q.validity_score}` : ''}
-              </span>
-            </div>
-            <p className="text-sm font-nunito" style={{ color: '#c0c0e0' }}>{q.text}</p>
-            {q.goal && <p className="text-xs font-nunito mt-0.5" style={{ color: '#8a9bb8' }}>🎯 {q.goal}</p>}
-            {q.validity_reason && <p className="text-xs font-nunito mt-1" style={{ color: 'var(--text-soft)' }}>Participant sees: “{q.validity_reason}”</p>}
-            {lastReview && (lastReview.admin_reason || lastReview.risk_flags?.length > 0) && (
-              <div className="text-xs font-nunito mt-2 px-2.5 py-2 rounded-lg" style={{ background: 'rgba(19,19,58,0.6)', color: '#c0c0e0' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Internal: </span>{lastReview.admin_reason || '—'}
-                {lastReview.risk_flags?.length > 0 && (
-                  <span className="ml-2">{lastReview.risk_flags.map(f => (
-                    <span key={f} className="inline-block mr-1 px-1.5 py-0.5 rounded text-[10px] font-bold"
-                      style={{ background: 'rgba(244,63,94,0.15)', color: '#fb7185' }}>{f}</span>
-                  ))}</span>
-                )}
-                {lastReview.model_version && <span className="ml-2" style={{ color: '#6060aa' }}>{lastReview.model_version}</span>}
-              </div>
-            )}
-            <div className="text-xs font-nunito mt-2 mb-3 grid grid-cols-2 gap-x-4 gap-y-0.5" style={{ color: 'var(--text-muted)' }}>
-              <div>Created: <span style={{ color: '#c0c0e0' }}>{qcAgo(q.created_at)}</span> · {qcAbs(q.created_at)}</div>
-              {q.validity_checked_at && <div>AI checked: {qcAbs(q.validity_checked_at)}</div>}
-              {q.planned_completion_date && <div>Planned finish: {qcAbs(q.planned_completion_date)}</div>}
-              {q.validity_reviewed_at && <div>Admin reviewed: {qcAbs(q.validity_reviewed_at)}</div>}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <CheatButton onClick={() => rerunAI(q.id)} busy={busy} color="#06b6d4">🔁 Run AI check</CheatButton>
-              <CheatButton onClick={() => resolve(q.id, 'accepted')} busy={busy} color="#22c55e">✅ Accept</CheatButton>
-              {q.validity_status !== 'rejected' && (
-                <CheatButton onClick={() => resolve(q.id, 'rejected')} busy={busy} color="#f43f5e">❌ Reject</CheatButton>
-              )}
-            </div>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
+        {/* ── List ── */}
+        <div className={`glass-card p-2 lg:col-span-2 ${phoneDetail ? 'hidden lg:block' : ''}`}>
+          <div className="flex flex-wrap gap-1.5 p-1 mb-1">
+            {[['pending_ai_review', 'Awaiting AI'], ['needs_clarification', 'Needs changes'], ['rejected', 'Rejected'], ['all', 'All']].map(([k, label]) => (
+              <button key={k} onClick={() => { setFilter(k); setSelId(null) }}
+                className="min-h-[44px] px-3 rounded-xl text-sm font-bold"
+                style={filter === k
+                  ? { background: Q.tint, color: Q.teal, border: '1px solid #3F858055' }
+                  : { background: '#FFFFFF', color: Q.soft, border: `1px solid ${Q.line}` }}>
+                {label} ({k === 'all' ? quests.length : counts[k]})
+              </button>
+            ))}
           </div>
-        )
-      })}
+
+          {shown.length === 0 && (
+            <div className="p-10 text-center" style={{ color: Q.muted }}>
+              <div className="text-3xl mb-2">✅</div>Nothing to resolve.
+            </div>
+          )}
+
+          <ul className="lg:max-h-[70vh] lg:overflow-y-auto">
+            {shown.map(q => {
+              const meta = VALIDITY_META[q.validity_status] || { label: q.validity_status, color: Q.soft }
+              const on = sel?.id === q.id
+              return (
+                <li key={q.id}>
+                  <button onClick={() => setSelId(q.id)}
+                    className="w-full flex items-center gap-3 p-2 rounded-xl text-left"
+                    style={{ background: on ? Q.tint : 'transparent', border: `1px solid ${on ? '#3F858055' : 'transparent'}` }}
+                    aria-current={on ? 'true' : undefined}>
+                    <span className="w-9 h-9 rounded-lg flex-none flex items-center justify-center" style={{ background: Q.mist }}>
+                      {evidenceMeta(q.evidence_type).emoji}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-bold text-sm truncate" style={{ color: Q.ink }}>{q.profiles?.username || 'Unknown'}</span>
+                      <span className="block text-sm truncate" style={{ color: Q.soft }}>{q.text}</span>
+                    </span>
+                    <span className="flex-none text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: meta.color, background: Q.mist }}>{meta.label}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+
+        {/* ── Detail ── */}
+        {sel && (() => {
+          const q = sel
+          const meta = VALIDITY_META[q.validity_status] || { label: q.validity_status, color: Q.soft }
+          const ev = evidenceMeta(q.evidence_type)
+          const lastReview = log.find(r => r.task_id === q.id)
+          return (
+            <div className={`glass-card p-4 lg:col-span-3 ${phoneDetail ? '' : 'hidden lg:block'}`}>
+              <button onClick={() => setSelId(null)} className="lg:hidden min-h-[44px] flex items-center gap-1.5 text-sm font-bold mb-2" style={{ color: Q.teal }}>
+                <ArrowLeft size={15} /> Back to list
+              </button>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+                <span className="font-bold text-base" style={{ color: Q.ink }}>
+                  {q.profiles?.username || 'Unknown'}
+                  <span style={{ color: Q.muted, fontWeight: 400 }}> · {String(q.user_id || '').slice(0, 6)}</span>
+                </span>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: Q.mist, color: meta.color }}>{meta.label}</span>
+                <span className="text-sm" style={{ color: Q.muted }}>
+                  {q.difficulty} · {q.priority} · {ev.emoji} {ev.label}{q.validity_score != null ? ` · score ${q.validity_score}` : ''}
+                </span>
+              </div>
+              <p className="text-base" style={{ color: Q.ink }}>{q.text}</p>
+              {q.goal && <p className="text-sm mt-1" style={{ color: Q.soft }}>🎯 {q.goal}</p>}
+              {q.validity_reason && <p className="text-sm mt-2" style={{ color: Q.soft }}>Participant sees: “{q.validity_reason}”</p>}
+              {lastReview && (lastReview.admin_reason || lastReview.risk_flags?.length > 0) && (
+                <div className="text-sm mt-3 px-3 py-2 rounded-lg" style={{ background: Q.mist, color: Q.soft }}>
+                  <span style={{ color: Q.muted }}>Internal: </span>{lastReview.admin_reason || '—'}
+                  {lastReview.risk_flags?.length > 0 && (
+                    <span className="ml-2">{lastReview.risk_flags.map(f => (
+                      <span key={f} className="inline-block mr-1 px-1.5 py-0.5 rounded text-xs font-bold"
+                        style={{ background: '#FBE8E3', color: '#A3412A' }}>{f}</span>
+                    ))}</span>
+                  )}
+                  {lastReview.model_version && <span className="ml-2" style={{ color: Q.muted }}>{lastReview.model_version}</span>}
+                </div>
+              )}
+              <div className="text-sm my-3 grid sm:grid-cols-2 gap-x-4 gap-y-0.5" style={{ color: Q.muted }}>
+                <div>Created: <span style={{ color: Q.ink }}>{qcAgo(q.created_at)}</span> · {qcAbs(q.created_at)}</div>
+                {q.validity_checked_at && <div>AI checked: {qcAbs(q.validity_checked_at)}</div>}
+                {q.planned_completion_date && <div>Planned finish: {qcAbs(q.planned_completion_date)}</div>}
+                {q.validity_reviewed_at && <div>Admin reviewed: {qcAbs(q.validity_reviewed_at)}</div>}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <QButton kind="approve" onClick={() => resolveAndNext(q.id, 'accepted')} disabled={!!busy}>✅ Accept</QButton>
+                {q.validity_status !== 'rejected' && (
+                  <QButton kind="reject" onClick={() => resolveAndNext(q.id, 'rejected')} disabled={!!busy}>❌ Reject</QButton>
+                )}
+                <QButton kind="ai" onClick={() => rerunAI(q.id)} disabled={!!busy}>🔁 Run AI check</QButton>
+              </div>
+            </div>
+          )
+        })()}
+      </div>
 
       {/* Admin-only decision log */}
-      <h4 className="font-cinzel font-bold text-sm pt-2 flex items-center gap-2">
+      <h4 className="font-extrabold text-base pt-2 flex items-center gap-2" style={{ color: Q.ink }}>
         Recent AI decisions
-        <span className="font-nunito font-normal text-xs" style={{ color: 'var(--text-muted)' }}>(incl. drafts that were never saved)</span>
+        <span className="font-normal text-sm" style={{ color: Q.muted }}>(incl. drafts that were never saved)</span>
       </h4>
-      {log.length === 0 && <p className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>No decisions logged yet.</p>}
+      {log.length === 0 && <p className="text-sm" style={{ color: Q.muted }}>No decisions logged yet.</p>}
       {log.map(r => (
-        <div key={r.id} className="rounded-xl px-4 py-3 text-xs font-nunito" style={{ background: 'rgba(14,14,46,0.7)', border: '1px solid rgba(124,58,237,0.15)' }}>
+        <div key={r.id} className="rounded-xl px-4 py-3 text-sm" style={{ background: '#FFFFFF', border: `1px solid ${Q.line}` }}>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="font-bold" style={{ color: DECISION_COLOR[r.decision] || '#8080aa' }}>{r.decision}</span>
-            {r.validity_score != null && <span style={{ color: '#c0c0e0' }}>score {r.validity_score}</span>}
-            <span style={{ color: '#e2e2ff' }}>{r.profiles?.username || String(r.user_id || '').slice(0, 6)}</span>
-            <span style={{ color: '#c0c0e0' }}>“{r.task_title}”</span>
-            <span style={{ color: 'var(--text-muted)' }}>{r.difficulty} · {evidenceMeta(r.evidence_type).emoji}</span>
-            {!r.task_id && <span style={{ color: '#6060aa' }}>(not saved)</span>}
-            <span className="ml-auto" style={{ color: 'var(--text-muted)' }}>{qcAgo(r.created_at)}</span>
+            <span className="font-bold" style={{ color: DECISION_COLOR[r.decision] || Q.muted }}>{r.decision}</span>
+            {r.validity_score != null && <span style={{ color: Q.soft }}>score {r.validity_score}</span>}
+            <span style={{ color: Q.ink }}>{r.profiles?.username || String(r.user_id || '').slice(0, 6)}</span>
+            <span style={{ color: Q.soft }}>“{r.task_title}”</span>
+            <span style={{ color: Q.muted }}>{r.difficulty} · {evidenceMeta(r.evidence_type).emoji}</span>
+            {!r.task_id && <span style={{ color: Q.muted }}>(not saved)</span>}
+            <span className="ml-auto" style={{ color: Q.muted }}>{qcAgo(r.created_at)}</span>
           </div>
-          {r.admin_reason && <p className="mt-1" style={{ color: '#c0c0e0' }}>{r.admin_reason}</p>}
+          {r.admin_reason && <p className="mt-1" style={{ color: Q.soft }}>{r.admin_reason}</p>}
           <div className="mt-1 flex flex-wrap gap-1 items-center">
             {(r.risk_flags || []).map(f => (
-              <span key={f} className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: 'rgba(244,63,94,0.15)', color: '#fb7185' }}>{f}</span>
+              <span key={f} className="px-1.5 py-0.5 rounded text-xs font-bold" style={{ background: '#FBE8E3', color: '#A3412A' }}>{f}</span>
             ))}
-            {r.recommended_evidence_type && <span style={{ color: 'var(--text-muted)' }}>suggests {evidenceMeta(r.recommended_evidence_type).label}</span>}
-            {r.model_version && <span style={{ color: '#6060aa' }}>{r.model_version}</span>}
+            {r.recommended_evidence_type && <span style={{ color: Q.muted }}>suggests {evidenceMeta(r.recommended_evidence_type).label}</span>}
+            {r.model_version && <span style={{ color: Q.muted }}>{r.model_version}</span>}
           </div>
         </div>
       ))}
@@ -908,7 +956,7 @@ export default function AdminPage() {
   const navigate  = useNavigate()
   const { profile, addNotification } = useGame()
 
-  const [tab,      setTab]      = useState('overview')  // overview | queue | validity
+  const [tab,      setTab]      = useState('overview')  // overview | queue | validity | testing
   const [users,    setUsers]    = useState([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState('')
@@ -982,33 +1030,30 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-deep)' }}>
+      <div className="theme-light min-h-screen relative z-10 flex items-center justify-center">
         <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
           className="text-4xl">⚙️</motion.div>
       </div>
     )
   }
 
-  /* shortcut: only the Verification tab is light so far; drop this flag once
-     Overview and Quest Validity are restyled (next step). */
-  const light = tab === 'queue'
-  const navBtn = (dark) => light ? { background: '#FFFFFF', border: '1px solid #E1E7E3', color: '#3E5165' } : dark
+  const NAV_BTN = { background: '#FFFFFF', border: '1px solid #E1E7E3', color: '#3E5165' }
 
   return (
-    <div className={`min-h-screen ${light ? 'theme-light relative z-10' : ''}`} style={light ? undefined : { background: 'var(--bg-deep)' }}>
+    <div className="theme-light min-h-screen relative z-10">
       {/* Nav */}
       <motion.nav initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
         className="relative z-20 flex flex-wrap gap-2 items-center justify-between px-4 md:px-8 py-3"
-        style={{ borderBottom: `1px solid ${light ? '#E1E7E3' : 'var(--card-border)'}`, background: light ? '#FFFFFF' : '#0d1120' }}>
+        style={{ borderBottom: '1px solid #E1E7E3', background: '#FFFFFF' }}>
         <div className="flex items-center gap-3">
           <motion.button onClick={() => navigate('/dashboard')}
             className="min-h-[44px] flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
-            style={navBtn({ background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.25)', color: '#a78bfa' })}
+            style={NAV_BTN}
             whileTap={{ scale: 0.95 }}>
             <ArrowLeft size={15} /> Dashboard
           </motion.button>
           <div>
-            <h1 className="font-cinzel font-black text-lg" style={light ? { color: '#102A43' } : { color: '#ffd166', textShadow: '0 0 16px rgba(245,163,26,0.3)' }}>Admin Control Room</h1>
+            <h1 className="font-cinzel font-black text-lg" style={{ color: '#102A43' }}>Admin Control Room</h1>
             <p className="text-xs font-nunito hidden sm:block" style={{ color: 'var(--text-muted)' }}>
               Logged in as {profile?.username}
             </p>
@@ -1021,14 +1066,14 @@ export default function AdminPage() {
               catch (e) { addNotification(`Export failed: ${e.message}`, 'error') }
             }}
             className="min-h-[44px] flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
-            style={navBtn({ background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.3)', color: '#22d3ee' })}
+            style={NAV_BTN}
             whileTap={{ scale: 0.95 }}
             title="Download every quest as a CSV for analysis (no names or quest text)">
             <Download size={14} /> Export CSV
           </motion.button>
           <motion.button onClick={loadData}
             className="min-h-[44px] flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
-            style={navBtn({ background: 'rgba(245,163,26,0.1)', border: '1px solid rgba(245,163,26,0.25)', color: '#f5a31a' })}
+            style={NAV_BTN}
             whileTap={{ scale: 0.9, rotate: 180 }}>
             <RefreshCw size={14} /> Refresh
           </motion.button>
@@ -1038,23 +1083,19 @@ export default function AdminPage() {
       <div className="relative z-10 max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
         {error && (
           <div className="p-4 rounded-xl text-sm font-nunito"
-            style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.3)', color: '#fb7185' }}>
+            style={{ background: '#FBE8E3', border: '1px solid #E58A73', color: '#A3412A' }}>
             ⚠️ {error}
           </div>
         )}
 
         {/* ── Tab bar ── */}
         <div className="flex flex-wrap gap-2">
-          {[['overview', '📊 Overview'], ['queue', '🔍 Verification Queue'], ['validity', '🛡️ Quest Validity']].map(([key, label]) => (
+          {[['overview', '📊 Overview'], ['queue', '🔍 Verification Queue'], ['validity', '🛡️ Quest Validity'], ['testing', '🧪 Testing']].map(([key, label]) => (
             <button key={key} onClick={() => setTab(key)}
               className="min-h-[44px] px-4 py-2 rounded-xl text-sm font-nunito font-bold transition-all"
-              style={light ? (tab === key
+              style={tab === key
                 ? { background: '#E4EFEE', color: '#2F6F6B', border: '1px solid #3F858055' }
-                : { background: '#FFFFFF', color: '#3E5165', border: '1px solid #E1E7E3' }) : {
-                background: tab === key ? 'rgba(245,163,26,0.18)' : 'rgba(19,19,58,0.5)',
-                color:      tab === key ? '#f5a31a' : '#8080aa',
-                border:     `1px solid ${tab === key ? 'rgba(245,163,26,0.45)' : 'rgba(124,58,237,0.15)'}`,
-              }}>
+                : { background: '#FFFFFF', color: '#3E5165', border: '1px solid #E1E7E3' }}>
               {label}
             </button>
           ))}
@@ -1062,20 +1103,20 @@ export default function AdminPage() {
 
         {tab === 'queue' && <VerificationQueue />}
         {tab === 'validity' && <QuestValidityQueue />}
+        {/* Testing tools live on their own tab so the research view stays clean for the panel. */}
+        {tab === 'testing' && <CheatPanel players={users} onChanged={loadData} />}
 
         {tab === 'overview' && (<>
-        {/* ── Testing & cheats ── */}
-        <CheatPanel players={users} onChanged={loadData} />
 
         {/* ── Global stat cards ── */}
         <motion.div initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.1 }}
           className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <StatCard icon="👥" label="Total Players"     value={totalUsers}     color="#7c3aed" />
-          <StatCard icon="📜" label="Total Quests"      value={totalTasks}     color="#06b6d4" />
-          <StatCard icon="✅" label="Completed"          value={totalCompleted} color="#4ade80"
+          <StatCard icon="👥" label="Total Players"     value={totalUsers}     color="#5B4C9A" />
+          <StatCard icon="📜" label="Total Quests"      value={totalTasks}     color="#2F6F6B" />
+          <StatCard icon="✅" label="Completed"          value={totalCompleted} color="#2F7A4D"
             sub={totalTasks > 0 ? `${Math.round(totalCompleted/totalTasks*100)}% of all tasks` : ''} />
-          <StatCard icon="⚡" label="Avg Efficiency"    value={`${avgEfficiency}%`} color="#f5a31a" />
-          <StatCard icon="😴" label="Procrastinated"    value={totalProcrast}  color="#f43f5e"
+          <StatCard icon="⚡" label="Avg Efficiency"    value={`${avgEfficiency}%`} color="#8A4B12" />
+          <StatCard icon="😴" label="Procrastinated"    value={totalProcrast}  color="#A3412A"
             sub="Tasks completed after 24h" />
         </motion.div>
 
@@ -1094,9 +1135,9 @@ export default function AdminPage() {
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={efficiencyData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(124,58,237,0.12)" />
-                  <XAxis dataKey="name" tick={{ fill: '#8080aa', fontSize: 11, fontFamily: 'Nunito' }} />
-                  <YAxis tick={{ fill: '#8080aa', fontSize: 11, fontFamily: 'Nunito' }} domain={[0, 100]} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E1E7E3" />
+                  <XAxis dataKey="name" tick={{ fill: '#667085', fontSize: 11, fontFamily: 'Nunito' }} />
+                  <YAxis tick={{ fill: '#667085', fontSize: 11, fontFamily: 'Nunito' }} domain={[0, 100]} />
                   <Tooltip content={<CustomTooltip />} />
                   <Bar dataKey="Efficiency" radius={[6, 6, 0, 0]}>
                     {efficiencyData.map((_, i) => (
@@ -1121,13 +1162,13 @@ export default function AdminPage() {
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={efficiencyData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(124,58,237,0.12)" />
-                  <XAxis dataKey="name" tick={{ fill: '#8080aa', fontSize: 11, fontFamily: 'Nunito' }} />
-                  <YAxis tick={{ fill: '#8080aa', fontSize: 11, fontFamily: 'Nunito' }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E1E7E3" />
+                  <XAxis dataKey="name" tick={{ fill: '#667085', fontSize: 11, fontFamily: 'Nunito' }} />
+                  <YAxis tick={{ fill: '#667085', fontSize: 11, fontFamily: 'Nunito' }} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ fontFamily: 'Nunito', fontSize: 12, color: '#8080aa' }} />
-                  <Bar dataKey="Total"     fill="rgba(124,58,237,0.4)"  radius={[4,4,0,0]} />
-                  <Bar dataKey="Completed" fill="#4ade80"               radius={[4,4,0,0]} />
+                  <Legend wrapperStyle={{ fontFamily: 'Nunito', fontSize: 12 }} formatter={v => <span style={{ color: '#3E5165' }}>{v}</span>} />
+                  <Bar dataKey="Total"     fill="#CBD5D0"  radius={[4,4,0,0]} />
+                  <Bar dataKey="Completed" fill="#5EAF7B"               radius={[4,4,0,0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -1147,13 +1188,13 @@ export default function AdminPage() {
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={procrastData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(124,58,237,0.12)" />
-                  <XAxis dataKey="name" tick={{ fill: '#8080aa', fontSize: 11, fontFamily: 'Nunito' }} />
-                  <YAxis tick={{ fill: '#8080aa', fontSize: 11, fontFamily: 'Nunito' }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E1E7E3" />
+                  <XAxis dataKey="name" tick={{ fill: '#667085', fontSize: 11, fontFamily: 'Nunito' }} />
+                  <YAxis tick={{ fill: '#667085', fontSize: 11, fontFamily: 'Nunito' }} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ fontFamily: 'Nunito', fontSize: 12, color: '#8080aa' }} />
-                  <Bar dataKey="OnTime"        fill="#4ade80" radius={[4,4,0,0]} />
-                  <Bar dataKey="Procrastinated" fill="#f43f5e" radius={[4,4,0,0]} />
+                  <Legend wrapperStyle={{ fontFamily: 'Nunito', fontSize: 12 }} formatter={v => <span style={{ color: '#3E5165' }}>{v}</span>} />
+                  <Bar dataKey="OnTime"        fill="#5EAF7B" radius={[4,4,0,0]} />
+                  <Bar dataKey="Procrastinated" fill="#E58A73" radius={[4,4,0,0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -1176,15 +1217,15 @@ export default function AdminPage() {
                   { metric: 'Speed',      ...Object.fromEntries(radarData.map(u => [u.user, u.Speed])) },
                   { metric: 'Points',     ...Object.fromEntries(radarData.map(u => [u.user, u.Points])) },
                 ]}>
-                  <PolarGrid stroke="rgba(124,58,237,0.2)" />
-                  <PolarAngleAxis dataKey="metric" tick={{ fill: '#8080aa', fontSize: 11, fontFamily: 'Nunito' }} />
+                  <PolarGrid stroke="#CBD5D0" />
+                  <PolarAngleAxis dataKey="metric" tick={{ fill: '#667085', fontSize: 11, fontFamily: 'Nunito' }} />
                   {radarData.map((u, i) => (
                     <Radar key={u.user} name={u.user} dataKey={u.user}
                       stroke={CHART_COLORS[i % CHART_COLORS.length]}
                       fill={CHART_COLORS[i % CHART_COLORS.length]}
                       fillOpacity={0.15} />
                   ))}
-                  <Legend wrapperStyle={{ fontFamily: 'Nunito', fontSize: 11, color: '#8080aa' }} />
+                  <Legend wrapperStyle={{ fontFamily: 'Nunito', fontSize: 11 }} formatter={v => <span style={{ color: '#3E5165' }}>{v}</span>} />
                   <Tooltip content={<CustomTooltip />} />
                 </RadarChart>
               </ResponsiveContainer>
@@ -1195,16 +1236,16 @@ export default function AdminPage() {
         {/* ── Player table ── */}
         <motion.div initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} transition={{ delay:0.4 }}
           className="glass-card p-5">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap gap-3 items-center justify-between mb-4">
             <h3 className="font-cinzel font-bold text-base flex items-center gap-2">
-              <Users size={16} style={{ color: '#f5a31a' }} />
+              <Users size={16} style={{ color: '#8A4B12' }} />
               All Players
               <span className="font-nunito font-normal text-sm" style={{ color: 'var(--text-muted)' }}>
                 ({totalUsers})
               </span>
             </h3>
             {/* Sort controls */}
-            <div className="flex items-center gap-2 text-xs font-nunito">
+            <div className="flex flex-wrap items-center gap-2 text-sm font-nunito">
               <span style={{ color: 'var(--text-muted)' }}>Sort by:</span>
               {[
                 { key: 'efficiency_pct', label: '⚡ Efficiency' },
@@ -1212,11 +1253,11 @@ export default function AdminPage() {
                 { key: 'points', label: '⭐ Points' },
               ].map(({ key, label }) => (
                 <button key={key} onClick={() => toggleSort(key)}
-                  className="px-2 py-1 rounded-lg transition-all"
+                  className="min-h-[44px] px-3 py-1 rounded-lg transition-all"
                   style={{
-                    background: sortBy === key ? 'rgba(245,163,26,0.15)' : 'rgba(19,19,58,0.6)',
-                    color: sortBy === key ? '#f5a31a' : '#8080aa',
-                    border: `1px solid ${sortBy === key ? 'rgba(245,163,26,0.4)' : 'rgba(124,58,237,0.15)'}`,
+                    background: sortBy === key ? '#FBEEDF' : '#F3F5F2',
+                    color: sortBy === key ? '#8A4B12' : '#667085',
+                    border: `1px solid ${sortBy === key ? '#EBA66E' : '#E1E7E3'}`,
                   }}>
                   {label} {sortBy === key ? (sortDir === 'desc' ? '↓' : '↑') : ''}
                 </button>

@@ -46,7 +46,7 @@ Checked in the browser at 1440px and 375px: landing (no sideways scroll, nothing
 - `StatBar.jsx` deleted (rings in the Dashboard instead). TaskList uses local light difficulty/validity colours (comment says why).
 - **Accessories done** (approved layout B: room banner + one sideways shelf per category). Equipped glyphs float over the pet (PetRoom `accessories` prop), on Dashboard too. `PetAvatar.jsx` deleted; `RARITY_COLORS` now light.
 - **Admin Verification queue done** (approved list + detail; "verification panel" = the admin queue, not the student modal). Light only while on that tab: `light` flag in `AdminPage` (shortcut comment).
-- Next: **Admin panel** (Overview + Quest Validity tabs), mockup first; then drop the `light` flag.
+- **Admin panel done** (approved B): whole page light, Overview = research only, testing tools on a 🧪 Testing tab, Quest Validity = list + detail. `light` flag removed; VALIDITY_META colours now light (shared).
   Still dark: loader (`MascotWakeLoader`), Notifications toasts, EggHatching, GameModeSelect, PetSelect, Leaderboard.
 
 ## Next task: restyle the signed-in website pages to match the app
