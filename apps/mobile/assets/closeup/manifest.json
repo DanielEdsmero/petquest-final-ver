@@ -1,0 +1,89 @@
+{
+  "dragon": {
+    "source": "supplied_closeup_frames",
+    "asset": "arcane_dragon",
+    "width": 386,
+    "height": 492,
+    "colours": 128,
+    "resampled": false,
+    "baseline": 486,
+    "frames": [
+      "idle",
+      "breathe",
+      "blink",
+      "idle_return",
+      "happy",
+      "hungry",
+      "needs_cleaning",
+      "care_reaction"
+    ],
+    "kb": {
+      "idle": 183,
+      "breathe": 196,
+      "blink": 183,
+      "idle_return": 182,
+      "happy": 204,
+      "hungry": 175,
+      "needs_cleaning": 183,
+      "care_reaction": 189
+    }
+  },
+  "cat": {
+    "source": "supplied_closeup_frames",
+    "asset": "mystic_cat",
+    "width": 421,
+    "height": 492,
+    "colours": 128,
+    "resampled": false,
+    "baseline": 486,
+    "frames": [
+      "idle",
+      "breathe",
+      "blink",
+      "idle_return",
+      "happy",
+      "hungry",
+      "needs_cleaning",
+      "care_reaction"
+    ],
+    "kb": {
+      "idle": 188,
+      "breathe": 190,
+      "blink": 184,
+      "idle_return": 181,
+      "happy": 194,
+      "hungry": 216,
+      "needs_cleaning": 207,
+      "care_reaction": 196
+    }
+  },
+  "wolf": {
+    "source": "supplied_closeup_frames",
+    "asset": "spirit_wolf",
+    "width": 392,
+    "height": 492,
+    "colours": 128,
+    "resampled": false,
+    "baseline": 486,
+    "frames": [
+      "idle",
+      "breathe",
+      "blink",
+      "idle_return",
+      "happy",
+      "hungry",
+      "needs_cleaning",
+      "care_reaction"
+    ],
+    "kb": {
+      "idle": 214,
+      "breathe": 216,
+      "blink": 214,
+      "idle_return": 215,
+      "happy": 222,
+      "hungry": 242,
+      "needs_cleaning": 243,
+      "care_reaction": 235
+    }
+  }
+}

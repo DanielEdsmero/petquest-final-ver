@@ -12,9 +12,9 @@ export default function EvolutionBar({ totalEarned = 0, petName = 'Your companio
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-sm font-nunito font-semibold" style={{ color: '#c0c0e0' }}>
+        <span className="flex items-center gap-1.5 text-sm font-nunito font-semibold" style={{ color: '#3E5165' }}>
           <span className="px-1.5 py-0.5 rounded-md text-xs font-black"
-            style={{ background: 'rgba(245,163,26,0.15)', color: 'var(--gold)' }}>
+            style={{ background: '#E4EFEE', color: 'var(--gold)' }}>
             LV {p.level}
           </span>
           {p.meta.name}
@@ -30,8 +30,8 @@ export default function EvolutionBar({ totalEarned = 0, petName = 'Your companio
         <motion.div
           className="stat-bar-fill"
           style={{
-            background: 'linear-gradient(90deg, #f5a31a, #ffd166)',
-            boxShadow: '0 0 8px rgba(245, 163, 26, 0.5)',
+            background: '#3F8580',
+            boxShadow: 'none',
           }}
           initial={{ width: 0 }}
           animate={{ width: `${p.pct}%` }}

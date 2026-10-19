@@ -12,3 +12,11 @@ export const DIFFICULTY_COLORS = {
   hard:   '#ef4444', // red
   boss:   '#7c3aed', // purple
 }
+
+/* Light-theme text versions (4.5:1+ on white and on the #E4EFEE teal tint). Same meaning as above; the dark
+   ones stay for pages not yet restyled (Leaderboard). */
+export const DIFFICULTY_TEXT = {
+  easy:   '#276B42',
+  medium: '#86540F',
+  hard:   '#A13A35',
+}

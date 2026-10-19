@@ -771,43 +771,53 @@ export function GameProvider({ children }) {
   }, [profile?.id])
 
   /* ── points / care ── */
-  const spendPoints = useCallback(async (amount) => {
+  /* Phase 13: the balance is server-authoritative. spend_points() is the only
+     way it goes down (the profiles_economy_guard trigger rejects a direct
+     browser write to profiles.points), and care_pet() debits the care cost and
+     raises the stat in one transaction. The local pre-check just gives the
+     instant "not enough" toast; the server re-checks atomically. */
+  const applyBalance = useCallback((next) => {
+    if (typeof next !== 'number') return
+    setPoints(next); lsSet('points', next)
+  }, [])
+
+  const spendPoints = useCallback(async (amount, reason = null) => {
     const cur = pointsRef.current
     if (cur < amount) { addNotification(`Not enough points! Need ${amount} 💸`, 'error'); return false }
-    const next = cur - amount
-    setPoints(next); lsSet('points', next)
-    await supabase.from('profiles').update({ points: next }).eq('id', profile?.id)
+    const { data, error } = await supabase.rpc('spend_points', { p_amount: amount, p_reason: reason })
+    if (error) { console.error('[spendPoints]', error); addNotification('Could not spend points — please try again.', 'error'); return false }
+    applyBalance(data?.points)
+    if (!data?.ok) {
+      addNotification(data?.error === 'insufficient_points' ? `Not enough points! Need ${amount} 💸` : 'Could not spend points — please try again.', 'error')
+      return false
+    }
     return true
-  }, [profile?.id, addNotification])
+  }, [addNotification, applyBalance])
 
-  const updateStat = useCallback(async (stat, delta) => {
-    setPetStats(prev => {
-      const next = { ...prev, [stat]: Math.min(100, prev[stat] + delta) }
-      lsSet('stats', next)
-      supabase.from('pet_stats').upsert({ user_id: profile?.id, ...next, updated_at: new Date().toISOString() }).then(() => {})
-      return next
-    })
-  }, [profile?.id])
+  const carePet = useCallback(async (action, message) => {
+    if (pointsRef.current < 10) { addNotification('Not enough points! Need 10 💸', 'error'); return false }
+    const { data, error } = await supabase.rpc('care_pet', { p_action: action })
+    if (error) { console.error('[carePet]', error); addNotification('Could not care for your pet — please try again.', 'error'); return false }
+    applyBalance(data?.points)
+    if (!data?.ok) {
+      addNotification(data?.error === 'insufficient_points' ? 'Not enough points! Need 10 💸'
+        : data?.error === 'no_pet' ? 'Hatch your companion first!'
+        : 'Could not care for your pet — please try again.', 'error')
+      return false
+    }
+    if (data.stats) { setPetStats(data.stats); lsSet('stats', data.stats) }
+    addNotification(message, 'success')
+    return true
+  }, [addNotification, applyBalance])
 
-  const feedPet = useCallback(async () => {
-    if (!(await spendPoints(10))) return false
-    await updateStat('hunger', 30); addNotification(`${selectedPet?.name} loved the meal! 🍖`, 'success'); return true
-  }, [spendPoints, updateStat, selectedPet, addNotification])
-
-  const showerPet = useCallback(async () => {
-    if (!(await spendPoints(10))) return false
-    await updateStat('cleanliness', 30); addNotification(`${selectedPet?.name} is sparkling clean! 🛁`, 'success'); return true
-  }, [spendPoints, updateStat, selectedPet, addNotification])
-
-  const playWithPet = useCallback(async () => {
-    if (!(await spendPoints(10))) return false
-    await updateStat('happiness', 30); addNotification(`${selectedPet?.name} is overjoyed! 🎉`, 'success'); return true
-  }, [spendPoints, updateStat, selectedPet, addNotification])
+  const feedPet     = useCallback(() => carePet('feed', `${selectedPet?.name} loved the meal! 🍖`),      [carePet, selectedPet])
+  const showerPet   = useCallback(() => carePet('wash', `${selectedPet?.name} is sparkling clean! 🛁`), [carePet, selectedPet])
+  const playWithPet = useCallback(() => carePet('play', `${selectedPet?.name} is overjoyed! 🎉`),       [carePet, selectedPet])
 
   /* ── accessories ── */
   const buyAccessory = useCallback(async (accessory) => {
     if (ownedAccessories.includes(accessory.id)) { addNotification('You already own this!', 'info'); return false }
-    if (!(await spendPoints(accessory.cost))) return false
+    if (!(await spendPoints(accessory.cost, `accessory:${accessory.id}`))) return false
     const next = [...ownedAccessories, accessory.id]; setOwnedAccessories(next); lsSet('owned_acc', next)
     await supabase.from('owned_accessories').insert({ user_id: profile?.id, accessory_id: accessory.id })
     addNotification(`${accessory.name} purchased! 🎁`, 'success'); return true

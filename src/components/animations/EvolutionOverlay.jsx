@@ -40,11 +40,12 @@ export default function EvolutionOverlay({ evolution, onDone }) {
   const meta = getLevelMeta(level)
   const isHatch = kind === 'hatch'
 
-  const title    = evolution.title    || (isHatch ? 'Hatched!' : 'Evolution!')
+  const name     = petMeta(petId).name
+  const title    = evolution.title    || (isHatch ? 'Hatched!' : `${name} evolved!`)
   const subtitle = evolution.subtitle || (isHatch
     ? `Your companion has hatched: the ${petMeta(petId).species}!`
-    : `Your companion evolved to ${stageName(level)}!`)
-  const button   = evolution.button   || 'View your companion'
+    : `Your companion is now ${/^[AEIOU]/.test(stageName(level)) ? 'an' : 'a'} ${stageName(level)}.`)
+  const button   = evolution.button   || `See ${name}`
 
   return createPortal(
     <AnimatePresence>
@@ -62,8 +63,8 @@ export default function EvolutionOverlay({ evolution, onDone }) {
           <button
             onClick={(e) => { e.stopPropagation(); onDone?.() }}
             aria-label="Close"
-            className="absolute top-5 right-5 p-2 rounded-lg"
-            style={{ color: 'var(--text-soft)', zIndex: 3 }}
+            className="absolute top-4 right-4 w-11 h-11 flex items-center justify-center rounded-xl"
+            style={{ color: '#FFFFFF', zIndex: 3 }}
           >
             <X size={22} />
           </button>
@@ -79,8 +80,10 @@ export default function EvolutionOverlay({ evolution, onDone }) {
           )}
 
           {/* Clicking the card itself should NOT dismiss (only backdrop/X/CTA). */}
-          <div className="flex flex-col items-center gap-5 relative" style={{ zIndex: 2 }}
+          <div className="flex flex-col items-center gap-3 relative bg-white rounded-3xl px-8 pt-6 pb-7 mx-4 font-nunito"
+            style={{ zIndex: 2, maxWidth: 360, boxShadow: '0 16px 40px rgba(16,42,67,0.25)' }}
             onClick={(e) => e.stopPropagation()}>
+            <p aria-hidden="true" className="text-lg tracking-[0.5em]" style={{ color: '#EBA66E' }}>✦ ✦ ✦</p>
             <div className="relative flex items-center justify-center" style={{ width: 200, height: 200 }}>
               {/* Expanding gold rings */}
               {!reduceMotion && [0, 0.25, 0.5].map((delay, i) => (
@@ -95,7 +98,7 @@ export default function EvolutionOverlay({ evolution, onDone }) {
 
               {/* New-stage sprite (falls back to emoji if art is missing) */}
               <motion.div
-                style={{ filter: 'drop-shadow(0 0 30px var(--gold))' }}
+                style={{ filter: 'drop-shadow(0 6px 10px rgba(16,42,67,0.18))' }}
                 initial={{ scale: 0.4, rotate: -12, opacity: 0 }}
                 animate={
                   reduceMotion
@@ -114,13 +117,14 @@ export default function EvolutionOverlay({ evolution, onDone }) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: reduceMotion ? 0.1 : 0.9, duration: 0.5 }}
             >
-              <p className="font-cinzel font-black text-3xl gradient-text-gold mb-1">{title}</p>
-              <p className="font-cinzel font-bold text-xl" style={{ color: 'var(--text-primary)' }}>{subtitle}</p>
+              <p className="font-extrabold text-3xl mb-1" style={{ color: '#102A43' }}>{title}</p>
+              <p className="font-bold text-lg" style={{ color: '#3E5165' }}>{subtitle}</p>
               {!isHatch && (
-                <p className="font-nunito text-sm mt-2 max-w-xs" style={{ color: 'var(--text-soft)' }}>{meta.blurb}</p>
+                <p className="text-sm mt-2 max-w-xs mx-auto" style={{ color: '#3E5165' }}>{meta.blurb}</p>
               )}
               <button onClick={(e) => { e.stopPropagation(); onDone?.() }}
-                className="btn-gold px-8 py-2.5 mt-5 font-cinzel font-bold tracking-wide">
+                className="w-full min-h-[48px] px-8 mt-5 rounded-xl text-base font-bold text-white"
+                style={{ background: '#2F6F6B' }}>
                 {button}
               </button>
             </motion.div>

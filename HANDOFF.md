@@ -18,7 +18,11 @@ Read this first in a new session. It replaces re-reading the old chat.
 - Dislikes the old website look (dark purple space, gold glow, neon).
 - Keep forms short: he removed goal + priority inputs from the quest form twice (commits 803b7db, fdf694d). Don't re-add them without asking.
 
-## Done this session (ALL UNCOMMITTED — nothing is live yet)
+## Done this session — LIVE since 2026-10-18
+Website items (1–6, 8) were cherry-picked onto `main` (commits 832a102, 19cfaff) and deployed. The working branch
+`mobile-expo-migration` is pushed too but NOT merged: it also carries `GameContext.jsx` changes that need
+`supabase-phase13-spend-points.sql` and `-phase13b-signup-role.sql` run in Supabase first (not confirmed run).
+Merging that branch into `main` before running them would break pet care and the shop on the live site.
 1. Phone layout: `.dashboard-grid` used `1fr` → `minmax(0,1fr)` so the pet card no longer overflows 375px (`src/index.css`).
 2. Speed: Admin/Leaderboard/Accessories/onboarding pages lazy-loaded (`src/App.jsx`). Main JS 1,086 KB → ~611 KB (gzip 316 → 183 KB).
 3. Tap targets: `.tap-target` (44px min, phone only) on quest complete/delete + dashboard header buttons. Delete asks to confirm.
@@ -32,6 +36,28 @@ Read this first in a new session. It replaces re-reading the old chat.
 8. Test regex loosened for the `<Suspense>` wrapper (`tests/mascot-wake-loader.test.mjs`). 198/198 tests pass. `.superpowers/` gitignored.
 
 Checked in the browser at 1440px and 375px: landing (no sideways scroll, nothing past the edge), login, register, the empty-form error.
+
+## Restyle progress (2026-10-18, local, not committed)
+- **Dashboard done** (approved layout A): `.theme-light` scope in `src/index.css` re-points the dark tokens; pages opt in with
+  `className="theme-light ... relative z-10"`. Dashboard grid = `.dash-layout` (phone: pet → quests → care → evolution → shop).
+- `src/components/PetRoom.jsx`: painted home + wandering pet. It imports the phone app's pure models
+  (`apps/mobile/src/data/spriteModel.ts`, `moodModel.ts`, `petHomeModel.ts`) so habits live in one place. Assets: `public/homes/*.webp`,
+  `public/sprites/{cat,dragon,wolf}/*.webp` (converted from `apps/mobile/assets`). Older stages: evolution art moves, no walk frames.
+- `StatBar.jsx` deleted (rings in the Dashboard instead). TaskList uses local light difficulty/validity colours (comment says why).
+- **Accessories done** (approved layout B: room banner + one sideways shelf per category). Equipped glyphs float over the pet (PetRoom `accessories` prop), on Dashboard too. `PetAvatar.jsx` deleted; `RARITY_COLORS` now light.
+- **Admin Verification queue done** (approved list + detail; "verification panel" = the admin queue, not the student modal). Light only while on that tab: `light` flag in `AdminPage` (shortcut comment).
+- **Admin panel done** (approved B): whole page light, Overview = research only, testing tools on a 🧪 Testing tab, Quest Validity = list + detail. `light` flag removed; VALIDITY_META colours now light (shared).
+- **Egg hatching done** (approved A: three egg cards → "Meet <pet>" card with PetRoom). Dragon/wolf egg PNGs de-hazed.
+  Checked via a temporary mock-data preview (`.preview/` + `preview-egg.html`, launch entry `petquest-preview`; not committed — delete when done).
+- **Mode select done** (approved B: three steps mode → difficulty → quests). Shared light `DIFFICULTY_TEXT` in `src/data/difficulty.js`.
+- **Loader done** (approved B: pet wakes up in its home, `inHome` prop on MascotWakeLoader). Tests updated (Skip 44px, size 96).
+- **Toasts + evolution done** (toasts B: navy pill bottom-centre; celebration A: white reveal card).
+- **Leaderboard done** (Daniel keeps it despite the paper; approved B: podium + list, own row pinned past rank 8).
+- **Every signed-in page is now light.** Temporary mock preview harness removed.
+- **Dead code removed**: PetSelectPage, CinematicBackground, PlanningStats, TypingText, reactbits StarBorder/ShinyText/SpotlightCard/GlareHover/Magnet,
+  31 unused CSS rules + 3 orphan keyframes (index.css 687 → 441 lines, CSS bundle 34.8 → 28.2 KB), star-movement in tailwind.config.js.
+  The dark `:root` tokens stay: `.theme-light` overrides them and the pre-theme fallbacks still read them.
+  `PetSelectPage.jsx` is not routed anywhere (dead code; delete with Daniel's OK).
 
 ## Next task: restyle the signed-in website pages to match the app
 - Pages: Dashboard, Accessories, Leaderboard, EggHatching, GameModeSelect, PetSelect, Admin (+ components: TaskList, StatBar,

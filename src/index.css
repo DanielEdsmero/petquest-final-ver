@@ -71,20 +71,6 @@ body::before {
   z-index: 0;
 }
 
-/* Star particles - generated via box-shadow */
-.stars-small::before,
-.stars-medium::before,
-.stars-large::before {
-  content: '';
-  position: fixed;
-  top: 0; left: 0;
-  width: 2px; height: 2px;
-  border-radius: 50%;
-  background: transparent;
-  pointer-events: none;
-  z-index: 0;
-}
-
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg-card); }
@@ -97,33 +83,6 @@ body::before {
   border: 1px solid var(--card-border);
   border-radius: var(--card-radius);
   box-shadow: var(--card-shadow);
-}
-
-/* Cinematic variant — ONLY the login card keeps the frosted look, so the
-   video/particles behind it read through. Fully self-contained so the
-   de-glassed base above doesn't touch it. */
-.glass-card--cinematic {
-  background: rgba(10, 10, 46, 0.85);
-  backdrop-filter: blur(30px);
-  -webkit-backdrop-filter: blur(30px);
-  border: 1px solid rgba(124, 58, 237, 0.2);
-  border-radius: 16px;
-  box-shadow: 0 0 30px rgba(245, 163, 26, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-
-/* Gradient text */
-.gradient-text-gold {
-  background: linear-gradient(135deg, #f5a31a 0%, #ffd166 50%, #f5a31a 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.gradient-text-arcane {
-  background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 50%, #7c3aed 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
 /* Gold button */
@@ -225,11 +184,6 @@ select.input-field option { background: #13133a; color: #e2e2ff; }
   filter: blur(2px);
 }
 
-/* Pet glow */
-.pet-glow {
-  filter: drop-shadow(0 0 20px currentColor);
-}
-
 /* Quest card — solid, grounded. */
 .task-item {
   background: var(--card-bg-2);
@@ -258,84 +212,6 @@ select.input-field option { background: #13133a; color: #e2e2ff; }
   border-color: var(--muted-border);
 }
 
-/* Notification — solid, no blur. */
-.notification {
-  background: var(--card-bg-2);
-  border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
-}
-
-/* Custom checkbox */
-.custom-check {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(124, 58, 237, 0.5);
-  border-radius: 6px;
-  background: rgba(19, 19, 58, 0.8);
-  cursor: pointer;
-  position: relative;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-.custom-check:checked {
-  background: #22c55e;
-  border-color: #22c55e;
-}
-.custom-check:checked::after {
-  content: '✓';
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  color: white;
-  font-size: 12px;
-  font-weight: 700;
-}
-.custom-check:hover:not(:checked) {
-  border-color: rgba(245, 163, 26, 0.7);
-}
-
-/* Accessory card — solid, grounded; subtle lift on hover (no gold glow). */
-.acc-card {
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 12px;
-  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-  box-shadow: var(--card-shadow);
-}
-.acc-card:hover {
-  border-color: var(--card-border-hi);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-}
-.acc-card.owned {
-  border-color: rgba(34, 197, 94, 0.45);
-}
-.acc-card.equipped {
-  border-color: rgba(245, 163, 26, 0.6);
-}
-
-/* Floating label */
-@keyframes floatUp {
-  0% { transform: translateY(0) translateX(-50%); opacity: 1; }
-  100% { transform: translateY(-60px) translateX(-50%); opacity: 0; }
-}
-.float-label {
-  animation: floatUp 1.2s ease-out forwards;
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  font-weight: 800;
-  font-size: 1.1rem;
-  pointer-events: none;
-  z-index: 100;
-  white-space: nowrap;
-}
-
 /* Quest-completion radial burst.
    Portalled to <body> so no transformed ancestor can trap the fixed position.
    --burst-x/y are the origin (the completed card's centre); --burst-color is
@@ -357,21 +233,6 @@ select.input-field option { background: #13133a; color: #e2e2ff; }
     var(--burst-color) 0%,
     rgba(var(--gold-rgb), 0.12) 35%,
     transparent 70%
-  );
-}
-
-/* Golden glow behind the points counter when points increase. */
-.points-glow {
-  position: absolute;
-  inset: -8px;
-  border-radius: 16px;
-  pointer-events: none;
-  z-index: 0;
-  background: radial-gradient(
-    ellipse at center,
-    var(--gold-pulse-strong) 0%,
-    var(--gold-pulse-soft) 45%,
-    transparent 75%
   );
 }
 
@@ -464,9 +325,9 @@ select.input-field option { background: #13133a; color: #e2e2ff; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(6, 6, 26, 0.92);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(16, 42, 67, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   /* Interactive modal: MUST capture clicks so its buttons work and clicks can't
      fall through to the task list behind it (that leak opened the verify modal). */
   pointer-events: auto;
@@ -474,7 +335,7 @@ select.input-field option { background: #13133a; color: #e2e2ff; }
 .evolution-flash {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle, #fff 0%, var(--gold-light) 45%, transparent 75%);
+  background: radial-gradient(circle, #fff 0%, #FBEEDF 45%, transparent 75%);
   pointer-events: none;
   z-index: 1;
 }
@@ -482,60 +343,9 @@ select.input-field option { background: #13133a; color: #e2e2ff; }
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 3px solid rgba(var(--gold-rgb), 0.8);
-  box-shadow: 0 0 30px rgba(var(--gold-rgb), 0.6), inset 0 0 30px rgba(var(--gold-rgb), 0.3);
+  border: 3px solid rgba(235, 166, 110, 0.8);
+  box-shadow: 0 0 24px rgba(235, 166, 110, 0.35);
   pointer-events: none;
-}
-
-/* The gold dot that stands in for the system cursor. Fixed, inert, and above
-   everything except the click sparks. No transition — any easing here would
-   reintroduce exactly the lag this replaced. */
-.dot-cursor {
-  position: fixed;
-  top: 0;
-  left: 0;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 10000;
-  opacity: 0;
-  will-change: transform;
-}
-
-/* Suppress the system cursor while the dot is mounted. Has to reach every
-   descendant: `cursor: none` on body alone loses to `.btn-gold`, `.acc-card`,
-   `.custom-check` and the UA's I-beam on inputs, so the native cursor would
-   reappear over precisely the interactive elements. Added and removed by the
-   component, so the cursor comes straight back if it unmounts or bails out. */
-body.has-dot-cursor,
-body.has-dot-cursor * {
-  cursor: none !important;
-}
-
-/* Magic-ring backdrop inside a celebration overlay. Sits under the overlay's
-   own content (which is z-index 2) and never eats pointer events — MagicRings
-   binds its own mouse handlers, and this is decoration, not a control. */
-.celebration-rings {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-}
-
-/* Elder / Legendary aura behind the pet. */
-.pet-aura {
-  position: absolute;
-  inset: -12%;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 0;
-  background: conic-gradient(
-    from 0deg,
-    rgba(var(--gold-rgb), 0.35),
-    rgba(124, 58, 237, 0.3),
-    rgba(6, 182, 212, 0.3),
-    rgba(var(--gold-rgb), 0.35)
-  );
-  filter: blur(14px);
 }
 
 /* Empty-state companion. */
@@ -546,71 +356,9 @@ body.has-dot-cursor * {
   filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
 }
 
-/* ── Cinematic login background ── */
-.cinematic-bg {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;   /* never intercepts clicks meant for the form */
-  background: var(--bg-deep);
-}
-.cinematic-bg > * {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-/* Ken Burns fallback scene — a moody fantasy horizon built from gradients so
-   it needs no external asset. Slowly pans and zooms. Overscaled so the motion
-   never reveals an edge. */
-.cinematic-kenburns {
-  background:
-    radial-gradient(ellipse 60% 45% at 50% 78%, rgba(245, 163, 26, 0.28) 0%, transparent 60%),
-    radial-gradient(ellipse 90% 60% at 50% 100%, rgba(124, 58, 237, 0.35) 0%, transparent 65%),
-    radial-gradient(circle at 22% 28%, rgba(6, 182, 212, 0.14) 0%, transparent 45%),
-    radial-gradient(circle at 82% 20%, rgba(124, 58, 237, 0.18) 0%, transparent 45%),
-    linear-gradient(180deg, #05061c 0%, #0a0a2e 45%, #140a2b 100%);
-  transform-origin: center 70%;
-  animation: kenburns 28s ease-in-out infinite alternate;
-  will-change: transform;
-}
-.cinematic-kenburns.is-static { animation: none; transform: scale(1.05); }
-
-@keyframes kenburns {
-  0%   { transform: scale(1.08) translate3d(-1.5%, 1.5%, 0); }
-  100% { transform: scale(1.22) translate3d(1.5%, -1.5%, 0); }
-}
-
-.cinematic-video {
-  object-fit: cover;
-}
-
-.cinematic-canvas { inset: 0; }
-
-/* Vignette + floor darkening for form contrast. */
-.cinematic-veil {
-  background:
-    radial-gradient(ellipse 80% 70% at 50% 45%, transparent 40%, rgba(4, 4, 16, 0.55) 100%),
-    linear-gradient(180deg, rgba(4, 4, 16, 0.35) 0%, transparent 30%, transparent 60%, rgba(4, 4, 16, 0.55) 100%);
-}
-
-/* Gently shimmering title text-shadow. */
-.title-shimmer {
-  animation: titleShimmer 3.2s ease-in-out infinite;
-}
-@keyframes titleShimmer {
-  0%, 100% { text-shadow: 0 0 8px rgba(245, 163, 26, 0.25), 0 0 18px rgba(245, 163, 26, 0.15); }
-  50%      { text-shadow: 0 0 16px rgba(245, 163, 26, 0.6), 0 0 34px rgba(245, 163, 26, 0.4), 0 0 54px rgba(255, 209, 102, 0.25); }
-}
-
 /* Responsive */
 @media (max-width: 768px) {
-  .dashboard-grid {
-    /* minmax(0,…) stops wide content (accessory chips) pushing the column past the screen */
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
+
   .tap-target {
     min-width: 44px;
     min-height: 44px;
@@ -631,3 +379,63 @@ body.has-dot-cursor * {
   }
   .completion-burst { display: none; }
 }
+
+/* ── Light theme (the phone app's palette, apps/mobile/src/theme.ts) ──
+   Scoped to a page root with className="theme-light" so signed-in pages can
+   move over one at a time. Re-points the dark tokens and the shared classes. */
+.theme-light {
+  --bg-deep: #FAF8F0;
+  --bg-card: #FFFFFF;
+  --bg-card2: #F3F5F2;
+  --border: #E1E7E3;
+  --gold: #2F6F6B;
+  --gold-light: #3F8580;
+  --gold-rgb: 63, 133, 128;
+  --arcane: #3F8580;
+  --teal: #3F8580;
+  --text-primary: #102A43;
+  --text-soft: #3E5165;
+  --text-muted: #667085;
+  --text-placeholder: #667085;
+  --muted-border: #CBD5D0;
+  --card-bg: #FFFFFF;
+  --card-bg-2: #F3F5F2;
+  --card-border: #E1E7E3;
+  --card-border-hi: #CBD5D0;
+  --card-radius: 16px;
+  --card-shadow: 0 1px 2px rgba(16, 42, 67, 0.05);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+}
+.theme-light .font-cinzel { font-family: 'Nunito', sans-serif; letter-spacing: 0; }
+.theme-light .btn-gold { background: #2F6F6B; color: #FFFFFF; } /* #3F8580 is 4.3:1 with white text */
+.theme-light .btn-gold::before { display: none; }
+.theme-light .btn-gold:hover { background: #255955; box-shadow: none; }
+.theme-light .input-field { background: #FFFFFF; border-color: #CBD5D0; color: #102A43; }
+.theme-light select.input-field option { background: #FFFFFF; color: #102A43; }
+.theme-light .stat-bar-bg { background: #E1E7E3; }
+
+/* Dashboard: phone stacks pet → quests → care → evolution → shop;
+   desktop puts the pet column left and quests right. */
+.dash-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "room" "quests" "care" "evo" "shop";
+}
+@media (min-width: 1024px) {
+  .dash-layout {
+    gap: 1.5rem;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-rows: auto auto auto 1fr;
+    grid-template-areas: "room quests" "care quests" "evo quests" "shop quests";
+  }
+}
+.theme-light .task-item { background: #FFFFFF; }
+.theme-light .task-item:hover { background: #FAF8F0; }
+.theme-light .task-item.completed,
+.theme-light .task-item.completed:hover { background: #F3F5F2; opacity: 0.75; }
+.theme-light ::-webkit-scrollbar { height: 6px; }
+.theme-light ::-webkit-scrollbar-track { background: transparent; }
+.theme-light ::-webkit-scrollbar-thumb { background: #CBD5D0; }
+.theme-light ::-webkit-scrollbar-thumb:hover { background: #98A2B3; }

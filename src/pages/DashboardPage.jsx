@@ -5,47 +5,78 @@ import { LogOut, Sparkles, Star, ShoppingBag, Droplets, Heart, Utensils, Shield,
 import { useGame, DIFF_POINTS } from '../context/GameContext'
 
 const MODE_META = {
-  fitness:  { emoji: '💪', label: 'Fitness',  color: '#f43f5e' },
-  saitama:  { emoji: '👊', label: 'Saitama',  color: '#facc15' },
-  academic: { emoji: '📚', label: 'Academic', color: '#06b6d4' },
-  custom:   { emoji: '✨', label: 'Custom',   color: '#f5a31a' },
+  fitness:  { emoji: '💪', label: 'Fitness' },
+  saitama:  { emoji: '👊', label: 'Saitama' },
+  academic: { emoji: '📚', label: 'Academic' },
+  custom:   { emoji: '✨', label: 'Custom' },
 }
 
-/* Per-care-action feedback: the emoji that floats up and the tint wash. */
-const CARE_META = {
-  feed:   { emoji: '🍖', tint: '#f59e0b' },
-  shower: { emoji: '🛁', tint: '#06b6d4' },
-  play:   { emoji: '✨', tint: '#a78bfa' },
-}
-import StatBar from '../components/StatBar'
+/* Light palette — same values as apps/mobile/src/theme.ts. */
+const INK = '#102A43'
+const SOFT = '#3E5165'
+const MUTED = '#667085'
+const TEAL = '#3F8580'
+const TEAL_DEEP = '#2F6F6B'
+const TEAL_TINT = '#E4EFEE'
+const MIST = '#F3F5F2'
+const LINE = '#E1E7E3'
+const APRICOT = '#EBA66E'
+const APRICOT_TINT = '#FBEEDF'
+const APRICOT_INK = '#8A4B12'
+const CORAL = '#E58A73'
+const CORAL_TINT = '#FBE8E3'
+const CORAL_INK = '#A3412A'
+const LEAF = '#5EAF7B'
+
+/* Plain header button: white, thin border, ink text. */
+const NAV_BTN = { background: '#FFFFFF', border: `1px solid ${LINE}`, color: SOFT }
+
 import TaskList from '../components/TaskList'
-import PetAvatar from '../components/PetAvatar'
-import FloatingText from '../components/animations/FloatingText'
+import PetRoom from '../components/PetRoom'
 import StreakCounter from '../components/StreakCounter'
 import EvolutionBar from '../components/EvolutionBar'
 import EvolutionOverlay from '../components/animations/EvolutionOverlay'
 import ConnectionStatus from '../components/ConnectionStatus'
 import CountUp from '../components/reactbits/CountUp'
 import { getStageForPoints } from '../config/pets'
+import { ACCESSORIES } from '../data/accessories'
 
-function CareButton({ icon: Icon, label, cost, color, glowColor, onClick, disabled }) {
+/* One care stat as a ring, like the phone app. Low (<35) turns coral. */
+function StatRing({ label, value, color }) {
+  const pct = Math.max(0, Math.min(100, Math.round(value ?? 0)))
+  const low = pct < 35
+  const r = 22, c = 2 * Math.PI * r
+  return (
+    <div className="flex flex-col items-center gap-1" title={`${label} ${pct}%`}>
+      <svg width="56" height="56" viewBox="0 0 56 56" role="img" aria-label={`${label} ${pct}%`}>
+        <circle cx="28" cy="28" r={r} fill="none" stroke={LINE} strokeWidth="6" />
+        <motion.circle cx="28" cy="28" r={r} fill="none" stroke={low ? CORAL : color} strokeWidth="6"
+          strokeLinecap="round" strokeDasharray={c} transform="rotate(-90 28 28)"
+          initial={{ strokeDashoffset: c }} animate={{ strokeDashoffset: c * (1 - pct / 100) }}
+          transition={{ type: 'spring', duration: 0.6, bounce: 0.2 }} />
+        <text x="28" y="32" textAnchor="middle" fontSize="13" fontWeight="800" fill={INK} fontFamily="Nunito, sans-serif">{pct}</text>
+      </svg>
+      <span className="text-xs font-nunito font-semibold" style={{ color: low ? CORAL_INK : SOFT }}>{label}</span>
+    </div>
+  )
+}
+
+function CareButton({ icon: Icon, label, cost, onClick, disabled }) {
   return (
     <motion.button
       onClick={onClick}
       disabled={disabled}
-      className="flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-all relative overflow-hidden"
+      className="flex flex-col items-center gap-1 p-3 rounded-xl"
       style={{
-        background: disabled ? 'rgba(30, 30, 60, 0.4)' : `${color}18`,
-        border: `1px solid ${disabled ? 'rgba(50,50,80,0.5)' : `${color}40`}`,
-        color: disabled ? '#404060' : color,
-        cursor: disabled ? 'not-allowed' : 'pointer',
+        background: MIST, border: `1px solid ${LINE}`, color: INK,
+        opacity: disabled ? 0.5 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
       }}
-      whileHover={!disabled ? { scale: 1.05, boxShadow: `0 0 20px ${glowColor}` } : {}}
-      whileTap={!disabled ? { scale: 0.93 } : {}}
+      whileHover={!disabled ? { borderColor: TEAL } : {}}
+      whileTap={!disabled ? { scale: 0.95 } : {}}
     >
-      <Icon size={22} />
-      <span className="text-xs font-nunito font-bold">{label}</span>
-      <span className="text-xs font-nunito opacity-70">-{cost} pts</span>
+      <Icon size={20} style={{ color: TEAL_DEEP }} />
+      <span className="text-sm font-nunito font-bold">{label}</span>
+      <span className="text-xs font-nunito" style={{ color: MUTED }}>-{cost} pts</span>
     </motion.button>
   )
 }
@@ -66,38 +97,24 @@ function PointsDisplay({ points }) {
 
   return (
     <motion.div
-      className="flex items-center gap-2 px-4 py-2 rounded-xl relative"
-      style={{
-        background: 'rgba(245, 163, 26, 0.1)',
-        border: '1px solid rgba(245, 163, 26, 0.3)',
-      }}
+      className="flex items-center gap-2 px-3 py-1.5 rounded-xl relative"
+      style={{ background: APRICOT_TINT, border: `1px solid ${APRICOT}55` }}
       key={gain}
-      animate={animated ? { scale: [1, 1.2, 1] } : { scale: 1 }}
+      animate={animated ? { scale: [1, 1.15, 1] } : { scale: 1 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
     >
-      {animated && (
-        <motion.div
-          className="points-glow"
-          initial={{ opacity: 0.85, scale: 0.7 }}
-          animate={{ opacity: 0, scale: 1.5 }}
-          transition={{ duration: 0.45, ease: 'easeOut' }}
-        />
-      )}
-
       <motion.span
         animate={reduceMotion ? {} : { rotate: [0, 20, -20, 0] }}
         transition={{ duration: 0.5, delay: 0.1 }}
         className="relative flex"
-        style={{ zIndex: 1 }}
       >
-        <Star size={20} style={{ color: '#ffd166', fill: '#ffd166' }} />
+        <Star size={18} style={{ color: APRICOT, fill: APRICOT }} />
       </motion.span>
-      <div className="relative" style={{ zIndex: 1 }}>
-        <div className="font-cinzel font-black text-lg leading-none"
-          style={{ color: '#ffd166', textShadow: '0 0 16px rgba(245,163,26,0.35)' }}>
+      <div className="relative">
+        <div className="font-nunito font-extrabold text-lg leading-none" style={{ color: INK }}>
           <CountUp to={points} separator="," duration={0.8} animateOnMount={false} />
         </div>
-        <div className="text-xs font-nunito" style={{ color: 'var(--text-soft)' }}>Points</div>
+        <div className="text-xs font-nunito" style={{ color: APRICOT_INK }}>Points</div>
       </div>
     </motion.div>
   )
@@ -140,20 +157,29 @@ export default function DashboardPage() {
     const success = actionFn()
     if (success !== false) {
       setActionAnim(type)
-      // Long enough for the pet reaction (800ms) and the floating emoji to finish.
+      // Long enough for the pet's reaction bubble to read.
       setTimeout(() => setActionAnim(null), 900)
     }
   }
 
-  const completedToday = tasks.filter(t => t.completed).length
   const statWarnings = [
     petStats.hunger < 30 && 'Hungry',
     petStats.cleanliness < 30 && 'Dirty',
     petStats.happiness < 30 && 'Sad',
   ].filter(Boolean)
 
+  const equipped = Object.values(equippedAccessories || {})
+    .map(id => ACCESSORIES.find(a => a.id === id))
+    .filter(Boolean)
+
+  const reveal = (delay) => ({
+    initial: { opacity: 0, y: 12 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.4, delay },
+  })
+
   return (
-    <div className="min-h-screen relative" style={{ background: 'var(--bg-deep)' }}>
+    <div className="theme-light min-h-screen relative z-10 font-nunito">
       <EvolutionOverlay
         evolution={evolution ? { ...evolution, petId: evolution.petId || selectedPet?.id } : null}
         onDone={clearEvolution}
@@ -163,15 +189,14 @@ export default function DashboardPage() {
       <motion.nav
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.5 }}
-        className="relative z-20 flex items-center justify-between px-4 md:px-8 py-4"
-        style={{ borderBottom: '1px solid var(--card-border)', background: '#0d1120' }}
+        transition={{ duration: 0.4 }}
+        className="relative z-20 flex items-center justify-between px-4 md:px-8 py-3"
+        style={{ borderBottom: `1px solid ${LINE}`, background: '#FFFFFF' }}
       >
         {/* Logo */}
         <div className="flex items-center gap-2">
           <span className="text-2xl">🐾</span>
-          <span className="font-cinzel font-black text-xl hidden sm:block"
-            style={{ color: '#ffd166', textShadow: '0 0 16px rgba(245,163,26,0.3)' }}>Pet Quest</span>
+          <span className="font-nunito font-extrabold text-xl hidden sm:block" style={{ color: INK }}>PetQuest</span>
         </div>
 
         {/* Warnings */}
@@ -182,7 +207,7 @@ export default function DashboardPage() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-nunito font-bold"
-              style={{ background: 'rgba(244, 63, 94, 0.1)', border: '1px solid rgba(244, 63, 94, 0.3)', color: '#fb7185' }}
+              style={{ background: CORAL_TINT, color: CORAL_INK }}
             >
               ⚠️ {selectedPet?.name} is {statWarnings.join(', ').toLowerCase()}!
             </motion.div>
@@ -195,13 +220,12 @@ export default function DashboardPage() {
           <StreakCounter streak={currentStreak} longest={longestStreak} />
           <PointsDisplay points={points} />
 
-          <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl"
-            style={{ background: 'rgba(124, 58, 237, 0.1)', border: '1px solid rgba(124, 58, 237, 0.2)' }}>
+          <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: MIST }}>
             <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-              style={{ background: 'rgba(245, 163, 26, 0.2)', color: '#f5a31a' }}>
+              style={{ background: TEAL_TINT, color: TEAL_DEEP }}>
               {user?.username?.[0]?.toUpperCase()}
             </div>
-            <span className="text-sm font-nunito font-semibold" style={{ color: '#c0b0ff' }}>
+            <span className="text-sm font-nunito font-semibold" style={{ color: INK }}>
               {user?.username}
             </span>
           </div>
@@ -210,8 +234,8 @@ export default function DashboardPage() {
           <motion.button
             onClick={() => navigate('/leaderboard')}
             className="tap-target flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-nunito font-bold"
-            style={{ background: 'rgba(245,163,26,0.1)', border: '1px solid rgba(245,163,26,0.25)', color: '#f5a31a' }}
-            whileHover={{ background: 'rgba(245,163,26,0.2)' }}
+            style={NAV_BTN}
+            whileHover={{ borderColor: TEAL }}
             whileTap={{ scale: 0.93 }}
             title="Leaderboard"
           >
@@ -227,8 +251,8 @@ export default function DashboardPage() {
               <motion.button
                 onClick={() => navigate('/mode-select')}
                 className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-nunito font-bold"
-                style={{ background: m.color + '12', border: `1px solid ${m.color}35`, color: m.color }}
-                whileHover={{ background: m.color + '22' }}
+                style={NAV_BTN}
+                whileHover={{ borderColor: TEAL }}
                 whileTap={{ scale: 0.93 }}
                 title="Change mode"
               >
@@ -242,8 +266,8 @@ export default function DashboardPage() {
             <motion.button
               onClick={() => navigate('/admin')}
               className="tap-target flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-nunito font-bold"
-              style={{ background: 'rgba(245,163,26,0.12)', border: '1px solid rgba(245,163,26,0.35)', color: '#f5a31a' }}
-              whileHover={{ background: 'rgba(245,163,26,0.22)' }}
+              style={{ background: TEAL_TINT, border: `1px solid ${TEAL}55`, color: TEAL_DEEP }}
+              whileHover={{ borderColor: TEAL }}
               whileTap={{ scale: 0.93 }}
               title="Admin Panel"
             >
@@ -256,8 +280,7 @@ export default function DashboardPage() {
             onClick={logout}
             className="tap-target p-2 rounded-xl transition-colors"
             aria-label="Log out"
-            style={{ background: 'rgba(244, 63, 94, 0.08)', border: '1px solid rgba(244, 63, 94, 0.2)', color: '#fb7185' }}
-            whileHover={{ background: 'rgba(244, 63, 94, 0.18)' }}
+            style={{ background: CORAL_TINT, border: `1px solid ${CORAL}55`, color: CORAL_INK }}
             whileTap={{ scale: 0.93 }}
             title="Logout"
           >
@@ -276,7 +299,7 @@ export default function DashboardPage() {
             className="relative z-20 overflow-hidden"
           >
             <div className="flex items-center justify-center gap-2 px-4 py-2 text-xs sm:text-sm font-nunito font-semibold text-center"
-              style={{ background: 'rgba(245, 163, 26, 0.12)', borderBottom: '1px solid rgba(245, 163, 26, 0.3)', color: '#f5a31a' }}>
+              style={{ background: APRICOT_TINT, borderBottom: `1px solid ${APRICOT}55`, color: APRICOT_INK }}>
               <span>⚠️</span>
               Offline mode — completions are queued and points will be verified when your connection resumes.
               {pendingCount > 0 && <span className="font-black">({pendingCount} pending)</span>}
@@ -285,206 +308,77 @@ export default function DashboardPage() {
         )}
       </AnimatePresence>
 
-      {/* Main content */}
-      <div className="relative z-10 max-w-6xl mx-auto px-4 md:px-6 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 dashboard-grid">
-          {/* === PET PANEL (left, 2 cols) === */}
-          <motion.div
-            className="lg:col-span-2 space-y-4"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-          >
-            {/* Pet display card */}
-            <div className="glass-card p-6 text-center relative overflow-hidden">
-              {/* Background shimmer based on pet color */}
-              <div className="absolute inset-0 pointer-events-none"
-                style={{ background: `radial-gradient(ellipse at 50% 0%, ${selectedPet?.color}15 0%, transparent 70%)` }} />
-
-              {/* Action tint wash */}
-              <AnimatePresence>
-                {actionAnim && (
-                  <motion.div
-                    className="absolute inset-0 rounded-2xl pointer-events-none z-20"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    style={{ background: `${CARE_META[actionAnim]?.tint || selectedPet?.color}15` }}
-                  />
-                )}
-              </AnimatePresence>
-
-              {/* Pet avatar + rising care emoji */}
-              <div className="relative z-10">
-                <PetAvatar
-                  pet={selectedPet}
-                  equippedAccessories={equippedAccessories}
-                  size="lg"
-                  glowing={true}
-                  careAction={actionAnim}
-                  level={petLevel}
-                />
-                <FloatingText
-                  show={!!actionAnim}
-                  color={CARE_META[actionAnim]?.tint || '#f5a31a'}
-                  fontSize="1.6rem"
-                  rise={70}
-                >
-                  +{CARE_META[actionAnim]?.emoji}
-                </FloatingText>
-              </div>
-
-              {/* Pet name & species */}
-              <motion.div className="mt-4 relative z-10">
-                <h2 className="font-cinzel font-black text-2xl" style={{ color: selectedPet?.color }}>
+      {/* Main content. Phone order: pet, quests, care, evolution, shop.
+          Desktop: pet column on the left, quests on the right (see .dash-layout). */}
+      <div className="relative max-w-6xl mx-auto px-4 md:px-6 py-6">
+        <div className="dash-layout">
+          {/* Pet in its home */}
+          <motion.section style={{ gridArea: 'room' }} className="glass-card p-3 self-start" {...reveal(0.05)}>
+            <PetRoom pet={selectedPet} level={petLevel} stats={petStats} careAction={actionAnim} accessories={equipped} />
+            <div className="flex items-center justify-between gap-2 mt-3 px-1 flex-wrap">
+              <div className="min-w-0">
+                <h2 className="font-nunito font-extrabold text-xl leading-tight" style={{ color: INK }}>
                   {selectedPet?.name}
                 </h2>
-                <p className="text-xs font-nunito uppercase tracking-widest mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                  {selectedPet?.species}
-                </p>
-              </motion.div>
-
-              {/* Trait badge */}
-              <div className="inline-flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full text-xs font-nunito font-bold"
-                style={{ background: `${selectedPet?.color}15`, color: selectedPet?.color, border: `1px solid ${selectedPet?.color}30` }}>
-                <Sparkles size={10} />
+                <p className="text-sm font-nunito" style={{ color: MUTED }}>{selectedPet?.species}</p>
+              </div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-nunito font-bold"
+                style={{ background: TEAL_TINT, color: TEAL_DEEP }}>
+                <Sparkles size={11} />
                 {selectedPet?.trait}
+              </span>
+            </div>
+            {equipped.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2 px-1">
+                {equipped.map(acc => (
+                  <span key={acc.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-nunito font-bold"
+                    style={{ background: MIST, color: SOFT }}>
+                    <span>{acc.emoji}</span>{acc.name}
+                  </span>
+                ))}
               </div>
-            </div>
+            )}
+          </motion.section>
 
-            {/* Evolution card */}
-            <div className="glass-card p-5">
-              <h3 className="font-cinzel font-bold text-sm uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>
-                Evolution
-              </h3>
-              <EvolutionBar totalEarned={totalPointsEarned} petName={selectedPet?.name} />
-            </div>
-
-            {/* Stats card */}
-            <div className="glass-card p-5 space-y-4">
-              <h3 className="font-cinzel font-bold text-sm uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                Companion Stats
-              </h3>
-              <StatBar stat="hunger" value={petStats.hunger} />
-              <StatBar stat="cleanliness" value={petStats.cleanliness} />
-              <StatBar stat="happiness" value={petStats.happiness} />
-            </div>
-
-            {/* Care actions */}
-            <div className="glass-card p-5">
-              <h3 className="font-cinzel font-bold text-sm uppercase tracking-widest mb-4" style={{ color: 'var(--text-muted)' }}>
-                Care Actions <span className="normal-case font-nunito font-normal" style={{ color: 'var(--text-muted)' }}>(10 pts each)</span>
-              </h3>
-              <div className="grid grid-cols-3 gap-3">
-                <CareButton
-                  icon={Utensils}
-                  label="Feed"
-                  cost={10}
-                  color="#f59e0b"
-                  glowColor="rgba(245, 158, 11, 0.4)"
-                  onClick={() => triggerAction(feedPet, 'feed')}
-                  disabled={points < 10}
-                />
-                <CareButton
-                  icon={Droplets}
-                  label="Shower"
-                  cost={10}
-                  color="#06b6d4"
-                  glowColor="rgba(6, 182, 212, 0.4)"
-                  onClick={() => triggerAction(showerPet, 'shower')}
-                  disabled={points < 10}
-                />
-                <CareButton
-                  icon={Heart}
-                  label="Play"
-                  cost={10}
-                  color="#a78bfa"
-                  glowColor="rgba(167, 139, 250, 0.4)"
-                  onClick={() => triggerAction(playWithPet, 'play')}
-                  disabled={points < 10}
-                />
-              </div>
-
-              {points < 10 && (
-                <p className="text-xs text-center mt-3 font-nunito" style={{ color: '#f43f5e' }}>
-                  ⚠️ Complete quests to earn points!
-                </p>
-              )}
-            </div>
-
-            {/* Accessories shortcut */}
-            <motion.button
-              className="w-full glass-card p-4 flex items-center justify-between group cursor-pointer"
-              onClick={() => navigate('/accessories')}
-              whileHover={{ borderColor: 'var(--card-border-hi)' }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center"
-                  style={{ background: 'rgba(245, 163, 26, 0.12)' }}>
-                  <ShoppingBag size={18} style={{ color: '#f5a31a' }} />
-                </div>
-                <div className="text-left">
-                  <p className="font-nunito font-bold text-sm" style={{ color: '#f5a31a' }}>Accessories Shop</p>
-                  <p className="font-nunito text-xs" style={{ color: 'var(--text-muted)' }}>Customize your companion</p>
-                </div>
-              </div>
-              <ShoppingBag size={16} style={{ color: '#f5a31a' }} className="group-hover:scale-110 transition-transform" />
-            </motion.button>
-          </motion.div>
-
-          {/* === QUEST PANEL (right, 3 cols) === */}
-          <motion.div
-            className="lg:col-span-3 space-y-4"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-          >
-            {/* Stats summary — asymmetric: earned points carry the weight,
-                active/completed sit compact beside them. */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {/* Earned today — the prominent metric (spans two columns) */}
-              <div className="glass-card p-4 sm:col-span-2 flex items-center gap-4"
-                style={{ borderLeft: '3px solid #f5a31a' }}>
-                <div className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: 'rgba(245,163,26,0.12)' }}>
-                  <Star size={22} style={{ color: '#f5a31a', fill: '#f5a31a' }} />
+          {/* Quests */}
+          <motion.section style={{ gridArea: 'quests' }} className="flex flex-col gap-4 min-w-0" {...reveal(0.1)}>
+            {/* Stats summary — earned points carry the weight, active/completed sit beside them.
+                On phone it drops below the quest log so quests sit right under the pet. */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 order-2 lg:order-none">
+              <div className="glass-card p-4 col-span-2 flex items-center gap-4" style={{ borderLeft: `4px solid ${APRICOT}` }}>
+                <div className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: APRICOT_TINT }}>
+                  <Star size={22} style={{ color: APRICOT, fill: APRICOT }} />
                 </div>
                 <div>
-                  <div className="font-cinzel font-black text-2xl leading-none" style={{ color: '#ffd166' }}>
+                  <div className="font-nunito font-extrabold text-2xl leading-none" style={{ color: INK }}>
                     <CountUp to={tasks.filter(t => t.completed).length * 10} duration={0.8} animateOnMount={false} />
-                    <span className="text-base font-nunito font-bold" style={{ color: 'var(--text-muted)' }}> pts</span>
+                    <span className="text-base font-bold" style={{ color: MUTED }}> pts</span>
                   </div>
-                  <div className="text-xs font-nunito mt-1 uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
-                    Earned Today
-                  </div>
+                  <div className="text-xs font-nunito mt-1 uppercase tracking-wide" style={{ color: MUTED }}>Earned Today</div>
                 </div>
               </div>
-
-              {/* Active + completed — compact */}
               {[
-                { label: 'Active', value: tasks.filter(t => !t.completed).length, Icon: Scroll, color: '#a78bfa' },
-                { label: 'Completed', value: tasks.filter(t => t.completed).length, Icon: CheckCircle2, color: '#22c55e' },
+                { label: 'Active', value: tasks.filter(t => !t.completed).length, Icon: Scroll, color: TEAL_DEEP },
+                { label: 'Completed', value: tasks.filter(t => t.completed).length, Icon: CheckCircle2, color: '#2F7A4D' },
               ].map(({ label, value, Icon, color }) => (
                 <div key={label} className="glass-card p-4 flex flex-col justify-center gap-1">
                   <Icon size={16} style={{ color }} />
-                  <div className="font-cinzel font-black text-xl" style={{ color }}>
+                  <div className="font-nunito font-extrabold text-xl" style={{ color: INK }}>
                     <CountUp to={value} duration={0.8} animateOnMount={false} />
                   </div>
-                  <div className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>{label}</div>
+                  <div className="text-xs font-nunito" style={{ color: MUTED }}>{label}</div>
                 </div>
               ))}
             </div>
 
             {/* Quest log */}
-            <div className="glass-card p-5 flex-1">
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="font-cinzel font-bold text-base flex items-center gap-2">
-                  <Star size={16} style={{ color: '#f5a31a' }} />
-                  Quest Log
+            <div className="glass-card p-5">
+              <div className="flex items-center justify-between gap-2 mb-5 flex-wrap">
+                <h3 className="font-nunito font-extrabold text-lg flex items-center gap-2" style={{ color: INK }}>
+                  <Star size={16} style={{ color: APRICOT, fill: APRICOT }} />
+                  Today's Quests
                 </h3>
-                <div className="text-xs font-nunito px-2 py-1 rounded-lg"
-                  style={{ background: 'rgba(245, 163, 26, 0.1)', color: '#f5a31a', border: '1px solid rgba(245, 163, 26, 0.2)' }}>
+                <div className="text-xs font-nunito font-semibold px-2 py-1 rounded-lg" style={{ background: TEAL_TINT, color: TEAL_DEEP }}>
                   +{DIFF_POINTS.easy}/{DIFF_POINTS.medium}/{DIFF_POINTS.hard} pts by difficulty
                 </div>
               </div>
@@ -492,19 +386,66 @@ export default function DashboardPage() {
             </div>
 
             {/* Tips card */}
-            <div className="glass-card p-4">
+            <div className="glass-card p-4 order-3 lg:order-none">
               <div className="flex items-start gap-3">
-                <Lightbulb size={20} style={{ color: '#a78bfa', flexShrink: 0, marginTop: 2 }} />
+                <Lightbulb size={20} style={{ color: APRICOT_INK, flexShrink: 0, marginTop: 2 }} />
                 <div>
-                  <p className="font-nunito font-bold text-sm mb-1" style={{ color: '#a78bfa' }}>Quest Tips</p>
-                  <p className="text-xs font-nunito leading-relaxed" style={{ color: 'var(--text-soft)' }}>
+                  <p className="font-nunito font-bold text-sm mb-1" style={{ color: INK }}>Quest Tips</p>
+                  <p className="text-sm font-nunito leading-relaxed" style={{ color: SOFT }}>
                     Complete quests to earn points. Spend points on pet care or accessories.
                     Your companion's stats decrease over time — keep them happy.
                   </p>
                 </div>
               </div>
             </div>
-          </motion.div>
+          </motion.section>
+
+          {/* Stats + care */}
+          <motion.section style={{ gridArea: 'care' }} className="glass-card p-5 self-start" {...reveal(0.15)}>
+            <h3 className="font-nunito font-bold text-sm mb-3" style={{ color: INK }}>How {selectedPet?.name} is doing</h3>
+            <div className="flex justify-around mb-4">
+              <StatRing label="Hunger" value={petStats.hunger} color={APRICOT} />
+              <StatRing label="Clean" value={petStats.cleanliness} color={TEAL} />
+              <StatRing label="Happy" value={petStats.happiness} color={LEAF} />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <CareButton icon={Utensils} label="Feed" cost={10} onClick={() => triggerAction(feedPet, 'feed')} disabled={points < 10} />
+              <CareButton icon={Droplets} label="Shower" cost={10} onClick={() => triggerAction(showerPet, 'shower')} disabled={points < 10} />
+              <CareButton icon={Heart} label="Play" cost={10} onClick={() => triggerAction(playWithPet, 'play')} disabled={points < 10} />
+            </div>
+            {points < 10 && (
+              <p className="text-sm text-center mt-3 font-nunito" style={{ color: CORAL_INK }}>
+                Complete quests to earn points!
+              </p>
+            )}
+          </motion.section>
+
+          {/* Evolution */}
+          <motion.section style={{ gridArea: 'evo' }} className="glass-card p-5 self-start" {...reveal(0.2)}>
+            <h3 className="font-nunito font-bold text-sm mb-3" style={{ color: INK }}>Evolution</h3>
+            <EvolutionBar totalEarned={totalPointsEarned} petName={selectedPet?.name} />
+          </motion.section>
+
+          {/* Accessories shortcut */}
+          <motion.button
+            style={{ gridArea: 'shop' }}
+            className="w-full glass-card p-4 flex items-center justify-between self-start cursor-pointer"
+            onClick={() => navigate('/accessories')}
+            whileHover={{ borderColor: TEAL }}
+            whileTap={{ scale: 0.98 }}
+            {...reveal(0.25)}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: TEAL_TINT }}>
+                <ShoppingBag size={18} style={{ color: TEAL_DEEP }} />
+              </div>
+              <div className="text-left">
+                <p className="font-nunito font-bold text-sm" style={{ color: INK }}>Accessories Shop</p>
+                <p className="font-nunito text-sm" style={{ color: MUTED }}>Customize your companion</p>
+              </div>
+            </div>
+            <span aria-hidden="true" style={{ color: TEAL_DEEP }}>→</span>
+          </motion.button>
         </div>
       </div>
     </div>

@@ -3,10 +3,21 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useGame } from '../context/GameContext'
 import { PRESET_QUESTS, DIFF_META } from '../data/presetQuests'
+import { DIFFICULTY_TEXT } from '../data/difficulty'
 
 /* ── constants ── */
 const DIFFS        = ['easy', 'medium', 'hard']
 const SLOTS_COUNT  = { easy: 3, medium: 3, hard: 2 }
+
+/* Light palette — same values as apps/mobile/src/theme.ts. */
+const INK = '#102A43'
+const SOFT = '#3E5165'
+const MUTED = '#667085'
+const TEAL = '#3F8580'
+const TEAL_DEEP = '#2F6F6B'
+const TEAL_TINT = '#E4EFEE'
+const MIST = '#F3F5F2'
+const LINE = '#E1E7E3'
 
 const MODES = [
   {
@@ -15,8 +26,6 @@ const MODES = [
     name: 'Fitness Mode',
     tagline: 'Train your body, earn rewards',
     description: 'Home workouts, gym sessions, cardio, and healthy habits. Keep your companion energized!',
-    color: '#f43f5e',
-    glow: 'rgba(244,63,94,0.15)',
   },
   {
     id: 'saitama',
@@ -24,8 +33,6 @@ const MODES = [
     name: 'Saitama Mode',
     tagline: 'Become the Caped Baldy',
     description: '100 push-ups, 100 sit-ups, 100 squats & a 10km run — every single day. Train like One Punch Man. A hardcore twist on Fitness Mode.',
-    color: '#facc15',
-    glow: 'rgba(250,204,21,0.15)',
   },
   {
     id: 'academic',
@@ -33,8 +40,6 @@ const MODES = [
     name: 'Academic Mode',
     tagline: 'Knowledge is power',
     description: 'Study sessions, assignments, reading, and learning milestones. Level up your mind!',
-    color: '#06b6d4',
-    glow: 'rgba(6,182,212,0.15)',
   },
   {
     id: 'custom',
@@ -42,8 +47,6 @@ const MODES = [
     name: 'Custom Mode',
     tagline: 'Your adventure, your rules',
     description: 'The classic Pet Quest experience. Add any quests you like and build your own adventure!',
-    color: '#f5a31a',
-    glow: 'rgba(245,163,26,0.15)',
   },
 ]
 
@@ -66,88 +69,48 @@ function pickRandom(arr, n, exclude = []) {
   return [...pool].sort(() => Math.random() - 0.5).slice(0, n)
 }
 
-/* ══════════════════════════════════
-   QUEST CARD (inside picker modal)
-══════════════════════════════════ */
-function QuestCard({ quest, diff, isSelected, onToggle, onReroll, rerollsLeft, animIndex }) {
-  const meta = DIFF_META[diff]
-  const canReroll = rerollsLeft > 0
-
-  return (
-    <motion.div
-      key={quest}
-      layout
-      initial={{ scale: 0.82, opacity: 0, y: 18 }}
-      animate={{ scale: 1, opacity: 1, y: 0 }}
-      exit={{ scale: 0.82, opacity: 0, y: -12 }}
-      transition={{ delay: animIndex * 0.07, type: 'spring', stiffness: 380, damping: 26 }}
-      onClick={onToggle}
-      className="cursor-pointer rounded-xl p-4 relative select-none"
-      style={{
-        background:    isSelected ? meta.color + '15' : 'rgba(12,12,38,0.8)',
-        border:        `2px solid ${isSelected ? meta.color : 'rgba(124,58,237,0.18)'}`,
-        boxShadow:     isSelected ? `0 0 18px ${meta.color}22` : 'none',
-        transition:    'border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease',
-      }}
-    >
-      {/* Checkmark */}
-      <AnimatePresence>
-        {isSelected && (
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            exit={{ scale: 0 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 25 }}
-            className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-            style={{ background: meta.color, color: '#fff' }}
-          >
-            ✓
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Quest text */}
-      <p className="text-sm font-nunito font-medium leading-snug mb-4 pr-6"
-        style={{ color: isSelected ? '#e2e2ff' : '#8080aa', transition: 'color 0.15s' }}>
-        {quest}
-      </p>
-
-      {/* Footer: pts + reroll */}
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-nunito font-bold px-2 py-0.5 rounded-lg"
-          style={{ background: meta.color + '22', color: meta.color }}>
-          +{meta.pts} pts
-        </span>
-        <motion.button
-          onClick={e => { e.stopPropagation(); onReroll() }}
-          disabled={!canReroll}
-          className="flex items-center gap-1.5 text-xs font-nunito font-bold px-2.5 py-1 rounded-lg"
-          style={{
-            background: canReroll ? 'rgba(124,58,237,0.18)' : 'rgba(40,40,70,0.4)',
-            color:      canReroll ? '#a78bfa' : '#4040aa',
-            border:     `1px solid ${canReroll ? 'rgba(124,58,237,0.3)' : 'rgba(60,60,100,0.3)'}`,
-            cursor:     canReroll ? 'pointer' : 'not-allowed',
-          }}
-          whileHover={canReroll ? { scale: 1.06 } : {}}
-          whileTap={canReroll ? { scale: 0.93 } : {}}
-          title={canReroll ? 'Swap this quest for a different one' : 'No rerolls left today'}
-        >
-          🎲 Reroll
-        </motion.button>
-      </div>
-    </motion.div>
-  )
-}
-
-/* ══════════════════════════════════
-   QUEST PICKER MODAL
-══════════════════════════════════ */
 /* Normalize a quest title for dedupe: lowercase, strip punctuation, collapse
    whitespace. Shared by the picker (don't offer owned quests) and the insert. */
 export const normalizeQuestText = (s) =>
   String(s || '').toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
 
-function QuestPickerModal({ mode, enabledDiffs, ownedTexts, onConfirm, onClose }) {
+const primaryBtn = (disabled) => ({
+  background: disabled ? MIST : TEAL_DEEP, color: disabled ? MUTED : '#FFFFFF',
+  cursor: disabled ? 'not-allowed' : 'pointer',
+})
+
+/* Back on the left, the one main action on the right. */
+function StepNav({ onBack, backLabel = '← Back', next, nextLabel, nextDisabled }) {
+  return (
+    <div className="flex items-center justify-between gap-3 mt-6">
+      {onBack
+        ? <button onClick={onBack} className="min-h-[44px] px-3 text-sm font-bold" style={{ color: TEAL_DEEP }}>{backLabel}</button>
+        : <span />}
+      <motion.button onClick={next} disabled={nextDisabled}
+        className="min-h-[48px] px-6 rounded-xl text-base font-bold"
+        style={primaryBtn(nextDisabled)} whileTap={nextDisabled ? {} : { scale: 0.97 }}>
+        {nextLabel}
+      </motion.button>
+    </div>
+  )
+}
+
+/* Three bars: which step you are on. */
+function Progress({ step, total }) {
+  return (
+    <div className="flex justify-center gap-1.5 mb-6" role="progressbar" aria-valuemin={1} aria-valuemax={total} aria-valuenow={step}
+      aria-label={`Step ${step} of ${total}`}>
+      {Array.from({ length: total }, (_, i) => (
+        <span key={i} className="h-1.5 w-10 rounded-full" style={{ background: i < step ? TEAL : LINE }} />
+      ))}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════
+   STEP 3 — PICK STARTER QUESTS
+══════════════════════════════════ */
+function QuestPicker({ mode, enabledDiffs, ownedTexts, onConfirm, onBack, saving }) {
   const [rerollState, setRerollState] = useState(() => loadRerolls())
 
   // Only offer quests the user does NOT already own (normalized-title match).
@@ -208,352 +171,201 @@ function QuestPickerModal({ mode, enabledDiffs, ownedTexts, onConfirm, onClose }
       .filter(q => q.sel)
       .map(({ text, difficulty }) => ({ text, difficulty }))
   )
+  const n = selectedQuests.length
 
   return (
-    <motion.div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      style={{ background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)' }}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <motion.div
-        className="w-full sm:max-w-2xl rounded-t-3xl sm:rounded-2xl flex flex-col overflow-hidden"
-        style={{
-          background:  'rgba(7,7,28,0.99)',
-          border:      '1px solid rgba(124,58,237,0.3)',
-          maxHeight:   '92vh',
-        }}
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ type: 'spring', stiffness: 280, damping: 30 }}
-      >
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between px-5 py-4 flex-shrink-0"
-          style={{ borderBottom: '1px solid rgba(124,58,237,0.15)' }}>
-          <div>
-            <h2 className="font-cinzel font-black text-lg gradient-text-gold">Pick Your Starter Quests</h2>
-            <p className="text-xs font-nunito mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              Click a quest to select or deselect it. Use Reroll to swap any quest.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-nunito font-bold"
-              style={{
-                background: rerollsLeft > 0 ? 'rgba(124,58,237,0.18)' : 'rgba(40,40,70,0.4)',
-                color:      rerollsLeft > 0 ? '#a78bfa' : '#4040aa',
-                border:     `1px solid ${rerollsLeft > 0 ? 'rgba(124,58,237,0.35)' : 'rgba(60,60,100,0.3)'}`,
-              }}>
-              🎲 {rerollsLeft}/3 rerolls
-            </div>
-            <button onClick={onClose} className="p-1.5 rounded-lg transition-colors"
-              style={{ color: 'var(--text-muted)' }}>✕</button>
-          </div>
-        </div>
+    <div>
+      <h1 className="font-extrabold text-2xl md:text-3xl text-center" style={{ color: INK }}>Pick your starter quests</h1>
+      <p className="text-base text-center mt-1 mb-6" style={{ color: SOFT }}>
+        Tap a quest to keep or drop it. 🎲 {rerollsLeft}/3 rerolls left today.
+      </p>
 
-        {/* ── Quest sections ── */}
-        <div className="flex-1 overflow-y-auto custom-scroll px-5 py-5 space-y-7">
-          {enabledDiffs.map(diff => {
-            const meta      = DIFF_META[diff]
-            const diffSlots = slots[diff] || []
-
-            return (
-              <div key={diff}>
-                {/* Section header */}
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <span className="text-xl">{meta.emoji}</span>
-                  <span className="font-cinzel font-bold text-sm uppercase tracking-widest"
-                    style={{ color: meta.color }}>
-                    {meta.label} Quests
-                  </span>
-                  <span className="text-xs font-nunito font-bold px-2 py-0.5 rounded-lg"
-                    style={{ background: meta.color + '22', color: meta.color }}>
-                    +{meta.pts} pts each
-                  </span>
-                  <span className="text-xs font-nunito ml-auto" style={{ color: 'var(--text-muted)' }}>
-                    {meta.limitDesc}
-                  </span>
-                </div>
-
-                {/* Cards grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <AnimatePresence mode="popLayout">
-                    {diffSlots.map((quest, idx) => (
-                      <QuestCard
-                        key={`${diff}_${idx}_${quest}`}
-                        quest={quest}
-                        diff={diff}
-                        isSelected={selected[diff]?.[idx] ?? true}
-                        onToggle={() => toggleQuest(diff, idx)}
-                        onReroll={() => rerollQuest(diff, idx)}
-                        rerollsLeft={rerollsLeft}
-                        animIndex={idx}
-                      />
-                    ))}
-                  </AnimatePresence>
-                </div>
+      <div className="space-y-6">
+        {enabledDiffs.map(diff => {
+          const meta = DIFF_META[diff]
+          const color = DIFFICULTY_TEXT[diff]
+          return (
+            <section key={diff}>
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-2">
+                <h2 className="font-extrabold text-base" style={{ color }}>{meta.emoji} {meta.label}</h2>
+                <span className="text-sm" style={{ color: SOFT }}>+{meta.pts} pts each</span>
+                <span className="text-sm ml-auto" style={{ color: MUTED }}>{meta.limitDesc}</span>
               </div>
-            )
-          })}
-        </div>
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <AnimatePresence mode="popLayout">
+                  {(slots[diff] || []).map((quest, idx) => {
+                    const on = selected[diff]?.[idx] ?? true
+                    return (
+                      <motion.li key={`${diff}_${idx}_${quest}`} layout
+                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                        className="flex items-stretch rounded-xl bg-white overflow-hidden"
+                        style={{ border: `${on ? 2 : 1}px solid ${on ? TEAL : LINE}`, margin: on ? 0 : 1 }}>
+                        <button onClick={() => toggleQuest(diff, idx)} aria-pressed={on}
+                          className="flex-1 min-h-[52px] flex items-center gap-3 px-3 text-left">
+                          <span className="w-5 h-5 rounded-md flex-none flex items-center justify-center text-xs font-bold"
+                            style={{ background: on ? TEAL_DEEP : '#FFFFFF', border: `2px solid ${TEAL_DEEP}`, color: '#FFFFFF' }}>
+                            {on ? '✓' : ''}
+                          </span>
+                          <span className="text-sm font-semibold" style={{ color: on ? INK : MUTED }}>{quest}</span>
+                        </button>
+                        <button onClick={() => rerollQuest(diff, idx)} disabled={rerollsLeft <= 0}
+                          className="min-w-[48px] flex items-center justify-center text-lg disabled:opacity-40"
+                          style={{ borderLeft: `1px solid ${LINE}` }}
+                          aria-label={`Reroll: swap "${quest}" for another quest`}
+                          title={rerollsLeft > 0 ? 'Swap this quest for a different one' : 'No rerolls left today'}>
+                          🎲
+                        </button>
+                      </motion.li>
+                    )
+                  })}
+                </AnimatePresence>
+              </ul>
+            </section>
+          )
+        })}
+      </div>
 
-        {/* ── Footer ── */}
-        <div className="flex items-center justify-between px-5 py-4 flex-shrink-0"
-          style={{ borderTop: '1px solid rgba(124,58,237,0.15)' }}>
-          <span className="text-sm font-nunito" style={{ color: 'var(--text-muted)' }}>
-            <span className="font-bold" style={{ color: '#e2e2ff' }}>{selectedQuests.length}</span>
-            {' '}quest{selectedQuests.length !== 1 ? 's' : ''} selected
-          </span>
-          <motion.button
-            onClick={() => onConfirm(selectedQuests)}
-            disabled={selectedQuests.length === 0}
-            className="btn-gold px-6 py-2.5 font-cinzel font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-            whileHover={selectedQuests.length > 0 ? { scale: 1.04 } : {}}
-            whileTap={selectedQuests.length > 0 ? { scale: 0.96 } : {}}
-          >
-            Add {selectedQuests.length > 0 ? selectedQuests.length + ' ' : ''}Quest{selectedQuests.length !== 1 ? 's' : ''} →
-          </motion.button>
-        </div>
-      </motion.div>
-    </motion.div>
+      <StepNav onBack={onBack} next={() => onConfirm(selectedQuests)} nextDisabled={n === 0 || saving}
+        nextLabel={saving ? 'Starting…' : n === 0 ? 'Pick at least one' : `Start with ${n} quest${n !== 1 ? 's' : ''}`} />
+    </div>
   )
 }
 
 /* ══════════════════════════════════
-   MAIN PAGE
+   MAIN PAGE — three short steps
 ══════════════════════════════════ */
 export default function GameModeSelectPage() {
   const { setGameMode, bulkAddPresets, markOnboardingComplete, logout, profile, tasks } = useGame()
   const navigate = useNavigate()
   const ownedTexts = new Set((tasks || []).map(t => normalizeQuestText(t.text)))
 
-  const [selected,     setSelected]     = useState(profile?.game_mode || null)
-  const [enabled,      setEnabled]      = useState({ easy: true, medium: true, hard: true })
-  const [pickerOpen,   setPickerOpen]   = useState(false)
-  const [saving,       setSaving]       = useState(false)
+  const [step,     setStep]     = useState(1)   // 1 mode · 2 difficulty · 3 quests
+  const [selected, setSelected] = useState(profile?.game_mode || null)
+  const [enabled,  setEnabled]  = useState({ easy: true, medium: true, hard: true })
+  const [saving,   setSaving]   = useState(false)
 
   const isUpdate   = !!profile?.game_mode
   const hasPresets = selected && selected !== 'custom'
   const modeData   = MODES.find(m => m.id === selected)
   const enabledDiffs = DIFFS.filter(d => enabled[d])
+  const total = selected === 'custom' ? 1 : 3   // custom skips difficulty + quests
 
   const toggleDiff = (diff) => setEnabled(prev => ({ ...prev, [diff]: !prev[diff] }))
 
-  /* Called when user selects/skips in the picker, or immediately for custom */
+  /* Called from step 3, or straight from step 1 for custom */
   const finalize = async (questsToAdd = []) => {
     setSaving(true)
-    setPickerOpen(false)
     await setGameMode(selected)
     if (questsToAdd.length) await bulkAddPresets(questsToAdd)
     await markOnboardingComplete()   // Phase 1: never replay onboarding after this
     navigate('/dashboard', { replace: true })
   }
 
-  const handleConfirmClick = () => {
-    if (!selected || saving) return
-    if (hasPresets && enabledDiffs.length > 0) {
-      setPickerOpen(true)
-    } else {
-      finalize()
-    }
-  }
-
-  const confirmLabel = () => {
-    if (saving)   return 'Starting Adventure...'
-    if (!selected) return 'Select a Mode'
-    if (isUpdate && selected === profile?.game_mode && !hasPresets) return 'Already Selected'
-    if (hasPresets && enabledDiffs.length > 0) return 'Choose Quests →'
+  const step1Label = () => {
+    if (saving)   return 'Starting…'
+    if (!selected) return 'Pick a mode'
+    if (hasPresets) return 'Next'
+    if (isUpdate && selected === profile?.game_mode) return 'Already selected'
     return isUpdate ? `Switch to ${modeData?.name}` : `Begin ${modeData?.name}`
   }
+  const step1Disabled = !selected || saving || (isUpdate && selected === profile?.game_mode && !hasPresets)
 
-  const confirmDisabled = !selected || saving ||
-    (isUpdate && selected === profile?.game_mode && !hasPresets)
+  const page = { initial: { opacity: 0, x: 24 }, animate: { opacity: 1, x: 0 }, exit: { opacity: 0, x: -24 }, transition: { duration: 0.25 } }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8 relative"
-      style={{ background: 'var(--bg-deep)' }}>
-      {/* Ambient */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-1/3 w-96 h-96 rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(124,58,237,0.08) 0%, transparent 70%)', filter: 'blur(80px)' }} />
-        <div className="absolute bottom-1/4 right-1/4 w-72 h-72 rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(6,182,212,0.06) 0%, transparent 70%)', filter: 'blur(60px)' }} />
-      </div>
+    <div className="theme-light min-h-screen relative z-10 flex flex-col items-center justify-center px-4 py-10 font-nunito">
+      <div className="w-full max-w-2xl">
+        <Progress step={step} total={total} />
 
-      <motion.div
-        className="relative z-10 w-full max-w-4xl"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        {/* Header */}
-        <div className="text-center mb-8">
-          <motion.div className="text-5xl mb-4"
-            animate={{ rotate: [0, -10, 10, 0] }}
-            transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 3 }}>
-            🎮
-          </motion.div>
-          <h1 className="font-cinzel font-black text-3xl md:text-4xl gradient-text-gold mb-3">
-            {isUpdate ? 'Change Adventure Mode' : 'Choose Your Adventure'}
-          </h1>
-          <p className="font-nunito text-base max-w-lg mx-auto" style={{ color: 'var(--text-muted)' }}>
-            {isUpdate
-              ? 'Switch mode anytime. You can load new starter quests for any difficulty.'
-              : 'Pick your mode, choose difficulty levels, then hand-pick your starter quests.'}
-          </p>
-        </div>
-
-        {/* ── Step 1: Mode cards ── */}
-        <p className="font-cinzel font-bold text-xs uppercase tracking-widest mb-3 px-1"
-          style={{ color: 'var(--text-muted)' }}>
-          Step 1 — Choose Mode
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {MODES.map((mode, i) => (
-            <motion.div
-              key={mode.id}
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 + i * 0.08 }}
-              onClick={() => setSelected(mode.id)}
-              className="cursor-pointer rounded-2xl p-5 relative"
-              style={{
-                background: selected === mode.id ? mode.glow : 'rgba(14,14,46,0.7)',
-                border:     `2px solid ${selected === mode.id ? mode.color : 'rgba(124,58,237,0.2)'}`,
-                boxShadow:  selected === mode.id ? `0 0 28px ${mode.glow}` : 'none',
-                transition: 'all 0.2s ease',
-              }}
-              whileHover={{ scale: 1.02, borderColor: mode.color }}
-              whileTap={{ scale: 0.98 }}
-            >
-              {selected === mode.id && (
-                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}
-                  className="absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-                  style={{ background: mode.color, color: '#fff' }}>✓
-                </motion.div>
-              )}
-              {isUpdate && profile?.game_mode === mode.id && selected !== mode.id && (
-                <div className="absolute top-3 right-3 text-xs px-1.5 py-0.5 rounded font-nunito"
-                  style={{ background: mode.color + '20', color: mode.color }}>current</div>
-              )}
-              <div className="text-3xl mb-2">{mode.emoji}</div>
-              <h2 className="font-cinzel font-bold text-sm mb-1" style={{ color: mode.color }}>{mode.name}</h2>
-              <p className="text-xs font-nunito font-semibold mb-1" style={{ color: 'rgba(180,180,220,0.8)' }}>
-                {mode.tagline}
+        <AnimatePresence mode="wait">
+          {/* ── Step 1: mode ── */}
+          {step === 1 && (
+            <motion.div key="mode" {...page}>
+              <h1 className="font-extrabold text-2xl md:text-3xl text-center" style={{ color: INK }}>
+                {isUpdate ? 'Change your mode' : 'Choose your mode'}
+              </h1>
+              <p className="text-base text-center mt-1 mb-6" style={{ color: SOFT }}>
+                It picks your starter quests. You can change it later.
               </p>
-              <p className="text-xs font-nunito leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                {mode.description}
-              </p>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* ── Step 2: Difficulty toggles (Fitness/Academic only) ── */}
-        <AnimatePresence>
-          {hasPresets && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3 }}
-              className="overflow-hidden mb-6"
-            >
-              <p className="font-cinzel font-bold text-xs uppercase tracking-widest mb-3 px-1"
-                style={{ color: 'var(--text-muted)' }}>
-                Step 2 — Choose Difficulty Levels
-              </p>
-              <div className="flex gap-3">
-                {DIFFS.map(diff => {
-                  const meta = DIFF_META[diff]
-                  const on   = enabled[diff]
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Mode">
+                {MODES.map(mode => {
+                  const on = selected === mode.id
                   return (
-                    <motion.button
-                      key={diff}
-                      onClick={() => toggleDiff(diff)}
-                      className="flex-1 py-4 px-3 rounded-2xl transition-all text-center"
-                      style={{
-                        background: on ? meta.color + '18' : 'rgba(14,14,46,0.5)',
-                        border:     `2px solid ${on ? meta.color + '55' : 'rgba(124,58,237,0.18)'}`,
-                      }}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.97 }}
-                    >
-                      <div className="text-2xl mb-1.5">{meta.emoji}</div>
-                      <div className="font-cinzel font-bold text-xs mb-0.5"
-                        style={{ color: on ? meta.color : '#6060aa' }}>
-                        {meta.label}
-                      </div>
-                      <div className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
-                        +{meta.pts} pts
-                      </div>
-                      <div className="text-xs font-nunito mt-1 font-bold"
-                        style={{ color: on ? meta.color : '#4040aa' }}>
-                        {on ? 'Included' : 'Skipped'}
-                      </div>
-                    </motion.button>
+                    <button key={mode.id} onClick={() => setSelected(mode.id)} role="radio" aria-checked={on}
+                      className="relative text-left rounded-2xl p-4 bg-white"
+                      style={{ border: `${on ? 2 : 1}px solid ${on ? TEAL : LINE}`, padding: on ? 15 : 16, background: on ? '#F7FBFA' : '#FFFFFF' }}>
+                      {on && <span className="absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: TEAL_DEEP }}>✓</span>}
+                      {isUpdate && profile?.game_mode === mode.id && !on && (
+                        <span className="absolute top-3 right-3 text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: TEAL_TINT, color: TEAL_DEEP }}>current</span>
+                      )}
+                      <div className="text-3xl mb-2">{mode.emoji}</div>
+                      <h2 className="font-extrabold text-base" style={{ color: INK }}>{mode.name}</h2>
+                      <p className="text-sm font-semibold mt-0.5" style={{ color: SOFT }}>{mode.tagline}</p>
+                      <p className="text-sm mt-1 leading-relaxed" style={{ color: MUTED }}>{mode.description}</p>
+                    </button>
                   )
                 })}
               </div>
-              {enabledDiffs.length === 0 && (
-                <p className="text-xs font-nunito text-center mt-3" style={{ color: '#f5a31a' }}>
-                  ⚠️ Enable at least one difficulty to load starter quests.
-                </p>
-              )}
-              {enabledDiffs.length > 0 && (
-                <p className="text-xs font-nunito text-center mt-3" style={{ color: 'var(--text-muted)' }}>
-                  Next you'll hand-pick from {enabledDiffs.length * 3 - (enabled.hard ? 1 : 0)} starter quests · 3 rerolls per day
-                </p>
-              )}
+              <StepNav
+                onBack={isUpdate ? () => navigate('/dashboard') : null} backLabel="← Dashboard"
+                next={() => (hasPresets ? setStep(2) : finalize())}
+                nextLabel={step1Label()} nextDisabled={step1Disabled} />
+            </motion.div>
+          )}
+
+          {/* ── Step 2: difficulty ── */}
+          {step === 2 && (
+            <motion.div key="diff" {...page}>
+              <h1 className="font-extrabold text-2xl md:text-3xl text-center" style={{ color: INK }}>How hard?</h1>
+              <p className="text-base text-center mt-1 mb-6" style={{ color: SOFT }}>
+                Pick the levels you want starter quests for.
+              </p>
+              <div className="space-y-2">
+                {DIFFS.map(diff => {
+                  const meta = DIFF_META[diff]
+                  const on = enabled[diff]
+                  return (
+                    <button key={diff} onClick={() => toggleDiff(diff)} aria-pressed={on}
+                      className="w-full min-h-[60px] flex items-center gap-3 px-4 rounded-2xl text-left"
+                      style={{ background: on ? TEAL_TINT : '#FFFFFF', border: `1px solid ${on ? '#3F858055' : LINE}` }}>
+                      <span className="text-2xl">{meta.emoji}</span>
+                      <span className="flex-1">
+                        <span className="block font-extrabold text-base" style={{ color: DIFFICULTY_TEXT[diff] }}>{meta.label} · +{meta.pts} pts</span>
+                        <span className="block text-sm" style={{ color: SOFT }}>{meta.limitDesc}</span>
+                      </span>
+                      <span className="text-sm font-bold" style={{ color: on ? TEAL_DEEP : MUTED }}>{on ? 'Included' : 'Skipped'}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-sm text-center mt-4" style={{ color: enabledDiffs.length ? MUTED : '#8A4B12' }}>
+                {enabledDiffs.length
+                  ? `Next you'll hand-pick from ${enabledDiffs.reduce((s, d) => s + SLOTS_COUNT[d], 0)} starter quests.`
+                  : 'Include at least one level.'}
+              </p>
+              <StepNav onBack={() => setStep(1)} next={() => setStep(3)} nextLabel="Next" nextDisabled={enabledDiffs.length === 0} />
+            </motion.div>
+          )}
+
+          {/* ── Step 3: quests ── */}
+          {step === 3 && (
+            <motion.div key="quests" {...page}>
+              <QuestPicker mode={selected} enabledDiffs={enabledDiffs} ownedTexts={ownedTexts}
+                onConfirm={finalize} onBack={() => setStep(2)} saving={saving} />
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ── Confirm ── */}
-        <div className="flex flex-col items-center gap-3">
-          <motion.button
-            onClick={handleConfirmClick}
-            disabled={confirmDisabled}
-            className="btn-gold px-10 py-3.5 text-base font-cinzel font-bold disabled:opacity-40 disabled:cursor-not-allowed"
-            whileHover={!confirmDisabled ? { scale: 1.04 } : {}}
-            whileTap={!confirmDisabled ? { scale: 0.97 } : {}}
-          >
-            {confirmLabel()}
-          </motion.button>
-          {isUpdate && (
-            <button onClick={() => navigate('/dashboard')} className="text-sm font-nunito"
-              style={{ color: 'var(--text-muted)' }}>
-              ← Back to dashboard
+        {/* Escape hatch so a stuck onboarding user can always reset. */}
+        {!isUpdate && (
+          <div className="text-center mt-8">
+            <button onClick={async () => { await logout(); navigate('/', { replace: true }) }}
+              className="min-h-[44px] px-3 text-sm underline" style={{ color: MUTED }}>
+              Sign out
             </button>
-          )}
-          {!isUpdate && (
-            <>
-              <p className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
-                You can change mode or reload presets anytime from the dashboard.
-              </p>
-              {/* Escape hatch so a stuck onboarding user can always reset. */}
-              <button onClick={async () => { await logout(); navigate('/', { replace: true }) }}
-                className="text-xs font-nunito underline mt-1" style={{ color: 'var(--text-muted)' }}>
-                Sign out
-              </button>
-            </>
-          )}
-        </div>
-      </motion.div>
-
-      {/* ── Quest Picker Modal ── */}
-      <AnimatePresence>
-        {pickerOpen && hasPresets && (
-          <QuestPickerModal
-            mode={selected}
-            enabledDiffs={enabledDiffs}
-            ownedTexts={ownedTexts}
-            onConfirm={finalize}
-            onClose={() => setPickerOpen(false)}
-          />
+          </div>
         )}
-      </AnimatePresence>
+      </div>
     </div>
   )
 }

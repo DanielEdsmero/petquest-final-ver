@@ -4,12 +4,21 @@ import { motion } from 'framer-motion'
 import { ArrowLeft, Flame, Trophy, RefreshCw } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useGame } from '../context/GameContext'
-import { PETS } from '../data/pets'
 import { getLevelMeta } from '../data/progression'
-import { DIFFICULTY_COLORS } from '../data/difficulty'
+import { DIFFICULTY_TEXT } from '../data/difficulty'
 import CountUp from '../components/reactbits/CountUp'
-import ShinyText from '../components/reactbits/ShinyText'
-import StarBorder from '../components/reactbits/StarBorder'
+import PetSprite from '../components/PetSprite'
+
+/* Light palette — same values as apps/mobile/src/theme.ts. */
+const INK = '#102A43'
+const SOFT = '#3E5165'
+const MUTED = '#667085'
+const TEAL = '#3F8580'
+const TEAL_DEEP = '#2F6F6B'
+const TEAL_TINT = '#E4EFEE'
+const LINE = '#E1E7E3'
+const APRICOT = '#EBA66E'
+const APRICOT_INK = '#8A4B12'
 
 /* The two ranking modes. "Quests" additionally lets you rank by a single
    difficulty — the "most quests done per difficulty" board. */
@@ -19,23 +28,24 @@ const BOARDS = {
 }
 
 const QUEST_METRICS = [
-  { key: 'total_completed', label: 'All',    color: '#f5a31a' },
-  { key: 'easy_done',       label: 'Easy',   color: DIFFICULTY_COLORS.easy },
-  { key: 'medium_done',     label: 'Medium', color: DIFFICULTY_COLORS.medium },
-  { key: 'hard_done',       label: 'Hard',   color: DIFFICULTY_COLORS.hard },
-  { key: 'boss_done',       label: 'Boss',   color: DIFFICULTY_COLORS.boss },
+  { key: 'total_completed', label: 'All',    color: APRICOT_INK },
+  { key: 'easy_done',       label: 'Easy',   color: DIFFICULTY_TEXT.easy },
+  { key: 'medium_done',     label: 'Medium', color: DIFFICULTY_TEXT.medium },
+  { key: 'hard_done',       label: 'Hard',   color: DIFFICULTY_TEXT.hard },
+  { key: 'boss_done',       label: 'Boss',   color: '#5B4C9A' },
 ]
 
 const MEDALS = ['🥇', '🥈', '🥉']
+/* Your own row is pinned to the bottom once it would sit below this many rows. */
+const PIN_AFTER = 8
 
-function petEmoji(id) {
-  return PETS.find(p => p.id === id)?.emoji || '👤'
-}
+const chip = (on) => on
+  ? { background: TEAL_TINT, color: TEAL_DEEP, border: '1px solid #3F858055' }
+  : { background: '#FFFFFF', color: SOFT, border: `1px solid ${LINE}` }
 
 export default function LeaderboardPage() {
   const navigate = useNavigate()
   const { profile } = useGame()
-
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
@@ -49,6 +59,7 @@ export default function LeaderboardPage() {
     setRows(data || [])
     setLoading(false)
   }
+
   useEffect(() => { load() }, [])
 
   // Active sort metric: for the streak board it's the streak; for quests it's
@@ -62,42 +73,72 @@ export default function LeaderboardPage() {
     .filter(r => Number(r[metric]) > 0 || board === 'streak')
 
   const metricColor = board === 'streak'
-    ? '#fb923c'
-    : QUEST_METRICS.find(m => m.key === questMetric)?.color || '#f5a31a'
+    ? APRICOT_INK
+    : QUEST_METRICS.find(m => m.key === questMetric)?.color || APRICOT_INK
 
   const metricValue = (r) => Number(r[metric]) || 0
   const isMe = (r) => r.username === profile?.username
+  const myIndex = ranked.findIndex(isMe)
+
+  const podium = ranked.slice(0, 3)
+  const rest = ranked.slice(3)
+
+  const Value = ({ r, big }) => (
+    <span className={`font-extrabold tabular-nums inline-flex items-center gap-1 ${big ? 'text-xl' : 'text-lg'}`} style={{ color: metricColor }}>
+      {/* Keyed on the active board so switching boards replays the count. */}
+      <CountUp key={metric} to={metricValue(r)} duration={1.2} />
+      {board === 'streak' && <Flame size={big ? 18 : 15} />}
+    </span>
+  )
+
+  const Row = ({ r, i }) => (
+    <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl"
+      style={{ background: isMe(r) ? TEAL_TINT : '#FFFFFF', border: `1px solid ${isMe(r) ? '#3F858055' : LINE}` }}>
+      <span className="w-7 text-center font-extrabold flex-shrink-0" style={{ color: isMe(r) ? SOFT : MUTED }}>{i + 1}</span>
+      <PetSprite petId={r.pet_id} level={r.pet_level || 1} size={36} />
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-sm truncate" style={{ color: INK }}>
+          {r.username}
+          {isMe(r) && <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full" style={{ background: '#FFFFFF', color: TEAL_DEEP }}>You</span>}
+        </p>
+        <p className="text-xs" style={{ color: isMe(r) ? SOFT : MUTED }}>
+          Lv {r.pet_level} {getLevelMeta(r.pet_level).name}
+          {board === 'streak' && <> · best {r.longest_streak}🔥</>}
+          {board === 'quests' && <> · {r.total_completed} total</>}
+        </p>
+      </div>
+      <Value r={r} />
+    </div>
+  )
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg-deep)' }}>
+    <div className="theme-light min-h-screen relative z-10 font-nunito">
       {/* Nav */}
       <motion.nav initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-        className="relative z-20 flex items-center justify-between px-4 md:px-8 py-4"
-        style={{ borderBottom: '1px solid var(--card-border)', background: '#0d1120' }}>
-        <div className="flex items-center gap-3">
+        className="relative z-20 flex items-center justify-between gap-3 px-4 md:px-8 py-3"
+        style={{ borderBottom: `1px solid ${LINE}`, background: '#FFFFFF' }}>
+        <div className="flex items-center gap-3 min-w-0">
           <motion.button onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
-            style={{ background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.25)', color: '#a78bfa' }}
-            whileHover={{ background: 'rgba(124,58,237,0.2)' }} whileTap={{ scale: 0.95 }}>
+            className="min-h-[44px] flex items-center gap-2 px-3 rounded-xl text-sm font-semibold"
+            style={{ background: '#FFFFFF', border: `1px solid ${LINE}`, color: SOFT }}
+            whileHover={{ borderColor: TEAL }} whileTap={{ scale: 0.95 }}>
             <ArrowLeft size={15} /> Dashboard
           </motion.button>
-          <h1 className="font-cinzel font-black text-lg flex items-center gap-2"
-            style={{ color: '#ffd166', textShadow: '0 0 16px rgba(245,163,26,0.3)' }}>
-            <Trophy size={18} style={{ color: '#f5a31a' }} /> Leaderboard
+          <h1 className="font-extrabold text-lg flex items-center gap-2 truncate" style={{ color: INK }}>
+            <Trophy size={18} style={{ color: APRICOT }} /> Leaderboard
           </h1>
         </div>
-        <motion.button onClick={load}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-nunito font-semibold"
-          style={{ background: 'rgba(245,163,26,0.1)', border: '1px solid rgba(245,163,26,0.25)', color: '#f5a31a' }}
+        <motion.button onClick={load} aria-label="Refresh"
+          className="w-11 h-11 flex items-center justify-center rounded-xl flex-shrink-0"
+          style={{ background: '#FFFFFF', border: `1px solid ${LINE}`, color: SOFT }}
           whileTap={{ scale: 0.9, rotate: 180 }}>
-          <RefreshCw size={14} />
+          <RefreshCw size={15} />
         </motion.button>
       </motion.nav>
 
-      <div className="relative z-10 max-w-3xl mx-auto px-4 py-6 space-y-5">
+      <div className="relative max-w-3xl mx-auto px-4 py-6 space-y-4">
         {error && (
-          <div className="p-4 rounded-xl text-sm font-nunito"
-            style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.3)', color: '#fb7185' }}>
+          <div className="p-4 rounded-xl text-sm" style={{ background: '#FBE8E3', color: '#A3412A' }}>
             ⚠️ {error}
           </div>
         )}
@@ -105,13 +146,8 @@ export default function LeaderboardPage() {
         {/* Board selector */}
         <div className="flex gap-2">
           {Object.entries(BOARDS).map(([key, b]) => (
-            <button key={key} onClick={() => setBoard(key)}
-              className="flex-1 py-2.5 rounded-xl text-sm font-nunito font-bold transition-all"
-              style={{
-                background: board === key ? 'rgba(245,163,26,0.18)' : 'rgba(19,19,58,0.5)',
-                color:      board === key ? '#f5a31a' : '#8080aa',
-                border:     `1px solid ${board === key ? 'rgba(245,163,26,0.45)' : 'rgba(124,58,237,0.15)'}`,
-              }}>
+            <button key={key} onClick={() => setBoard(key)} aria-pressed={board === key}
+              className="flex-1 min-h-[44px] rounded-xl text-sm font-bold" style={chip(board === key)}>
               {b.label}
             </button>
           ))}
@@ -121,13 +157,8 @@ export default function LeaderboardPage() {
         {board === 'quests' && (
           <div className="flex flex-wrap gap-2">
             {QUEST_METRICS.map(m => (
-              <button key={m.key} onClick={() => setQuestMetric(m.key)}
-                className="px-3 py-1.5 rounded-lg text-xs font-nunito font-bold transition-all"
-                style={{
-                  background: questMetric === m.key ? m.color + '22' : 'rgba(19,19,58,0.5)',
-                  color:      questMetric === m.key ? m.color : '#8080aa',
-                  border:     `1px solid ${questMetric === m.key ? m.color + '66' : 'rgba(124,58,237,0.15)'}`,
-                }}>
+              <button key={m.key} onClick={() => setQuestMetric(m.key)} aria-pressed={questMetric === m.key}
+                className="min-h-[44px] px-4 rounded-full text-sm font-bold" style={chip(questMetric === m.key)}>
                 {m.label}
               </button>
             ))}
@@ -140,89 +171,59 @@ export default function LeaderboardPage() {
               className="text-3xl">⚙️</motion.div>
           </div>
         ) : ranked.length === 0 ? (
-          <div className="text-center py-16 font-nunito" style={{ color: 'var(--text-muted)' }}>
+          <div className="text-center py-16" style={{ color: SOFT }}>
             <div className="text-4xl mb-3">🏆</div>
             No ranked players yet — complete some quests to claim a spot!
           </div>
         ) : (
-          <div className="space-y-2">
-            {ranked.map((r, i) => {
-              const champion = i === 0
-
-              /* Row layout, shared by the plain rows and the champion's
-                 StarBorder-framed one. */
-              const rowClass = 'flex items-center gap-3 px-4 py-3 rounded-2xl'
-              const rowStyle = {
-                background: isMe(r) ? 'rgba(245,163,26,0.1)' : 'rgba(14,14,46,0.7)',
-                border: `1px solid ${isMe(r) ? 'rgba(245,163,26,0.4)' : i < 3 ? 'rgba(245,163,26,0.2)' : 'rgba(124,58,237,0.15)'}`,
-              }
-
-              const body = (
-                <>
-                  {/* Rank */}
-                  <div className="w-8 text-center font-cinzel font-black flex-shrink-0"
-                    style={{ color: i < 3 ? '#f5a31a' : '#8080aa', fontSize: i < 3 ? 20 : 14 }}>
-                    {i < 3 ? MEDALS[i] : i + 1}
-                  </div>
-
-                  {/* Pet + name */}
-                  <div className="text-2xl flex-shrink-0">{petEmoji(r.pet_id)}</div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-nunito font-bold text-sm truncate" style={{ color: '#e2e2ff' }}>
-                      {/* Podium names catch the light; everyone else stays flat,
-                          so the sheen reads as rank and not decoration. */}
-                      {i < 3
-                        ? <ShinyText text={r.username} speed={3} color="#e2e2ff" shineColor="#f5a31a" />
-                        : r.username}
-                      {isMe(r) && <span className="ml-2 text-xs px-1.5 py-0.5 rounded"
-                        style={{ background: 'rgba(245,163,26,0.15)', color: '#f5a31a' }}>You</span>}
+          <>
+            {/* Podium: 2nd · 1st · 3rd, first one raised */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-3 items-end">
+              {[1, 0, 2].map(i => {
+                const r = podium[i]
+                if (!r) return <div key={i} />
+                const first = i === 0
+                return (
+                  <motion.div key={r.username + i}
+                    initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 * (i + 1) }}
+                    className="flex flex-col items-center text-center rounded-2xl px-2 min-w-0"
+                    style={{
+                      border: first ? `2px solid ${APRICOT}` : `1px solid ${isMe(r) ? '#3F858055' : LINE}`,
+                      background: isMe(r) ? TEAL_TINT : '#FFFFFF',
+                      paddingTop: first ? 20 : 12, paddingBottom: 12,
+                    }}>
+                    <span className={first ? 'text-2xl' : 'text-xl'} role="img" aria-label={`Rank ${i + 1}`}>{MEDALS[i]}</span>
+                    <PetSprite petId={r.pet_id} level={r.pet_level || 1} size={first ? 72 : 56} />
+                    <p className="font-bold text-sm truncate w-full mt-1" style={{ color: INK }}>
+                      {r.username}{isMe(r) && ' · You'}
                     </p>
-                    <p className="text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
-                      Lv {r.pet_level} {getLevelMeta(r.pet_level).name}
-                      {board === 'streak' && <> · best {r.longest_streak}🔥</>}
-                      {board === 'quests' && <> · {r.total_completed} total</>}
-                    </p>
-                  </div>
+                    <p className="text-xs" style={{ color: isMe(r) ? SOFT : MUTED }}>Lv {r.pet_level}</p>
+                    <Value r={r} big={first} />
+                  </motion.div>
+                )
+              })}
+            </div>
 
-                  {/* Metric value */}
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {board === 'streak' && <Flame size={16} style={{ color: metricColor }} />}
-                    <span className="font-cinzel font-black text-xl tabular-nums" style={{ color: metricColor }}>
-                      {/* Keyed on the active board so switching boards replays
-                          the count instead of holding the previous total. */}
-                      <CountUp key={metric} to={metricValue(r)} duration={1.2} />
-                    </span>
-                  </div>
-                </>
-              )
-
-              return (
-                <motion.div
-                  key={r.username + i}
-                  layout
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: Math.min(i * 0.03, 0.4) }}
-                >
-                  {champion ? (
-                    <StarBorder
-                      as="div"
-                      color="#f5a31a"
-                      speed="5s"
-                      thickness={2}
-                      style={{ display: 'block', width: '100%', borderRadius: 18 }}
-                      innerClassName={rowClass}
-                      innerStyle={rowStyle}
-                    >
-                      {body}
-                    </StarBorder>
-                  ) : (
-                    <div className={rowClass} style={rowStyle}>{body}</div>
-                  )}
+            {/* Everyone else */}
+            <div className="space-y-2">
+              {rest.map((r, j) => (
+                <motion.div key={r.username + j} layout
+                  initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(j * 0.03, 0.4) }}>
+                  <Row r={r} i={j + 3} />
                 </motion.div>
-              )
-            })}
-          </div>
+              ))}
+            </div>
+
+            {/* Far down the list: keep your own place in view. */}
+            {myIndex >= PIN_AFTER && (
+              <div className="sticky bottom-3 pt-2">
+                <div className="rounded-2xl" style={{ boxShadow: '0 6px 18px rgba(16,42,67,0.15)' }}>
+                  <Row r={ranked[myIndex]} i={myIndex} />
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

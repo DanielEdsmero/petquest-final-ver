@@ -7,10 +7,11 @@ import CheckDraw from './animations/CheckDraw'
 import EmptyStatePet from './animations/EmptyStatePet'
 import { MascotLoaderCompact } from './animations/MascotWakeLoader'
 import VerificationModal from './VerificationModal'
-import { DIFFICULTY_COLORS } from '../data/difficulty'
 import {
   EVIDENCE_TYPES, evidenceMeta, VALIDITY_META, isQuestEligible, CHECK_STEPS, CHECK_EXPLAINER,
 } from '../data/questValidity'
+
+import { DIFFICULTY_TEXT as DIFFICULTY_COLORS } from '../data/difficulty'
 
 const DIFF_CONFIG = {
   easy:   { label: 'Easy',   emoji: '🌱', pts: 10, color: DIFFICULTY_COLORS.easy,   limit: null, desc: 'Unlimited · Daily quests' },
@@ -57,7 +58,7 @@ function ProgressLogs({ taskId, logs = [], onAdd }) {
   }
 
   return (
-    <div className="mt-3 pt-3 border-t" style={{ borderColor: 'rgba(124,58,237,0.15)' }}>
+    <div className="mt-3 pt-3 border-t" style={{ borderColor: '#E1E7E3' }}>
       <p className="text-xs font-nunito font-semibold uppercase tracking-widest mb-2"
         style={{ color: 'var(--text-muted)' }}>
         Progress Log
@@ -66,7 +67,7 @@ function ProgressLogs({ taskId, logs = [], onAdd }) {
         <div className="space-y-1.5 mb-3 max-h-28 overflow-y-auto custom-scroll">
           {logs.map(log => (
             <div key={log.id} className="text-xs font-nunito px-2.5 py-1.5 rounded-lg"
-              style={{ background: 'rgba(19,19,58,0.6)', color: '#c0c0e0' }}>
+              style={{ background: '#F3F5F2', color: '#3E5165' }}>
               <span className="mr-2" style={{ color: 'var(--text-muted)' }}>
                 {new Date(log.logged_at).toLocaleDateString()} {new Date(log.logged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </span>
@@ -94,7 +95,7 @@ function ProgressLogs({ taskId, logs = [], onAdd }) {
           onClick={handleSubmit}
           disabled={!input.trim() || loading}
           className="px-3 py-1.5 rounded-lg text-xs font-nunito font-bold flex-shrink-0"
-          style={{ background: 'rgba(124,58,237,0.2)', color: '#a78bfa', border: '1px solid rgba(124,58,237,0.3)' }}
+          style={{ background: '#E4EFEE', color: '#2F6F6B', border: '1px solid #CBD5D0' }}
           whileTap={{ scale: 0.95 }}
         >
           Log
@@ -187,20 +188,20 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, onRevise, onRecheck
           <div className="flex items-center gap-1.5">
             <span
               className={`text-sm font-nunito font-medium truncate ${task.completed ? 'line-through' : ''}`}
-              style={{ color: task.completed ? '#5050aa' : '#c0c0e0' }}
+              style={{ color: task.completed ? '#667085' : '#102A43' }}
               title={task.text}
             >
               {task.text}
             </span>
           </div>
           {(task.goal || evidence) && !task.completed && (
-            <div className="flex items-center gap-2 mt-0.5 text-[10px] font-nunito min-w-0" style={{ color: 'var(--text-muted)' }}>
+            <div className="flex items-center gap-2 mt-0.5 text-xs font-nunito min-w-0" style={{ color: 'var(--text-muted)' }}>
               {task.goal && <span className="truncate" title={task.goal}>🎯 {task.goal}</span>}
               {evidence && <span className="flex-shrink-0" title={`Evidence: ${evidence.label}`}>{evidence.emoji}</span>}
             </div>
           )}
           {validity && task.validity_reason && (
-            <p className="text-[10px] font-nunito mt-0.5" style={{ color: validity.color }}>{task.validity_reason}</p>
+            <p className="text-xs font-nunito mt-0.5" style={{ color: validity.color }}>{task.validity_reason}</p>
           )}
         </div>
 
@@ -220,7 +221,7 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, onRevise, onRecheck
             onClick={handleRecheck}
             disabled={rechecking}
             className="flex-shrink-0 p-1 rounded-lg"
-            style={{ color: '#22d3ee' }}
+            style={{ color: '#2F6F6B' }}
             whileTap={{ scale: 0.9 }}
             title="Run the quest check again"
             aria-label="Run the quest check again"
@@ -250,9 +251,9 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, onRevise, onRecheck
           <span
             className="flex items-center gap-1 text-xs font-nunito font-semibold flex-shrink-0 px-2 py-0.5 rounded-lg"
             style={{
-              background: 'rgba(245,163,26,0.12)',
+              background: '#FBEEDF',
               color: 'var(--gold)',
-              border: '1px solid rgba(245,163,26,0.3)',
+              border: '1px solid #EBA66E55',
             }}
             title="Completed offline — points are awarded once your connection returns"
           >
@@ -264,7 +265,7 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, onRevise, onRecheck
         {verifying && (
           <span
             className="flex items-center gap-1 text-xs font-nunito font-semibold flex-shrink-0 px-2 py-0.5 rounded-lg"
-            style={{ background: 'rgba(6,182,212,0.12)', color: '#22d3ee', border: '1px solid rgba(6,182,212,0.3)' }}
+            style={{ background: '#E4EFEE', color: '#2F6F6B', border: '1px solid #CBD5D0' }}
             title="Proof submitted — verifying. Points are pending until the verdict."
           >
             <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
@@ -279,9 +280,9 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, onRevise, onRecheck
           <span
             className="flex items-center gap-1 text-xs font-nunito font-semibold flex-shrink-0 px-2 py-0.5 rounded-lg"
             style={{
-              background: 'rgba(19,19,58,0.8)',
+              background: '#F3F5F2',
               color: 'var(--text-muted)',
-              border: '1px solid rgba(124,58,237,0.15)',
+              border: '1px solid #E1E7E3',
             }}
             title={locked
               ? 'Completions are temporarily locked'
@@ -296,8 +297,8 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, onRevise, onRecheck
           <motion.button
             onClick={() => setExpanded(v => !v)}
             className="flex-shrink-0 p-1 rounded-lg transition-colors"
-            style={{ color: expanded ? '#a78bfa' : '#5050aa' }}
-            whileHover={{ color: '#a78bfa' }}
+            style={{ color: expanded ? '#2F6F6B' : '#667085' }}
+            whileHover={{ color: '#2F6F6B' }}
             whileTap={{ scale: 0.9 }}
             title="Log progress"
           >
@@ -314,8 +315,8 @@ function TaskItem({ task, onVerify, onDelete, onAddProgress, onRevise, onRecheck
         <motion.button
           onClick={() => { if (window.confirm(`Delete "${task.text}"? This can't be undone.`)) onDelete(task.id) }}
           className="flex-shrink-0 p-1 rounded-lg tap-target"
-          style={{ color: '#5050aa' }}
-          whileHover={{ color: '#f43f5e', scale: 1.1 }}
+          style={{ color: '#667085' }}
+          whileHover={{ color: '#A3412A', scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           aria-label="Delete task"
         >
@@ -490,7 +491,7 @@ export default function TaskList() {
   const handleVerified = () => {
     fireReward({
       cardX: window.innerWidth / 2, cardY: window.innerHeight / 2,
-      btnY: window.innerHeight / 2, color: '#f5a31a', label: '+pts',
+      btnY: window.innerHeight / 2, color: '#8A4B12', label: '+pts',
     })
   }
 
@@ -512,11 +513,11 @@ export default function TaskList() {
           <button
             key={diff}
             onClick={() => setActiveDiff(diff)}
-            className="flex-1 py-2 px-2 rounded-xl text-xs font-nunito font-bold transition-all"
+            className="flex-1 min-h-[44px] py-2 px-2 rounded-xl text-sm font-nunito font-bold transition-all"
             style={{
-              background: activeDiff === diff ? c.color + '22' : 'rgba(19,19,58,0.5)',
-              color:      activeDiff === diff ? c.color : '#8080aa',
-              border:     `1px solid ${activeDiff === diff ? c.color + '55' : 'rgba(124,58,237,0.15)'}`,
+              background: activeDiff === diff ? c.color + '22' : '#F3F5F2',
+              color:      activeDiff === diff ? c.color : '#667085',
+              border:     `1px solid ${activeDiff === diff ? c.color + '55' : '#E1E7E3'}`,
             }}
           >
             {c.emoji} {c.label}
@@ -576,19 +577,19 @@ export default function TaskList() {
             initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0, marginBottom: 0 }}
             className="mb-3 px-3 py-2.5 rounded-xl text-xs font-nunito"
             style={{
-              background: (checkResult.tone === 'bad' ? '#fb7185' : checkResult.tone === 'warn' ? '#f5a31a' : '#22d3ee') + '14',
-              border: `1px solid ${(checkResult.tone === 'bad' ? '#fb7185' : checkResult.tone === 'warn' ? '#f5a31a' : '#22d3ee')}40`,
+              background: (checkResult.tone === 'bad' ? '#A3412A' : checkResult.tone === 'warn' ? '#8A4B12' : '#2F6F6B') + '14',
+              border: `1px solid ${(checkResult.tone === 'bad' ? '#A3412A' : checkResult.tone === 'warn' ? '#8A4B12' : '#2F6F6B')}40`,
             }}
             role="status"
           >
-            <p className="font-bold mb-0.5" style={{ color: checkResult.tone === 'bad' ? '#fb7185' : checkResult.tone === 'warn' ? '#f5a31a' : '#22d3ee' }}>
+            <p className="font-bold mb-0.5" style={{ color: checkResult.tone === 'bad' ? '#A3412A' : checkResult.tone === 'warn' ? '#8A4B12' : '#2F6F6B' }}>
               {checkResult.title}
             </p>
-            <p style={{ color: '#c0c0e0' }}>{checkResult.reason}</p>
+            <p style={{ color: '#3E5165' }}>{checkResult.reason}</p>
             {checkResult.evidence && checkResult.evidence !== evidenceType && (
               <button type="button" onClick={() => setEvidenceType(checkResult.evidence)}
                 className="mt-1.5 px-2 py-1 rounded-lg font-bold"
-                style={{ background: 'rgba(19,19,58,0.7)', color: '#e2e2ff', border: '1px solid rgba(124,58,237,0.3)' }}>
+                style={{ background: '#F3F5F2', color: '#102A43', border: '1px solid #CBD5D0' }}>
                 Use {evidenceMeta(checkResult.evidence).emoji} {evidenceMeta(checkResult.evidence).label} as evidence
               </button>
             )}
@@ -616,7 +617,7 @@ export default function TaskList() {
           ref={inputRef}
           type="text"
           className="input-field flex-1"
-          placeholder={atLimit ? `${cfg.label} quest limit reached` : `Add a ${cfg.label.toLowerCase()} quest...`}
+          placeholder={atLimit ? `${cfg.label} quest limit reached` : `Add ${activeDiff === 'easy' ? 'an' : 'a'} ${cfg.label.toLowerCase()} quest...`}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -649,9 +650,9 @@ export default function TaskList() {
             style={checking ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
           >
             {revisingId && (
-              <div className="flex items-center justify-between mb-2 px-1 text-[10px] font-nunito" style={{ color: 'var(--text-muted)' }}>
+              <div className="flex items-center justify-between mb-2 px-1 text-xs font-nunito" style={{ color: 'var(--text-muted)' }}>
                 <span>✏️ Revising a saved quest — the old version is replaced once this one is accepted.</span>
-                <button type="button" onClick={resetForm} style={{ color: '#a78bfa' }}>Cancel</button>
+                <button type="button" onClick={resetForm} style={{ color: '#2F6F6B' }}>Cancel</button>
               </div>
             )}
 
@@ -674,7 +675,7 @@ export default function TaskList() {
                 ))}
               </select>
             </div>
-            <p className="text-[10px] font-nunito mb-2 px-1" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-xs font-nunito mb-2 px-1" style={{ color: 'var(--text-muted)' }}>
               {evidenceMeta(evidenceType).desc}
             </p>
 
@@ -684,7 +685,7 @@ export default function TaskList() {
             <div className="flex items-center gap-2 mb-2 px-1">
               <CalendarClock size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
               <label htmlFor="planned-date" className="text-xs font-nunito flex-shrink-0"
-                style={{ color: needsPlan && !plannedDate ? '#fb7185' : 'var(--text-muted)' }}>
+                style={{ color: needsPlan && !plannedDate ? '#A3412A' : 'var(--text-muted)' }}>
                 Plan to finish?{needsPlan ? ' *' : ''}
               </label>
               <input
@@ -701,7 +702,7 @@ export default function TaskList() {
                 <button
                   onClick={() => setPlannedDate('')}
                   className="text-xs font-nunito px-2 py-1 rounded-lg flex-shrink-0"
-                  style={{ color: 'var(--text-muted)', background: 'rgba(19,19,58,0.6)' }}
+                  style={{ color: 'var(--text-muted)', background: '#F3F5F2' }}
                   title="Clear planned date"
                 >
                   Clear
@@ -709,8 +710,8 @@ export default function TaskList() {
               )}
             </div>
 
-            <p className="flex items-start gap-1.5 text-[10px] font-nunito mb-3 px-1" style={{ color: 'var(--text-soft)' }}>
-              <ShieldCheck size={12} style={{ color: '#a78bfa', flexShrink: 0, marginTop: 1 }} />
+            <p className="flex items-start gap-1.5 text-xs font-nunito mb-3 px-1" style={{ color: 'var(--text-soft)' }}>
+              <ShieldCheck size={12} style={{ color: '#2F6F6B', flexShrink: 0, marginTop: 1 }} />
               <span>{CHECK_EXPLAINER}</span>
             </p>
           </motion.div>
@@ -719,7 +720,7 @@ export default function TaskList() {
 
       <div className="flex justify-end mb-2">
         <span className="text-xs font-nunito px-2 py-0.5 rounded-lg"
-          style={{ background: 'rgba(245,163,26,0.1)', color: '#f5a31a', border: '1px solid rgba(245,163,26,0.2)' }}>
+          style={{ background: '#FBEEDF', color: '#8A4B12', border: '1px solid #EBA66E55' }}>
           +{DIFF_POINTS[activeDiff] ?? DIFF_POINTS.easy} pts per quest
         </span>
       </div>
@@ -785,9 +786,9 @@ export default function TaskList() {
 
       {filteredTasks.length > 0 && (
         <div className="mt-3 pt-3 border-t flex items-center justify-between text-xs font-nunito"
-          style={{ borderColor: 'rgba(124,58,237,0.15)', color: 'var(--text-muted)' }}>
+          style={{ borderColor: '#E1E7E3', color: 'var(--text-muted)' }}>
           <span>{activeTasks.length} quest{activeTasks.length !== 1 ? 's' : ''} remaining</span>
-          <span className="font-semibold" style={{ color: '#22c55e' }}>
+          <span className="font-semibold" style={{ color: '#2F7A4D' }}>
             {completedTasks.length} completed ✓
           </span>
         </div>
