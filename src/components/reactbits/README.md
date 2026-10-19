@@ -19,7 +19,3 @@ Two project-wide edits are applied to every file, marked `// [petquest]`:
    the user has asked the OS to reduce motion, matching the rest of the app.
 
 Per-component adaptations beyond those two are noted in each file's header.
-
-`StarBorder` also needs the `star-movement-top` / `star-movement-bottom`
-keyframes, which upstream ships as a commented-out block; they live in
-`tailwind.config.js`.

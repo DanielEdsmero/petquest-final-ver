@@ -54,8 +54,9 @@ Checked in the browser at 1440px and 375px: landing (no sideways scroll, nothing
 - **Toasts + evolution done** (toasts B: navy pill bottom-centre; celebration A: white reveal card).
 - **Leaderboard done** (Daniel keeps it despite the paper; approved B: podium + list, own row pinned past rank 8).
 - **Every signed-in page is now light.** Temporary mock preview harness removed.
-- Cleanup left (needs Daniel's OK): unrouted `PetSelectPage.jsx`, unused reactbits (StarBorder, ShinyText, SpotlightCard; GlareHover/Magnet only used by PetSelect),
-  `star-movement` keyframes in tailwind.config.js, `.acc-card` / `.pet-aura` CSS, and the dark `:root` tokens once nothing uses them.
+- **Dead code removed**: PetSelectPage, CinematicBackground, PlanningStats, TypingText, reactbits StarBorder/ShinyText/SpotlightCard/GlareHover/Magnet,
+  31 unused CSS rules + 3 orphan keyframes (index.css 687 → 441 lines, CSS bundle 34.8 → 28.2 KB), star-movement in tailwind.config.js.
+  The dark `:root` tokens stay: `.theme-light` overrides them and the pre-theme fallbacks still read them.
   `PetSelectPage.jsx` is not routed anywhere (dead code; delete with Daniel's OK).
 
 ## Next task: restyle the signed-in website pages to match the app
