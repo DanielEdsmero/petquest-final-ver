@@ -6,6 +6,7 @@ import {
   shouldRevealAccount,
 } from '../../config/pets'
 import useReducedMotion from '../../hooks/useReducedMotion'
+import { HOME_FOR_PET, FALLBACK_HOME, PET_HOMES } from '../../../apps/mobile/src/data/petHomeModel.ts'
 
 /*
  * Mascot wake-up loader — the account-loading buffer.
@@ -44,6 +45,7 @@ import useReducedMotion from '../../hooks/useReducedMotion'
  *   onSkip            called when Skip is pressed (before onComplete)
  *   showSkip          render the Skip control (default true)
  *   error             stop the sequence; the caller shows its own error state
+ *   inHome            wake up inside the companion's painted home (4:3 card)
  */
 
 const A11Y_STATUS = 'Loading your PetQuest account. Your pet is waking up.'
@@ -58,6 +60,7 @@ export default function MascotWakeLoader({
   accountDataReady = false,
   onComplete,
   onSkip,
+  inHome = false,
   showSkip = true,
   error = false,
 }) {
@@ -147,6 +150,7 @@ export default function MascotWakeLoader({
       <div role="status" aria-live="polite" className="flex flex-col items-center justify-center">
         <span className="sr-only">{A11Y_STATUS}</span>
 
+        <HomeBackdrop show={inHome} petId={petId} size={size}>
         <div className="relative flex items-center justify-center flex-shrink-0"
           style={{ width: size, height: size }}>
           {/* Glow — dim while asleep, brighter once awake. Reduced motion gets a
@@ -185,16 +189,17 @@ export default function MascotWakeLoader({
                     style={{
                       position: 'absolute', inset: 0, width: '100%', height: '100%',
                       objectFit: 'contain', imageRendering: 'pixelated',
-                      filter: 'drop-shadow(0 6px 14px rgba(0,0,0,0.5))',
+                      filter: 'drop-shadow(0 4px 8px rgba(16,42,67,0.25))',
                     }}
                   />
                 ))}
           </motion.div>
         </div>
+        </HomeBackdrop>
 
         {showMessage && (
-          <motion.p key={caption} className="font-cinzel font-bold text-center mt-2 px-4"
-            style={{ color: accent, fontSize: Math.max(13, Math.round(size * 0.13)), maxWidth: 320 }}
+          <motion.p key={caption} className="font-nunito font-extrabold text-center mt-3 px-4"
+            style={{ color: '#102A43', fontSize: Math.max(14, Math.round(size * 0.15)), maxWidth: 320 }}
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: reduceMotion ? 0 : 0.4 }}>
             {caption}
           </motion.p>
@@ -210,12 +215,25 @@ export default function MascotWakeLoader({
           type="button"
           onClick={handleSkip}
           aria-label="Skip pet wake-up animation"
-          className="btn-ghost mt-5 px-4 py-2 text-xs font-nunito font-bold"
-          style={{ minHeight: 40 }}   /* comfortable touch target */
+          className="btn-ghost mt-5 px-4 py-2 text-sm font-nunito font-bold"
+          style={{ minHeight: 44, background: '#FFFFFF', border: '1px solid #E1E7E3', color: '#2F6F6B' }}   /* comfortable touch target; light colours over .btn-ghost */
         >
           Skip animation →
         </button>
       )}
+    </div>
+  )
+}
+
+/* The companion's painted home behind the mascot; the feet sit on the floor. */
+function HomeBackdrop({ show, petId, size, children }) {
+  if (!show) return children
+  const id = HOME_FOR_PET[petIdOf(petId)] ?? FALLBACK_HOME
+  return (
+    <div className="relative overflow-hidden" role="presentation"
+      style={{ width: size * 3.4, maxWidth: '100%', aspectRatio: '4 / 3', borderRadius: 16,
+        background: `${PET_HOMES[id].palette.background} url(/homes/${id}.webp) center / cover no-repeat` }}>
+      <div className="absolute" style={{ left: '50%', top: '72%', transform: 'translate(-50%, -100%)' }}>{children}</div>
     </div>
   )
 }
@@ -270,14 +288,15 @@ export function MascotWakeScreen({
 
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center px-6"
-      style={{ background: 'var(--bg-deep)' }}>
-      <MascotWakeLoader petType={petType} evolutionStage={evolutionStage}
-        message={message} size={128} restartToken={restartToken}
+      style={{ background: '#FAF8F0' }}>
+      <MascotWakeLoader petType={petType} evolutionStage={evolutionStage} inHome
+        message={message} size={96} restartToken={restartToken}
         accountDataReady={accountDataReady} onComplete={onComplete} onSkip={onSkip}
         error={error} />
 
-      <div className="h-6 mt-4 overflow-hidden text-center">
-        <motion.p key={tip} className="text-xs font-nunito" style={{ color: 'var(--text-soft)', maxWidth: 320 }}
+      {/* h-12: room for a two-line tip */}
+      <div className="h-12 mt-4 overflow-hidden text-center">
+        <motion.p key={tip} className="text-sm font-nunito" style={{ color: '#3E5165', maxWidth: 320 }}
           initial={{ opacity: 0, y: reduceMotion ? 0 : 8 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: reduceMotion ? 0 : 0.4 }}>
           {STUDY_TIPS[tip]}
@@ -296,11 +315,11 @@ export function MascotLoaderCompact({ petId = 'dragon', level = 1, text = 'Worki
   const color = accent || WAKE_PETS[petIdOf(petId)].accent
   return (
     <div className="flex items-center gap-3 px-3 py-2 rounded-xl"
-      style={{ background: 'rgba(19,19,58,0.6)', border: `1px solid ${color}33` }}>
+      style={{ background: '#F3F5F2', border: '1px solid #E1E7E3' }}>
       <MascotWakeLoader petType={petId} evolutionStage={level} size={56}
         showMessage={false} showSkip={false} />
-      <motion.p key={text} className="text-xs font-nunito font-semibold flex-1 min-w-0"
-        style={{ color }} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+      <motion.p key={text} className="text-sm font-nunito font-semibold flex-1 min-w-0"
+        style={{ color: '#3E5165' }} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
         {text}
       </motion.p>
     </div>

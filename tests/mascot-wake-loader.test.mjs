@@ -230,7 +230,7 @@ describe('9–10. the Skip control is usable and accessible', () => {
   test('a real <button> gives keyboard (Enter/Space) and touch support for free', () => {
     assert.match(LOADER, /<button\s/)
     assert.doesNotMatch(LOADER, /onMouseOver=\{handleSkip\}/)
-    assert.match(LOADER, /minHeight: 40/)          // comfortable touch target
+    assert.match(LOADER, /minHeight: 44/)          // comfortable touch target (44px phone minimum)
   })
   test('it has a visible keyboard focus state', () => {
     // The global rule paints a gold ring on any focused interactive element.
@@ -430,7 +430,8 @@ describe('15. the old yellow pulsing circle is gone from account loading', () =>
 describe('16. layout: mobile widths, no shift, no horizontal scroll', () => {
   test('the mascot box is a fixed square within the mobile range', () => {
     assert.match(LOADER, /size = 112/)                       // default
-    assert.match(LOADER, /size=\{128\}/)                     // full-screen wrapper
+    assert.match(LOADER, /size=\{96\}/)                      // full-screen wrapper (pet inside its home card)
+    assert.match(LOADER, /width: size \* 3\.4, maxWidth: '100%'/)   // the home card never exceeds the screen
     assert.match(LOADER, /style=\{\{ width: size, height: size \}\}/)
   })
   test('128px + page padding fits 320 / 375 / 400px viewports', () => {
