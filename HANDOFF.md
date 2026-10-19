@@ -37,6 +37,15 @@ Merging that branch into `main` before running them would break pet care and the
 
 Checked in the browser at 1440px and 375px: landing (no sideways scroll, nothing past the edge), login, register, the empty-form error.
 
+## LIVE since 2026-10-19 (main 5078787)
+- `mobile-expo-migration` merged into `main` (e10d820, conflicts only from main's cherry-picks; branch side kept) and deployed.
+  Phase 13 + 13b confirmed in Supabase first (spend_points/care_pet answer; Daniel checked the 13b trigger).
+- First Vercel build failed: Vite loaded `apps/mobile/tsconfig.json` (extends `expo/tsconfig.base`, not installed on Vercel).
+  Fixed with `esbuild: { tsconfigRaw: '{}' }` in `vite.config.js` (5078787). Repro: hide `apps/mobile/node_modules`, run `npx vite build`.
+- Checked live: `/` and `/login` render, new CSS bundle served, no console errors. Signed-in live pages not checked by Claude (Daniel signs in himself).
+- All accounts are testers (no real participants yet), per Daniel.
+- Work on `main` from now on; `mobile-expo-migration` is behind main by the merge + 3 small commits.
+
 ## Restyle progress (2026-10-18, local, not committed)
 - **Dashboard done** (approved layout A): `.theme-light` scope in `src/index.css` re-points the dark tokens; pages opt in with
   `className="theme-light ... relative z-10"`. Dashboard grid = `.dash-layout` (phone: pet → quests → care → evolution → shop).
