@@ -55,4 +55,8 @@ function vercelApiDev(env) {
 
 export default defineConfig(({ mode }) => ({
   plugins: [react(), vercelApiDev(loadEnv(mode, process.cwd(), ''))],
+  // The web imports a few pure models from apps/mobile/src/data. A string here stops
+  // Vite reading apps/mobile/tsconfig.json, which extends expo/tsconfig.base — a
+  // package Vercel never installs (only the root package.json is installed).
+  esbuild: { tsconfigRaw: '{}' },
 }))
