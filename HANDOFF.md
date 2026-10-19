@@ -47,7 +47,11 @@ Checked in the browser at 1440px and 375px: landing (no sideways scroll, nothing
 - **Accessories done** (approved layout B: room banner + one sideways shelf per category). Equipped glyphs float over the pet (PetRoom `accessories` prop), on Dashboard too. `PetAvatar.jsx` deleted; `RARITY_COLORS` now light.
 - **Admin Verification queue done** (approved list + detail; "verification panel" = the admin queue, not the student modal). Light only while on that tab: `light` flag in `AdminPage` (shortcut comment).
 - **Admin panel done** (approved B): whole page light, Overview = research only, testing tools on a 🧪 Testing tab, Quest Validity = list + detail. `light` flag removed; VALIDITY_META colours now light (shared).
-  Still dark: loader (`MascotWakeLoader`), Notifications toasts, EggHatching, GameModeSelect, PetSelect, Leaderboard.
+- **Egg hatching done** (approved A: three egg cards → "Meet <pet>" card with PetRoom). Dragon/wolf egg PNGs de-hazed.
+  Checked via a temporary mock-data preview (`.preview/` + `preview-egg.html`, launch entry `petquest-preview`; not committed — delete when done).
+- **Mode select done** (approved B: three steps mode → difficulty → quests). Shared light `DIFFICULTY_TEXT` in `src/data/difficulty.js`.
+- Next, in journey order: **loader (`MascotWakeLoader`) → Notifications toasts → EvolutionOverlay → Leaderboard** (ask: paper excludes leaderboards).
+  `PetSelectPage.jsx` is not routed anywhere (dead code; delete with Daniel's OK).
 
 ## Next task: restyle the signed-in website pages to match the app
 - Pages: Dashboard, Accessories, Leaderboard, EggHatching, GameModeSelect, PetSelect, Admin (+ components: TaskList, StatBar,

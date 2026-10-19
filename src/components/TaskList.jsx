@@ -11,9 +11,7 @@ import {
   EVIDENCE_TYPES, evidenceMeta, VALIDITY_META, isQuestEligible, CHECK_STEPS, CHECK_EXPLAINER,
 } from '../data/questValidity'
 
-/* Light-theme text colours (4.5:1+ on white), same meaning as the shared DIFFICULTY_COLORS.
-   shortcut: local until Leaderboard / mode select are light, then move into src/data/difficulty.js. */
-const DIFFICULTY_COLORS = { easy: '#2F7A4D', medium: '#9A6213', hard: '#B5443E' }
+import { DIFFICULTY_TEXT as DIFFICULTY_COLORS } from '../data/difficulty'
 
 const DIFF_CONFIG = {
   easy:   { label: 'Easy',   emoji: '🌱', pts: 10, color: DIFFICULTY_COLORS.easy,   limit: null, desc: 'Unlimited · Daily quests' },
