@@ -115,3 +115,10 @@ Checked in the browser at 1440px and 375px: landing (no sideways scroll, nothing
   `petquest-mobile-web` (Expo web, :8081). The Expo web dev overlay shows a harmless `collapsable` warning from `StatusRing.tsx`.
 - Some tests assert exact source text (e.g. `LoginPage.jsx` strings like "Invalid email or password", the ⚙️ spinner). Run `npm test` after edits.
 - Review notes: `C:\Users\Daniel\WebsitesBrain\Websites\design\reviews\2026-10-18 PetQuest review.md`.
+
+## Side-view sprites and flight (website only)
+
+- Evolved stages with real art live in `src/data/spriteSets.js` (only `dragon:2`, Ember Juvenile, so far). Frames are in `public/sprites/dragon/lv2/`: ground frames on 192px canvases, takeoff/fly/hover on 256px canvases, same pixel scale. `SideSprite` draws a frame so its anchor sits on the pet's feet spot.
+- `PetRoom` walks the set side-on (turns only when it starts walking). `RoamingPet` takes off, flies between spots, hovers, then lands (landing is the takeoff frames reversed; a proper landing/glide drawing would replace it).
+- To see it without owning a level-2 dragon: open any page with `?preview=dragon-2` (kept for the tab; `?preview=off` clears). Display-only, never saved.
+- Phone app still uses the portrait for evolved stages (`FRAME_SIZE` is 128 there).

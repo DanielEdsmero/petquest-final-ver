@@ -172,3 +172,41 @@ describe('wiring', () => {
     assert.match(read('src/components/RoamingPet.jsx'), /ROUTES = \['\/dashboard', '\/accessories', '\/leaderboard'\]/)
   })
 })
+
+/* ── Side-view sprite sets and the art preview ── */
+import { sideSetFor, groundKey, takeoffKey, sideFrame } from '../src/data/spriteSets.js'
+import { parsePreview, readPreview } from '../src/data/previewPet.js'
+
+test('only stages with side-view art get a set', () => {
+  assert.ok(sideSetFor('dragon', 2))
+  assert.equal(sideSetFor('dragon', 1), null)
+  assert.equal(sideSetFor('cat', 2), null)
+})
+
+test('takeoff frames run forward on the way up and backward when landing', () => {
+  const set = sideSetFor('dragon', 2)
+  assert.equal(takeoffKey(set, 0), 'takeoff1')
+  assert.equal(takeoffKey(set, 1), 'takeoff4')
+  assert.equal(takeoffKey(set, 0, true), 'takeoff4')
+  assert.equal(takeoffKey(set, 1, true), 'takeoff1')
+})
+
+test('ground keys map the baby frame names and every frame has a file', () => {
+  const set = sideSetFor('dragon', 2)
+  assert.equal(groundKey(set, 'walkLeftA', 7), 'walk2')
+  assert.equal(groundKey(set, 'happy', 0), 'happy')
+  assert.equal(groundKey(set, 'bogus', 0), 'idle1')
+  assert.equal(sideFrame(set, 'nope').src, set.frames.idle1.src)
+  assert.equal(set.walk.length, 6); assert.equal(set.fly.length, 6)
+})
+
+test('the preview switch is parsed, remembered for the tab and clearable', () => {
+  assert.deepEqual(parsePreview('dragon-2'), { petId: 'dragon', level: 2 })
+  assert.equal(parsePreview('dragon-9'), null)
+  const store = new Map()
+  const fake = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k) }
+  assert.deepEqual(readPreview('?preview=dragon-2', fake), { petId: 'dragon', level: 2 })
+  assert.deepEqual(readPreview('', fake), { petId: 'dragon', level: 2 })
+  assert.equal(readPreview('?preview=off', fake), null)
+  assert.equal(readPreview('', fake), null)
+})

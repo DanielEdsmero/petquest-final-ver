@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import useReducedMotion from '../hooks/useReducedMotion'
 import PetSprite from './PetSprite'
+import SideSprite from './SideSprite'
+import { sideSetFor, groundKey } from '../data/spriteSets'
 import { useCompanion } from '../context/CompanionContext'
 // The walker's brain is the phone app's pure model, so habits (bed, food bowl,
 // moods) are written once and both clients behave the same.
@@ -31,6 +33,7 @@ export default function PetRoom({ pet, level = 1, stats, careAction = null, acce
   const petId = pet?.id
   const homeId = HOME_FOR_PET[petId] ?? FALLBACK_HOME
   const home = PET_HOMES[homeId]
+  const side = sideSetFor(petId, level)
   const walking = level <= 1 && !!petId
 
   const [m, setM] = useState(() => ({ state: 'idle', at: startPoint(homeId) }))
@@ -90,8 +93,13 @@ export default function PetRoom({ pet, level = 1, stats, careAction = null, acce
   // Warm the cache so the first walk doesn't flicker.
   useEffect(() => {
     if (walking) Object.keys(FRAME_FILES).forEach(k => { new Image().src = frameSrc(petId, k) })
-  }, [walking, petId])
+    if (side) Object.values(side.frames).forEach(f => { new Image().src = f.src })
+  }, [walking, petId, side])
 
+  // Which way a side-view pet faces: it only turns when it starts walking, never while standing.
+  const facing = useRef(1)
+  if (m.state === 'walkLeft') facing.current = -1
+  else if (m.state === 'walkRight') facing.current = 1
   const scale = depthScale(m.at.y)
   const flip = !walking && m.state === 'walkLeft' ? -1 : 1
 
@@ -104,6 +112,7 @@ export default function PetRoom({ pet, level = 1, stats, careAction = null, acce
       style={{
         aspectRatio: '4 / 3', borderRadius: 12,
         background: `${home.palette.background} url(/homes/${homeId}.webp) center / cover no-repeat`,
+        containerType: 'inline-size',
         ...style,
       }}
     >
@@ -112,13 +121,14 @@ export default function PetRoom({ pet, level = 1, stats, careAction = null, acce
         data-pet-sprite={isHome ? '' : undefined}
         style={{
           visibility: out ? 'hidden' : 'visible',
-          left: `${m.at.x * 100}%`, top: `${m.at.y * 100}%`, width: '20%',
-          transform: `translate(-50%, -100%) scale(${scale})`, transformOrigin: 'bottom center',
+          left: `${m.at.x * 100}%`, top: `${m.at.y * 100}%`, width: '20%', height: side ? 0 : undefined,
+          transform: `translate(-50%, ${side ? '0' : '-100%'}) scale(${scale})`, transformOrigin: side ? 'top center' : 'bottom center',
           transition: `left ${moveMs}ms linear, top ${moveMs}ms linear, transform ${moveMs}ms linear`,
         }}
       >
         {/* Above the head: the reaction bubble, then what the pet is wearing (follows it as it walks). */}
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-[85%] flex flex-col items-center gap-0.5 pointer-events-none">
+        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-0.5 pointer-events-none"
+          style={side ? { bottom: 'calc(150 * 0.15625cqw)' } : { bottom: '85%' }}>
           {bubble && (
             <span className="whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-nunito font-bold"
               style={{ background: '#FFFFFF', color: '#102A43', boxShadow: '0 1px 3px rgba(16,42,67,0.2)' }}>
@@ -131,7 +141,12 @@ export default function PetRoom({ pet, level = 1, stats, careAction = null, acce
             </span>
           )}
         </div>
-        {walking ? (
+        {side ? (
+          // 0.15625cqw = one source pixel: the baby is 128px wide at 20% of the room.
+          <div style={{ position: 'absolute', left: '50%', top: 0 }}>
+            <SideSprite set={side} frame={groundKey(side, frameFor(m.state, tick, petId), tick)} flip={facing.current} unit="0.15625cqw" />
+          </div>
+        ) : walking ? (
           <img src={frameSrc(petId, frameFor(m.state, tick, petId))} alt="" draggable="false"
             style={{ width: '100%', aspectRatio: '1 / 1', display: 'block', imageRendering: 'pixelated' }} />
         ) : (

@@ -1,3 +1,4 @@
+import { readPreview } from '../data/previewPet'
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { PETS } from '../data/pets'
@@ -73,7 +74,9 @@ export function GameProvider({ children }) {
   const profileRef = useRef(profile)
   useEffect(() => { profileRef.current = profile }, [profile])
 
-  const selectedPet = PETS.find(p => p.id === profile?.selected_pet_id) || null
+  // Display-only art preview (?preview=dragon-2); null for everyone else.
+  const [preview] = useState(() => readPreview(typeof window === 'undefined' ? '' : window.location.search, typeof window === 'undefined' ? null : window.sessionStorage))
+  const selectedPet = PETS.find(p => p.id === (preview && profile ? preview.petId : profile?.selected_pet_id)) || null
 
   /* ── Evolution watcher (Phase 2) ──
      Single source of truth for the "Your companion evolved!" celebration. It
@@ -856,7 +859,7 @@ export function GameProvider({ children }) {
       totalPointsEarned: profile?.total_points_earned ?? 0,
       currentStreak:     profile?.current_streak ?? 0,
       longestStreak:     profile?.longest_streak ?? 0,
-      petLevel:          profile?.pet_level ?? 1,
+      petLevel:          (preview && profile) ? preview.level : (profile?.pet_level ?? 1),
       badges:            profile?.badges ?? [],
       bossUnlocked:      profile?.boss_battles_unlocked ?? false,
       evolution,   clearEvolution:   () => setEvolution(null),

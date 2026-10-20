@@ -4,6 +4,8 @@ import { useGame } from '../context/GameContext'
 import { useCompanion } from '../context/CompanionContext'
 import useReducedMotion from '../hooks/useReducedMotion'
 import PetSprite from './PetSprite'
+import SideSprite from './SideSprite'
+import { sideSetFor, groundKey, takeoffKey } from '../data/spriteSets'
 import { FRAME_FILES } from '../../apps/mobile/src/data/spriteModel.ts'
 import { ACCESSORIES } from '../data/accessories'
 import {
@@ -29,6 +31,7 @@ import {
 
 const ROUTES = ['/dashboard', '/accessories', '/leaderboard']
 const SPEED = 0.2          // px per ms while walking
+const FLY_SPEED = 0.34     // px per ms once it has taken off (side-view pets fly between spots)
 const GUIDE_SPEED = 0.7    // the tour's small pet runs, so no step makes the student wait
 const LEAVE_MS = 1900      // how long it announces the walk before it goes
 const GUIDE_LEAVE_MS = 250 // the tour does not announce: the big pet is already talking
@@ -65,6 +68,8 @@ function Pet({ onDashboard }) {
   const reduce = useReducedMotion()
   const petId = selectedPet?.id
   const baby = petLevel <= 1
+  // Evolved stages with side-view art take off, fly between spots and land.
+  const side = sideSetFor(petId, petLevel)
 
   const [ui, setUi] = useState({ shown: false, frame: 'idle', flip: 1, bubble: '', poof: null, hearts: 0, px: 72 })
   const uiRef = useRef(ui)
@@ -76,7 +81,7 @@ function Pet({ onDashboard }) {
   }
 
   const elRef = useRef(null)
-  const st = useRef({ phase: 'home', x: 0, y: 0, px: 72, queue: [], stop: null, hold: false, recent: [], until: 0, pause: 0, scrolled: false, frac: 0.5, nextAuto: 0, reactUntil: 0, tick: 0, tickAt: 0, dx: 1, fast: false })
+  const st = useRef({ phase: 'home', x: 0, y: 0, px: 72, queue: [], stop: null, hold: false, recent: [], until: 0, pause: 0, scrolled: false, frac: 0.5, nextAuto: 0, reactUntil: 0, tick: 0, tickAt: 0, dx: 1, fast: false, flying: false, then: 'walk', t0: 0 })
 
   // Latest values for the long-lived loop, without restarting it on every render.
   const live = useRef({})
@@ -101,10 +106,40 @@ function Pet({ onDashboard }) {
       el.style.setProperty('--bshift', `${shift}px`)
     }
 
+    const flyer = !!side
+    const airFrame = (kind) => side[kind][s.tick % side[kind].length]
+    const speedNow = () => (s.fast ? GUIDE_SPEED : (flyer ? FLY_SPEED : SPEED))
+    const airMs = () => (s.fast ? 300 : 620)
+    const targetOf = (then) => {
+      if (then === 'walk') {
+        const el = s.stop && spotEl(s.stop.id)
+        return el ? standPoint(el.getBoundingClientRect(), window.innerWidth, window.innerHeight, s.px * 1.6, s.frac) : null
+      }
+      return homePoint(s.px)
+    }
+    /** Continue to `then`; a flyer standing on the ground takes off first, already facing where it is going. */
+    const go = (then) => {
+      if (!flyer || s.flying) { s.phase = then; return }
+      const t = targetOf(then)
+      if (t && Math.abs(t.x - s.x) > 1) s.dx = t.x - s.x
+      const now = performance.now()
+      s.then = then; s.phase = 'takeoff'; s.t0 = now; s.until = now + airMs()
+      patch({ flip: s.dx < 0 ? -1 : 1 })
+    }
+    const enterVisit = (now, el) => {
+      s.phase = 'visit'; s.until = now + VISIT_MS
+      if (!s.hold) el.classList.add('pet-spot-glow')
+      patch({ frame: 'interact', bubble: s.hold ? '' : (s.stop.line || lineForSpot(s.stop.id, live.current.facts)) })
+    }
+    const enterArriving = (now) => {
+      s.phase = 'arriving'; s.until = now + ARRIVE_MS
+      patch({ frame: 'happy', bubble: returnLine() })
+    }
+
     const startWalk = (plan, hold = false) => {
       if (s.phase !== 'home' || reduce) return false
       const from = (onDashboard && roomPetPoint()) || homePoint(s.px)
-      s.px = clamp(from.w || (window.innerWidth < 640 ? 56 : 72), 52, 96)
+      s.px = clamp(from.w || (window.innerWidth < 640 ? 56 : 72), 52, flyer ? 200 : 96)
       s.x = from.x; s.y = from.y
       s.queue = plan.slice(); s.hold = hold; s.stop = null
       s.fast = hold
@@ -119,14 +154,14 @@ function Pet({ onDashboard }) {
       const stop = s.queue.shift()
       s.stop = stop || null
       s.scrolled = false; s.pause = 0; s.frac = 0.25 + Math.random() * 0.5
-      if (stop) { s.phase = 'walk'; patch({ bubble: '' }) }
+      if (stop) { patch({ bubble: '' }); go('walk') }
       else if (s.hold) { s.phase = 'hold' }
-      else { s.phase = 'return'; patch({ bubble: '' }) }
+      else { patch({ bubble: '' }); go('return') }
     }
 
     const goHome = () => {
       clearGlow(); s.queue = []; s.hold = false; s.stop = null
-      if (s.phase !== 'home') { s.phase = 'return'; patch({ bubble: '' }) }
+      if (s.phase !== 'home') { patch({ bubble: '' }); go('return') }
     }
 
     const makePlan = () => planWalk(presentSpots(), Math.random, s.recent).map(id => ({ id }))
@@ -155,7 +190,37 @@ function Pet({ onDashboard }) {
         }
         case 'leaving': {
           patch({ frame: reacting ? 'happy' : 'interact' }); place()
-          if (now >= s.until) { patch({ poof: { x: s.x, y: s.y, id: now }, bubble: '' }); nextStop() }
+          if (now >= s.until) {
+            // A flyer simply lifts off from where it stands, so no poof.
+            if (flyer) patch({ bubble: '' }); else patch({ poof: { x: s.x, y: s.y, id: now }, bubble: '' })
+            nextStop()
+          }
+          break
+        }
+        case 'takeoff': {
+          patch({ frame: takeoffKey(side, (now - s.t0) / (s.until - s.t0)) }); place()
+          if (now >= s.until) { s.flying = true; s.phase = s.then }
+          break
+        }
+        case 'hover':
+        case 'land': {
+          // Follow the target while arriving (the page may still be scrolling).
+          const t = targetOf(s.then === 'walk' ? 'walk' : 'return')
+          if (t) { s.x = t.x; s.y = t.y - (s.hold && s.then === 'walk' ? 14 : 0) }
+          if (s.phase === 'hover') {
+            patch({ frame: airFrame('hover') }); place()
+            if (quietNow() && !s.hold) { goHome(); break }
+            if (now >= s.until) { s.phase = 'land'; s.t0 = now; s.until = now + airMs() }
+          } else {
+            patch({ frame: takeoffKey(side, (now - s.t0) / (s.until - s.t0), true) }); place()
+            if (now >= s.until) {
+              s.flying = false
+              const el = s.stop && spotEl(s.stop.id)
+              if (s.then === 'walk' && el) enterVisit(now, el)
+              else if (s.then === 'walk') nextStop()
+              else enterArriving(now)
+            }
+          }
           break
         }
         case 'walk': {
@@ -167,16 +232,18 @@ function Pet({ onDashboard }) {
             el.scrollIntoView({ behavior: 'smooth', block: 'start' })
             s.scrolled = true; s.pause = now + 800
           }
-          if (now < s.pause || reacting) { patch({ frame: reacting ? 'happy' : 'idle' }); place(); break }
-          const target = standPoint(r, window.innerWidth, window.innerHeight, s.px, s.frac)
+          if (now < s.pause || reacting) { patch({ frame: flyer ? airFrame('hover') : (reacting ? 'happy' : 'idle') }); place(); break }
+          const target = standPoint(r, window.innerWidth, window.innerHeight, flyer ? s.px * 1.6 : s.px, s.frac)
           if (s.hold) target.y -= 14   // in the tour the lit-up frame has its own edge; stand just above it
-          const step = stepToward(s, target, s.fast ? GUIDE_SPEED : SPEED, dt)
+          const step = stepToward(s, target, speedNow(), dt)
           s.x = step.x; s.y = step.y
           if (Math.abs(step.dx) > 1) s.dx = step.dx
-          if (step.arrived) {
-            s.phase = 'visit'; s.until = now + VISIT_MS
-            if (!s.hold) el.classList.add('pet-spot-glow')
-            patch({ frame: 'interact', bubble: s.hold ? '' : (s.stop.line || lineForSpot(s.stop.id, live.current.facts)) })
+          if (step.arrived && flyer) {
+            s.phase = 'hover'; s.then = 'walk'; s.until = now + (s.fast ? 120 : 650)
+          } else if (step.arrived) {
+            enterVisit(now, el)
+          } else if (flyer) {
+            patch({ frame: airFrame('fly'), flip: s.dx < 0 ? -1 : 1 })
           } else {
             patch({ frame: s.dx < 0 ? (s.tick % 2 ? 'walkLeftB' : 'walkLeftA') : (s.tick % 2 ? 'walkRightB' : 'walkRightA'), flip: s.dx < 0 ? -1 : 1 })
           }
@@ -205,12 +272,15 @@ function Pet({ onDashboard }) {
         case 'return': {
           const target = homePoint(s.px)
           if (reacting) { place(); break }
-          const step = stepToward(s, target, s.fast ? GUIDE_SPEED : SPEED, dt)
+          const step = stepToward(s, target, speedNow(), dt)
           s.x = step.x; s.y = step.y
           if (Math.abs(step.dx) > 1) s.dx = step.dx
-          if (step.arrived) {
-            s.phase = 'arriving'; s.until = now + ARRIVE_MS
-            patch({ frame: 'happy', bubble: returnLine() })
+          if (step.arrived && flyer) {
+            s.phase = 'hover'; s.then = 'return'; s.until = now + (s.fast ? 120 : 650)
+          } else if (step.arrived) {
+            enterArriving(now)
+          } else if (flyer) {
+            patch({ frame: airFrame('fly'), flip: s.dx < 0 ? -1 : 1 })
           } else {
             patch({ frame: s.dx < 0 ? (s.tick % 2 ? 'walkLeftB' : 'walkLeftA') : (s.tick % 2 ? 'walkRightB' : 'walkRightA'), flip: s.dx < 0 ? -1 : 1 })
           }
@@ -222,7 +292,7 @@ function Pet({ onDashboard }) {
           if (now >= s.until) {
             patch({ poof: { x: s.x, y: s.y, id: now }, bubble: '', shown: !onDashboard, frame: 'idle' })
             live.current.setAway(false)
-            s.phase = 'home'; s.fast = false; s.nextAuto = now + nextWalkDelay()
+            s.phase = 'home'; s.fast = false; s.flying = false; s.nextAuto = now + nextWalkDelay()
           }
           break
         }
@@ -251,7 +321,7 @@ function Pet({ onDashboard }) {
     }
     // The loop is rebuilt only when what it depends on changes (route kind, motion preference).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onDashboard, reduce, petId])
+  }, [onDashboard, reduce, petId, side])
 
   const react = () => {
     const s = st.current
@@ -263,7 +333,8 @@ function Pet({ onDashboard }) {
   // Warm the cache so the first walk does not flicker.
   useEffect(() => {
     if (baby && petId) Object.keys(FRAME_FILES).forEach(k => { new Image().src = frameSrc(petId, k) })
-  }, [baby, petId])
+    if (side) Object.values(side.frames).forEach(f => { new Image().src = f.src })
+  }, [baby, petId, side])
 
   if (!petId) return null
   const equipped = Object.values(equippedAccessories || {}).map(id => ACCESSORIES.find(a => a.id === id)).filter(Boolean)
@@ -273,7 +344,7 @@ function Pet({ onDashboard }) {
       {ui.poof && <span key={ui.poof.id} className="pet-poof" style={{ left: ui.poof.x, top: ui.poof.y }} aria-hidden="true" />}
       <div ref={elRef} style={{ position: 'absolute', left: 0, top: 0, width: ui.px, height: ui.px, display: ui.shown ? 'block' : 'none', willChange: 'transform' }}>
         <div style={{
-          position: 'absolute', left: '50%', bottom: '88%', transform: 'translateX(calc(-50% + var(--bshift, 0px)))',
+          position: 'absolute', left: '50%', bottom: side ? (ui.frame.startsWith('fly') || ui.frame.startsWith('hover') || ui.frame.startsWith('takeoff') ? '175%' : '140%') : '88%', transform: 'translateX(calc(-50% + var(--bshift, 0px)))',
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, pointerEvents: 'none',
         }}>
           {ui.bubble && (
@@ -292,7 +363,11 @@ function Pet({ onDashboard }) {
         {ui.hearts > 0 && <span key={ui.hearts} className="pet-heart" aria-hidden="true">💗</span>}
         <button type="button" onClick={react} aria-label={`${selectedPet?.name}. Say hi`}
           style={{ pointerEvents: 'auto', width: '100%', height: '100%', padding: 0, border: 0, background: 'none', cursor: 'pointer', filter: 'drop-shadow(0 4px 3px rgba(16,42,67,0.22))' }}>
-          {baby ? (
+          {side ? (
+            <div style={{ position: 'absolute', left: '50%', top: '100%' }}>
+              <SideSprite set={side} frame={groundKey(side, ui.frame, 0)} flip={ui.flip} unit={`${ui.px / 128}px`} />
+            </div>
+          ) : baby ? (
             <img src={frameSrc(petId, ui.frame)}
               alt="" draggable="false" style={{ width: '100%', height: '100%', display: 'block', imageRendering: 'pixelated' }} />
           ) : (
