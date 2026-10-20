@@ -1,10 +1,12 @@
-import { type ReactElement, type ReactNode } from 'react';
+import { type ReactElement, type ReactNode, type Ref } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type RefreshControlProps,
   type ViewStyle,
 } from 'react-native';
@@ -36,6 +38,10 @@ type Props = {
    */
   refreshControl?: ReactElement<RefreshControlProps>;
   contentStyle?: ViewStyle;
+  /** The container's own ScrollView, for a screen that needs to scroll it (the pet scrolls Home to a spot). */
+  scrollRef?: Ref<ScrollView>;
+  /** Reports the scroll offset, so a screen can scroll by a relative amount. */
+  onScrollY?: (y: number) => void;
 };
 
 /**
@@ -56,6 +62,8 @@ export default function ScreenContainer({
   insetBottom = true,
   refreshControl,
   contentStyle,
+  scrollRef,
+  onScrollY,
 }: Props) {
   const insets = useSafeAreaInsets();
 
@@ -78,6 +86,9 @@ export default function ScreenContainer({
     >
       {scroll ? (
         <ScrollView
+          ref={scrollRef}
+          onScroll={onScrollY ? (e: NativeSyntheticEvent<NativeScrollEvent>) => onScrollY(e.nativeEvent.contentOffset.y) : undefined}
+          scrollEventThrottle={16}
           contentContainerStyle={[padding, styles.scrollContent, center && styles.center]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"

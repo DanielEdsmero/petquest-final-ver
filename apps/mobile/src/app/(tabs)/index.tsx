@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useCallback, useMemo } from 'react';
-import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useAuth } from '@/auth/AuthProvider';
+import { PetSpot, useCompanion } from '@/companion/CompanionContext';
 import ScreenContainer from '@/components/ScreenContainer';
 import { ErrorState } from '@/components/states';
 import { PetHomeHero } from '@/components/PetHomeHero';
@@ -22,6 +23,7 @@ import { DIFF_POINTS, difficultyMeta, type Difficulty } from '@/data/quests';
 import { type Task } from '@/data/taskModel';
 import { fetchTasks } from '@/data/tasks';
 import { useMood } from '@/hooks/useMood';
+import { isGuideDone } from '@/lib/companionStore';
 import { useAsyncData } from '@/lib/useAsyncData';
 import { Colors, DifficultyColors, FontSize, Radius, Spacing, TapTarget } from '@/theme';
 
@@ -41,6 +43,9 @@ export default function HomeTab() {
   const { session, profile, refreshProfile } = useAuth();
   const router = useRouter();
   const userId = session?.user?.id ?? null;
+  const companion = useCompanion();
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
 
   const tasks = useAsyncData(
     useCallback(() => (userId ? fetchTasks(userId) : Promise.resolve({ data: [], error: null })), [userId]),
@@ -99,12 +104,48 @@ export default function HomeTab() {
           ? `${totalEarned.toLocaleString()} / ${progress.nextAt.toLocaleString()} · ${progress.remaining.toLocaleString()} to ${stageName(level + 1)}`
           : `${totalEarned.toLocaleString()} lifetime points · Legendary (${LEGENDARY_MIN.toLocaleString()}+)`;
 
+  // Tell the roaming pet how to scroll this screen, and what it may talk about.
+  useFocusEffect(
+    useCallback(() => {
+      companion.registerScroller((dy) => scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.current + dy), animated: true }));
+      return () => companion.registerScroller(null);
+    }, [companion.registerScroller]), // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const activeQuests = (tasks.data ?? []).filter((t) => !t.completed).length;
+  useEffect(() => {
+    companion.setFacts({
+      activeQuests,
+      streak: profile?.current_streak ?? null,
+      hunger: stats.data?.hunger,
+      cleanliness: stats.data?.cleanliness,
+      happiness: stats.data?.happiness,
+    });
+  }, [activeQuests, profile?.current_streak, stats.data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A first visit opens the pet's quick tour once; Profile has "Replay the tour".
+  const tourChecked = useRef(false);
+  useEffect(() => {
+    if (tourChecked.current || !profile?.id || !meta) return;
+    tourChecked.current = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    isGuideDone(profile.id).then((done) => {
+      if (!done) timer = setTimeout(() => companion.openGuide(), 700);
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [profile?.id, meta]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const openQuest = (task: Task) => router.push({ pathname: '/quest/[id]', params: { id: task.id } });
   const openEvidence = (task: Task) => router.push({ pathname: '/quest/verify', params: { questId: task.id } });
 
   return (
     <ScreenContainer
       insetBottom={false}
+      scrollRef={scrollRef}
+      onScrollY={(y) => {
+        scrollY.current = y;
+      }}
       refreshControl={
         <RefreshControl refreshing={tasks.refreshing || completions.refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
       }
@@ -137,6 +178,7 @@ export default function HomeTab() {
 
       {/* Pet home hero — tapping the caption opens the close-up */}
       <View style={styles.hero}>
+        <PetSpot id="pet-home">
         <PetHomeHero
           home={home}
           homeImage={image}
@@ -147,7 +189,9 @@ export default function HomeTab() {
           fraction={meta && totalEarned != null ? progress.fraction : null}
           compact
           walking={walking}
+          hideWalker={companion.away}
         />
+        </PetSpot>
         <View style={styles.heroRow}>
           <Text style={styles.heroMessage} numberOfLines={1}>
             {loading ? ' ' : meta ? heroMessage(next, summary) : 'Hatch your egg on the PetQuest website'}
@@ -158,6 +202,7 @@ export default function HomeTab() {
 
       {/* Status rings — tapping one opens the Pet tab with that care action highlighted; nothing is spent here */}
       {meta && (
+        <PetSpot id="care">
         <Surface style={styles.block}>
           {stats.error ? (
             <ErrorState body={stats.error} onRetry={stats.refetch} />
@@ -184,9 +229,11 @@ export default function HomeTab() {
             style={styles.careButton}
           />
         </Surface>
+        </PetSpot>
       )}
 
       {/* Next quest */}
+      <PetSpot id="next-quest">
       <SectionLabel>Next quest</SectionLabel>
       {tasks.error || completions.error ? (
         <Surface style={styles.block}>
@@ -216,6 +263,7 @@ export default function HomeTab() {
           <PrimaryButton label="Create a quest" icon="add" onPress={() => router.push('/quest/create')} style={styles.blockButton} />
         </Surface>
       )}
+      </PetSpot>
 
       {/* Today's path */}
       <SectionLabel style={styles.sectionGap}>Today's path</SectionLabel>

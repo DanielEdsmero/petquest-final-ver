@@ -6,6 +6,9 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/auth/AuthProvider';
 import { resolveRedirect } from '@/auth/guards';
 import MascotWakeLoader from '@/components/MascotWakeLoader';
+import { CompanionProvider } from '@/companion/CompanionContext';
+import PetGuide from '@/companion/PetGuide';
+import RoamingPet from '@/companion/RoamingPet';
 import { Colors } from '@/theme';
 
 /**
@@ -25,6 +28,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <StatusBar style="dark" />
       <AuthProvider>
+        <CompanionProvider>
         <AuthGate>
           <Stack
             screenOptions={{
@@ -40,6 +44,7 @@ export default function RootLayout() {
             <Stack.Screen name="admin" options={{ animation: 'slide_from_right' }} />
           </Stack>
         </AuthGate>
+        </CompanionProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );
@@ -116,6 +121,13 @@ function AuthGate({ children }: { children: ReactNode }) {
           accountDataReady={accountDataReady}
           onComplete={() => setRevealedFor(accountId ?? 'none')}
         />
+      )}
+      {/* The companion roams over the signed-in app once the account has been revealed. The tour sits under the pet so the pet is lit above the dim layer. */}
+      {!gated && status === 'signedIn' && (
+        <>
+          <PetGuide />
+          <RoamingPet />
+        </>
       )}
     </>
   );

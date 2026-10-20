@@ -60,6 +60,18 @@ Checked in the browser at 1440px and 375px: landing (no sideways scroll, nothing
 - Checked in a browser with Supabase stubbed: full tour at 1920x1080 for wolf, dragon and cat, and at 375px. NOT checked: real login, the 40-80 s auto-walk, walking on accessories/leaderboard, the camera on a real device.
 - Known unrelated failure: `apps/mobile/tests/auth.test.ts` "sessions persist and auto-refresh" expects `sessionStorage` (the Expo web storage change broke that regex). Fails without these changes too.
 
+## Phone app (Expo) got the same companion + tour (2026-10-20, branch claude/laughing-tesla-hhbcqp)
+- Already shared with the phone: recoloured sprites (`apps/mobile/assets/sprites/*/f1-f8.png`) and Storm's Crystal Cavern home (`petHomeModel.ts`). The close-up and wake art were already the right colours.
+- New in `apps/mobile/src/companion/`: `CompanionContext.tsx` (state + `<PetSpot id>` registry, a spot registers only while its screen is focused), `RoamingPet.tsx` (overlay above the whole app; leave line, poof, walk to spots, talk, walk home; Animated timing per leg with a cancel token), `PetGuide.tsx` (the visual-novel tour), `SelfiePractice.tsx`.
+  Pure logic in `src/data/petCompanion.ts` (a copy of the web's on purpose), tiny flags in `src/lib/companionStore.ts` (expo-secure-store; localStorage on the web build), cleaned portraits in `assets/guide/` + `src/data/guideArt.ts`.
+- Spots on Home only: `pet-home` (the pet card), `care` (rings), `next-quest`. The pet and the tour exist only while Home is showing. Home publishes quest/stat facts to the pet and tells it how to scroll (`ScreenContainer` got `scrollRef`/`onScrollY`).
+- Tour: hello, quests (lights the Next quest card and points to the Quests tab, because creating quests lives on another screen), practice selfie, care, done. Big pet shows only if there is free space above the dialogue, otherwise a small portrait sits on the dialogue.
+  Selfie uses the system front camera through expo-image-picker, shown on screen only: never uploaded, never saved to photos, no new native dependency. A test greps both files for network/library/Supabase use.
+- Profile has a "Your companion" section: Do not disturb (Switch), "Let your companion out for a walk", "Replay the tour". The tour flag is per account per phone (`pq_guide_done.<id>`).
+- Checked: `tsc` clean, `expo export` for iOS bundles, and the Expo WEB build driven in a 390x844 browser with Supabase stubbed (tour for wolf, cat, dragon; walk from the Profile button). NOT checked on a real phone: the camera, Android back button, safe-area insets, native-driver animation feel.
+- Known web-only oddity: the stubbed web build logs React hydration error #418 and a full-screen navigator layer can block clicks on the tab bar. Not caused by this work (the pet overlay is not the blocker); the real app is not affected on a phone, but I did not trace it.
+- Still failing, not from this work: `apps/mobile/tests/auth.test.ts` "sessions persist and auto-refresh" (expects `sessionStorage`; the Expo web storage change broke that regex).
+
 ## Restyle progress (2026-10-18, local, not committed)
 - **Dashboard done** (approved layout A): `.theme-light` scope in `src/index.css` re-points the dark tokens; pages opt in with
   `className="theme-light ... relative z-10"`. Dashboard grid = `.dash-layout` (phone: pet → quests → care → evolution → shop).

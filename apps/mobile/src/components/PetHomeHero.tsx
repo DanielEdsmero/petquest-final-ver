@@ -40,6 +40,7 @@ export function PetHomeHero({
   accessoryEmojis = [],
   compact = false,
   walking = null,
+  hideWalker = false,
 }: {
   home: PetHome;
   homeImage: ImageSourcePropType;
@@ -53,6 +54,8 @@ export function PetHomeHero({
   /** Equipped accessory glyphs, shown beside the pet. */
   accessoryEmojis?: string[];
   compact?: boolean;
+  /** The roaming pet is out walking the screen, so the one at home steps aside. */
+  hideWalker?: boolean;
   /** Walking-sprite mode: the frame set for the companion and an optional care reaction to play. */
   walking?: {
     frames: FrameSet;
@@ -120,6 +123,7 @@ export function PetHomeHero({
               mood={walking.mood ?? 'balanced'}
               petId={walking.petId ?? null}
               message={walking.message ?? null}
+              hidden={hideWalker}
               size={compact ? 56 : 64}
               accessibilityLabel={`${petName}${stageLabel ? `, ${stageLabel} stage` : ''}, walking around ${shown.home.displayName}`}
             />
@@ -130,7 +134,7 @@ export function PetHomeHero({
             )}
           </>
         ) : (
-          <View style={styles.stage}>
+          <View style={[styles.stage, hideWalker && { opacity: 0 }]}>
             <Animated.View style={{ transform: [{ translateY }] }}>
               {sprite ? (
                 <Image

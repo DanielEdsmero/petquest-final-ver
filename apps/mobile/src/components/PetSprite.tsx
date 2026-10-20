@@ -68,6 +68,7 @@ export function PetSprite({
   mood = 'balanced',
   petId = null,
   message = null,
+  hidden = false,
 }: {
   home: HomeId;
   frames: FrameSet;
@@ -77,6 +78,8 @@ export function PetSprite({
   petId?: PetId | null;
   /** A line of dialogue to show in the bubble (the screen owns the cooldown). */
   message?: string | null;
+  /** The roaming pet is out walking the screen, so this one steps aside. */
+  hidden?: boolean;
   /** Rendered size in points (the frame is 128 px, so 64 = 2× pixel density). */
   size?: number;
   /** A care reaction to play; bump `nonce` to replay the same kind. */
@@ -297,7 +300,7 @@ export function PetSprite({
   const droop = cue === 'droop' && machine.state !== 'celebrate' && machine.state !== 'happy';
 
   return (
-    <View style={StyleSheet.absoluteFill} onLayout={onLayout} pointerEvents="box-none">
+    <View style={[StyleSheet.absoluteFill, hidden && { opacity: 0 }]} onLayout={onLayout} pointerEvents={hidden ? 'none' : 'box-none'}>
       <Animated.View style={[styles.sprite, { width: size, transform: pos.getTranslateTransform() }]} pointerEvents="box-none">
         {bubble ? (
           <View style={styles.bubble} accessibilityLiveRegion="polite">
