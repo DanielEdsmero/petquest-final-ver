@@ -52,6 +52,8 @@ export function lineForSpot(id, facts = {}) {
       return 'Ooh, accessories. I would look great in a hat.'
     case 'streak':
       return streak > 0 ? `${streak}-day streak. Keep it going!` : 'Finish a quest today to start a streak.'
+    case 'quest-form':
+      return 'Type a task here and press Add.'
     case 'shelf':
       return 'Try something on me!'
     case 'podium':
@@ -111,45 +113,49 @@ export function stepToward(pos, target, speed, dtMs) {
 
 /* ── First-login guide ── */
 
+/*
+ * The tour, as a visual-novel script. `line` is what the big pet says; `spot` is the
+ * data-pet-spot the small pet runs to and the screen lights up (null = no target);
+ * `hint` is the label under the lit-up area.
+ */
 export const GUIDE_STEPS = (petName = 'your pet') => [
   {
     id: 'hello',
     spot: null,
-    title: `Hi, I'm ${petName}.`,
-    body: "I'll show you around. It takes one minute.",
-    primary: 'Show me',
-  },
-  {
-    id: 'quests',
-    spot: 'quests',
-    say: 'Your quests live here.',
-    title: 'Plan a quest',
-    body: "This is where your quests live. Write the task, pick Easy, Medium or Hard, and say when you'll finish. I'll keep track.",
+    line: `Hi, I'm ${petName}! I'll show you around. Two minutes, tops.`,
     primary: 'Next',
   },
   {
-    id: 'care',
-    spot: 'care',
-    say: "This is how I'm doing.",
-    title: 'Look after me',
-    body: 'Points from finished quests buy food, a wash and playtime. These rings show how I am doing.',
+    id: 'quests',
+    spot: 'quest-form',
+    hint: 'Try it here',
+    line: 'Every task starts as a quest. Type what you need to do, pick Easy, Medium or Hard, and press Add. Try one now, or just press Next.',
     primary: 'Next',
   },
   {
     id: 'selfie',
     spot: null,
-    title: 'Show me you are here',
-    body: 'Smile for a practice shot. It is only a practice, so nothing is sent or saved.',
-    primary: 'Turn on camera',
+    line: "To get points, you show proof, like a photo of your work. Let's practice with a selfie. It is only practice, so nothing is sent or saved.",
+    primary: null, // the practice window has its own buttons
+  },
+  {
+    id: 'care',
+    spot: 'care',
+    hint: 'How I am doing',
+    line: 'Points from finished quests buy me food, a wash and playtime. These rings show how I am doing.',
+    primary: 'Next',
   },
   {
     id: 'done',
     spot: null,
-    title: "That's how you show proof",
-    body: 'When you finish a real quest, you take a photo of your work like this. Now go and finish one!',
+    line: "That's it! Finish quests and I grow. See you out there!",
     primary: 'Start playing',
   },
 ]
+
+/* Each pet speaks in its own colour (name tag, dialogue border). All pass 4.5:1 with white text. */
+export const PET_ACCENT = { dragon: '#6C3CB4', cat: '#9A5B0C', wolf: '#3B6EA5' }
+export const accentFor = (petId) => PET_ACCENT[petId] || '#3F8580'
 
 export const guideKey = (userId) => `pq_guide_done:${userId}`
 

@@ -29,7 +29,9 @@ import {
 
 const ROUTES = ['/dashboard', '/accessories', '/leaderboard']
 const SPEED = 0.2          // px per ms while walking
+const GUIDE_SPEED = 0.7    // the tour's small pet runs, so no step makes the student wait
 const LEAVE_MS = 1900      // how long it announces the walk before it goes
+const GUIDE_LEAVE_MS = 250 // the tour does not announce: the big pet is already talking
 const VISIT_MS = 3400      // how long it stays at each spot
 const ARRIVE_MS = 1300
 
@@ -74,7 +76,7 @@ function Pet({ onDashboard }) {
   }
 
   const elRef = useRef(null)
-  const st = useRef({ phase: 'home', x: 0, y: 0, px: 72, queue: [], stop: null, hold: false, recent: [], until: 0, pause: 0, scrolled: false, frac: 0.5, nextAuto: 0, reactUntil: 0, tick: 0, tickAt: 0, dx: 1 })
+  const st = useRef({ phase: 'home', x: 0, y: 0, px: 72, queue: [], stop: null, hold: false, recent: [], until: 0, pause: 0, scrolled: false, frac: 0.5, nextAuto: 0, reactUntil: 0, tick: 0, tickAt: 0, dx: 1, fast: false })
 
   // Latest values for the long-lived loop, without restarting it on every render.
   const live = useRef({})
@@ -105,9 +107,10 @@ function Pet({ onDashboard }) {
       s.px = clamp(from.w || (window.innerWidth < 640 ? 56 : 72), 52, 96)
       s.x = from.x; s.y = from.y
       s.queue = plan.slice(); s.hold = hold; s.stop = null
-      s.phase = 'leaving'; s.until = performance.now() + LEAVE_MS
+      s.fast = hold
+      s.phase = 'leaving'; s.until = performance.now() + (hold ? GUIDE_LEAVE_MS : LEAVE_MS)
       if (onDashboard) live.current.setAway(true)
-      patch({ shown: true, px: s.px, frame: 'interact', bubble: leaveLine() })
+      patch({ shown: true, px: s.px, frame: 'interact', bubble: hold ? '' : leaveLine() })
       place()
       return true
     }
@@ -166,13 +169,14 @@ function Pet({ onDashboard }) {
           }
           if (now < s.pause || reacting) { patch({ frame: reacting ? 'happy' : 'idle' }); place(); break }
           const target = standPoint(r, window.innerWidth, window.innerHeight, s.px, s.frac)
-          const step = stepToward(s, target, SPEED, dt)
+          if (s.hold) target.y -= 14   // in the tour the lit-up frame has its own edge; stand just above it
+          const step = stepToward(s, target, s.fast ? GUIDE_SPEED : SPEED, dt)
           s.x = step.x; s.y = step.y
           if (Math.abs(step.dx) > 1) s.dx = step.dx
           if (step.arrived) {
             s.phase = 'visit'; s.until = now + VISIT_MS
-            el.classList.add('pet-spot-glow')
-            patch({ frame: 'interact', bubble: s.stop.line || lineForSpot(s.stop.id, live.current.facts) })
+            if (!s.hold) el.classList.add('pet-spot-glow')
+            patch({ frame: 'interact', bubble: s.hold ? '' : (s.stop.line || lineForSpot(s.stop.id, live.current.facts)) })
           } else {
             patch({ frame: s.dx < 0 ? (s.tick % 2 ? 'walkLeftB' : 'walkLeftA') : (s.tick % 2 ? 'walkRightB' : 'walkRightA'), flip: s.dx < 0 ? -1 : 1 })
           }
@@ -182,7 +186,7 @@ function Pet({ onDashboard }) {
         }
         case 'visit': {
           const el = s.stop && spotEl(s.stop.id)
-          if (el) { const t = standPoint(el.getBoundingClientRect(), window.innerWidth, window.innerHeight, s.px, s.frac); s.x = t.x; s.y = t.y }
+          if (el) { const t = standPoint(el.getBoundingClientRect(), window.innerWidth, window.innerHeight, s.px, s.frac); s.x = t.x; s.y = t.y - (s.hold ? 14 : 0) }
           patch({ frame: reacting ? 'happy' : 'interact' }); place()
           if (quietNow() && !s.hold) { goHome(); break }
           if (!s.hold && now >= s.until) {
@@ -194,14 +198,14 @@ function Pet({ onDashboard }) {
         }
         case 'hold': {
           const el = s.stop && spotEl(s.stop.id)
-          if (el) { const t = standPoint(el.getBoundingClientRect(), window.innerWidth, window.innerHeight, s.px, s.frac); s.x = t.x; s.y = t.y }
+          if (el) { const t = standPoint(el.getBoundingClientRect(), window.innerWidth, window.innerHeight, s.px, s.frac); s.x = t.x; s.y = t.y - 14 }
           patch({ frame: reacting ? 'happy' : 'interact' }); place()
           break
         }
         case 'return': {
           const target = homePoint(s.px)
           if (reacting) { place(); break }
-          const step = stepToward(s, target, SPEED, dt)
+          const step = stepToward(s, target, s.fast ? GUIDE_SPEED : SPEED, dt)
           s.x = step.x; s.y = step.y
           if (Math.abs(step.dx) > 1) s.dx = step.dx
           if (step.arrived) {
@@ -218,7 +222,7 @@ function Pet({ onDashboard }) {
           if (now >= s.until) {
             patch({ poof: { x: s.x, y: s.y, id: now }, bubble: '', shown: !onDashboard, frame: 'idle' })
             live.current.setAway(false)
-            s.phase = 'home'; s.nextAuto = now + nextWalkDelay()
+            s.phase = 'home'; s.fast = false; s.nextAuto = now + nextWalkDelay()
           }
           break
         }
@@ -229,14 +233,9 @@ function Pet({ onDashboard }) {
     comp.register({
       walk: () => { const plan = makePlan(); if (plan.length) startWalk(plan) },
       guideTo: (spot, line) => {
-        const el = spotEl(spot)
-        if (reduce) {            // no walking: light the spot up and let the panel speak
-          clearGlow(); el?.classList.add('pet-spot-glow')
-          if (el) { el.style.scrollMarginTop = '104px'; el.scrollIntoView({ behavior: 'auto', block: 'start' }) }
-          return
-        }
+        if (reduce) return        // no walking: the tour's lit-up frame is the highlight
         if (s.phase === 'home') { startWalk([{ id: spot, line }], true); return }
-        s.hold = true; s.queue = [{ id: spot, line }]
+        s.hold = true; s.fast = true; s.queue = [{ id: spot, line }]
         clearGlow(); nextStop(); s.hold = true
       },
       guideHome: () => { clearGlow(); goHome() },
@@ -270,7 +269,7 @@ function Pet({ onDashboard }) {
   const equipped = Object.values(equippedAccessories || {}).map(id => ACCESSORIES.find(a => a.id === id)).filter(Boolean)
 
   return (
-    <div aria-live="off" style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 40 }}>
+    <div aria-live="off" style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: comp.guideOpen ? 70 : 40 }}>
       {ui.poof && <span key={ui.poof.id} className="pet-poof" style={{ left: ui.poof.x, top: ui.poof.y }} aria-hidden="true" />}
       <div ref={elRef} style={{ position: 'absolute', left: 0, top: 0, width: ui.px, height: ui.px, display: ui.shown ? 'block' : 'none', willChange: 'transform' }}>
         <div style={{

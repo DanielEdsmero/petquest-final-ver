@@ -47,15 +47,18 @@ Checked in the browser at 1440px and 375px: landing (no sideways scroll, nothing
 - Work on `main` from now on; `mobile-expo-migration` is behind main by the merge + 3 small commits.
 
 ## Pet companion + first-login tour (2026-10-20, branch claude/laughing-tesla-hhbcqp, not merged)
-- Concept page (research + mock-ups): https://claude.ai/artifact/1h4LrcsdnFVUrtvyVSmFC5. Website first; the phone app is not published, so it is not part of this.
-- `src/components/RoamingPet.jsx`: fixed overlay above the app (dashboard, accessories, leaderboard only). The pet says it is leaving, poofs out of its room
-  (`PetRoom` `home` prop hides the room's own pet while away), walks to elements marked `data-pet-spot="<id>"`, lights them up, speaks, then walks home.
-  Auto-walks every 40-80 s; "Let <pet> out" button, "Do not disturb" (stored in this browser), reduced-motion = no walking. Stays home while `[data-pet-quiet]`/`[role=dialog]` is on screen (VerificationModal has it).
-- `src/components/PetGuide.jsx`: five-step tour on first dashboard visit (hello, quests, care, practice selfie, done). The pet walks to the real quest card and care rings.
-  Selfie is PRACTICE ONLY: camera on click, memory only, tracks stopped, never uploaded/saved (a test greps the file for network/storage use). Done flag is per account **per browser** (`pq_guide_done:<id>`, localStorage), so no migration; a new device shows the tour again. "Replay the tour" on the dashboard.
-- Pure logic in `src/data/petCompanion.js`, state in `src/context/CompanionContext.jsx`. Lines the pet says live in `lineForSpot`. New spots: add `data-pet-spot` + a case there.
-- Older pet stages (no walk frames) slide their evolution art, same as `PetRoom`. No points are awarded for the selfie (no backend change).
-- Checked in a browser with Supabase stubbed (tour on 1280px and 375px, fake camera, walk, DND, reduced motion, accessories dock). NOT checked: real login, the 40-80 s auto-walk firing, walking on accessories/leaderboard (only the dock pet), admin page (pet is hidden there by design).
+- Mock-ups Daniel approved: art match https://claude.ai/artifact/UCKFtRUygJRN4Wg1CvhtD4, tour https://claude.ai/artifact/XWsUWhjJe82ed55yyXnqia. Website first; the phone app is not published.
+- **Art match**: all three walking sprites were the wrong colour (dragon teal, cat lavender, wolf orange fox). Recoloured to the egg/portrait
+  (dragon violet + pink, cat golden cream, wolf silver-blue) in `public/sprites/*` and the phone's `apps/mobile/assets/sprites/*/f1-f8.png`. Recolour, not repaint; the script is not in the repo.
+  **Storm now lives in the Crystal Cavern**; the Sunlit Meadow is the pre-hatch fallback (`petHomeModel.ts`). Crystal Cavern got a food spot (`spriteModel.ts`) and the mood test covers all four homes.
+- **1920 screens**: `index.css` raises the root font to 19px at >=1600px (23px at >=2300px) and the dashboard/accessories container is `max-w-[92rem]` there. Everything is rem-based so it all scales.
+- **Roaming pet**: `RoamingPet.jsx` is a fixed overlay (dashboard, accessories, leaderboard). It announces a walk, poofs out of its room, walks to `data-pet-spot` elements, lights them up, speaks, walks home. Auto-walks every 40-80 s; "Let <pet> out", "Do not disturb" (this browser), reduced motion = no walking. Stays home while `[data-pet-quiet]`/`[role=dialog]` is open.
+- **Tour (visual novel)**: `PetGuide.jsx`. Big pet (cleaned portraits in `public/guide/`) talks in a dialogue bar coloured per pet; the small pet runs (fast, no announcement) to the real quest form and care card, which are lit up. The lit area stays clickable; everything else is blocked. Steps: hello, quests, practice selfie, care, done. Keyboard: Enter/Space/right arrow, Esc skips. Phones: no big pet, a small avatar on the dialogue.
+  The tour never creates data: the quest form is real and the student may use it, but Next works without. Selfie is PRACTICE ONLY (`SelfiePractice.jsx`): memory only, camera off after, a test greps both files for network/storage use.
+  Done flag is per account per browser (`pq_guide_done:<id>`), no migration. "Replay the tour" on the dashboard.
+- Logic in `src/data/petCompanion.js`, state in `src/context/CompanionContext.jsx`. New spot: add `data-pet-spot` + a case in `lineForSpot`.
+- Checked in a browser with Supabase stubbed: full tour at 1920x1080 for wolf, dragon and cat, and at 375px. NOT checked: real login, the 40-80 s auto-walk, walking on accessories/leaderboard, the camera on a real device.
+- Known unrelated failure: `apps/mobile/tests/auth.test.ts` "sessions persist and auto-refresh" expects `sessionStorage` (the Expo web storage change broke that regex). Fails without these changes too.
 
 ## Restyle progress (2026-10-18, local, not committed)
 - **Dashboard done** (approved layout A): `.theme-light` scope in `src/index.css` re-points the dark tokens; pages opt in with

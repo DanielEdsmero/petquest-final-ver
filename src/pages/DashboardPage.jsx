@@ -326,7 +326,7 @@ export default function DashboardPage() {
 
       {/* Main content. Phone order: pet, quests, care, evolution, shop.
           Desktop: pet column on the left, quests on the right (see .dash-layout). */}
-      <div className="relative max-w-6xl mx-auto px-4 md:px-6 py-6">
+      <div className="relative max-w-6xl min-[1600px]:max-w-[92rem] mx-auto px-4 md:px-6 py-6">
         <div className="dash-layout">
           {/* Pet in its home */}
           <motion.section style={{ gridArea: 'room' }} className="glass-card p-3 self-start" {...reveal(0.05)}>

@@ -52,7 +52,7 @@ describe('1. every real companion has its own home; anything else gets the fallb
     assert.equal(homeFor('dragon').id, 'ember_cavern');
     assert.equal(homeFor('arcane_dragon').id, 'ember_cavern');
     assert.equal(homeFor('cat').id, 'moonlit_cottage');
-    assert.equal(homeFor('wolf').id, 'sunlit_meadow');
+    assert.equal(homeFor('wolf').id, 'crystal_cavern');
     assert.equal(homeFor('phoenix').id, FALLBACK_HOME);
     assert.equal(homeFor(null).id, FALLBACK_HOME);
     assert.equal(homeFor(undefined).id, FALLBACK_HOME);

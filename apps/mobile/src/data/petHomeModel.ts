@@ -68,12 +68,12 @@ export const PET_HOMES: Record<HomeId, PetHome> = {
 
 /** Companion → home. The fallback is deliberately NOT a companion's home. */
 export const HOME_FOR_PET: Record<PetId, HomeId> = {
-  wolf: 'sunlit_meadow',
+  wolf: 'crystal_cavern', // icy silver-blue fur and teal glow, so cool blues, not the warm meadow
   cat: 'moonlit_cottage',
   dragon: 'ember_cavern',
 };
 
-export const FALLBACK_HOME: HomeId = 'crystal_cavern';
+export const FALLBACK_HOME: HomeId = 'sunlit_meadow';
 
 /**
  * Resolve a stored `selected_pet_id` (either form — `dragon` or

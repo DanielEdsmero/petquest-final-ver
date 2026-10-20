@@ -105,6 +105,7 @@ export const HOME_LAYOUT: Record<HomeId, { area: WalkArea; interactions: Interac
       { key: 'shellbed', label: 'rests in the shell bed', at: { x: 0.24, y: 0.64 }, role: 'rest' },
       { key: 'crystal', label: 'examines a crystal', at: { x: 0.76, y: 0.74 } },
       { key: 'splash', label: 'makes a small splash', at: { x: 0.24, y: 0.84 } },
+      { key: 'basin', label: 'visits the basin', at: { x: 0.72, y: 0.66 }, role: 'food' }, // the wolf's home, so a hungry wolf has somewhere to go
     ],
   },
 };

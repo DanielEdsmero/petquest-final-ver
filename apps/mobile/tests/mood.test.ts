@@ -143,7 +143,7 @@ describe('3. species flourishes and home spots', () => {
       const a = HOME_LAYOUT[home].area;
       assert.ok(rest!.at.x >= a.xMin && rest!.at.x <= a.xMax && rest!.at.y >= a.yMin && rest!.at.y <= a.yMax);
     }
-    for (const home of ['sunlit_meadow', 'moonlit_cottage', 'ember_cavern'] as HomeId[]) assert.ok(pointWithRole(home, 'food'), `${home} has no food spot`);
+    for (const home of ['sunlit_meadow', 'moonlit_cottage', 'ember_cavern', 'crystal_cavern'] as HomeId[]) assert.ok(pointWithRole(home, 'food'), `${home} has no food spot`);
   });
 });
 

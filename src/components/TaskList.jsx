@@ -612,7 +612,7 @@ export default function TaskList() {
       )}
 
       {/* Add input */}
-      <div className="flex gap-2 mb-3" style={checking ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
+      <div className="flex gap-2 mb-3" data-pet-spot="quest-form" style={checking ? { opacity: 0.5, pointerEvents: 'none' } : undefined}>
         <input
           ref={inputRef}
           type="text"

@@ -124,7 +124,7 @@ export default function AccessoriesPage() {
         </div>
       </motion.nav>
 
-      <div className="relative max-w-6xl mx-auto px-4 md:px-6 py-6 space-y-6">
+      <div className="relative max-w-6xl min-[1600px]:max-w-[92rem] mx-auto px-4 md:px-6 py-6 space-y-6">
         {/* Room banner: the pet wearing what's equipped */}
         <motion.section
           data-pet-spot="shelf"

@@ -10,7 +10,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   lineForSpot, planWalk, nextWalkDelay, standPoint, stepToward,
-  GUIDE_STEPS, guideKey, isGuideDone, markGuideDone, readDnd, writeDnd, leaveLine, returnLine,
+  GUIDE_STEPS, accentFor, PET_ACCENT, guideKey, isGuideDone, markGuideDone, readDnd, writeDnd, leaveLine, returnLine,
   LEAVE_LINES, RETURN_LINES,
 } from '../src/data/petCompanion.js'
 
@@ -90,17 +90,27 @@ describe('movement', () => {
 })
 
 describe('the first-login guide', () => {
-  test('five steps, in the order hello, quests, care, selfie, done', () => {
-    assert.deepEqual(GUIDE_STEPS('Luna').map(s => s.id), ['hello', 'quests', 'care', 'selfie', 'done'])
+  test('five steps, in the order hello, quests, selfie, care, done', () => {
+    assert.deepEqual(GUIDE_STEPS('Luna').map(s => s.id), ['hello', 'quests', 'selfie', 'care', 'done'])
   })
   test('steps that point at the page name a spot; the others do not', () => {
     const by = Object.fromEntries(GUIDE_STEPS('Luna').map(s => [s.id, s]))
-    assert.equal(by.quests.spot, 'quests'); assert.equal(by.care.spot, 'care')
-    assert.equal(by.hello.spot, null); assert.equal(by.selfie.spot, null)
+    assert.equal(by.quests.spot, 'quest-form'); assert.equal(by.care.spot, 'care')
+    assert.equal(by.hello.spot, null); assert.equal(by.selfie.spot, null); assert.equal(by.done.spot, null)
+    assert.ok(by.quests.hint && by.care.hint, 'lit-up steps have a label')
   })
-  test('uses the chosen pet name, and the selfie step says it is practice', () => {
-    assert.match(GUIDE_STEPS('Ember')[0].title, /Ember/)
-    assert.match(GUIDE_STEPS('Luna').find(s => s.id === 'selfie').body, /practice/i)
+  test('uses the chosen pet name, and the selfie step says it is practice and not saved', () => {
+    assert.match(GUIDE_STEPS('Ember')[0].line, /Ember/)
+    assert.match(GUIDE_STEPS('Luna').find(s => s.id === 'selfie').line, /practice[\s\S]*nothing is sent or saved/i)
+  })
+  test('each line is short enough to read in one box', () => {
+    for (const s of GUIDE_STEPS('Storm')) assert.ok(s.line.length <= 160, `${s.id} is ${s.line.length} chars`)
+  })
+  test('every pet speaks in its own colour, readable with white text', () => {
+    const lum = (hex) => { const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] }
+    assert.deepEqual(Object.keys(PET_ACCENT).sort(), ['cat', 'dragon', 'wolf'])
+    for (const [pet, hex] of Object.entries(PET_ACCENT)) assert.ok(1.05 / (lum(hex) + 0.05) >= 4.5, `${pet} ${hex} contrast`)
+    assert.equal(accentFor('nope'), '#3F8580')
   })
   test('shows once per account, and never without an account', () => {
     const s = memory()
@@ -128,7 +138,7 @@ describe('the first-login guide', () => {
 
 describe('the practice selfie never leaves the device', () => {
   // Code only: comments may say "Supabase" while promising not to use it.
-  const guide = read('src/components/PetGuide.jsx').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/ .*$/gm, '')
+  const guide = (read('src/components/PetGuide.jsx') + '\n' + read('src/components/SelfiePractice.jsx')).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/ .*$/gm, '')
   test('no network, storage or database calls in the guide', () => {
     assert.ok(!/\bfetch\s*\(/.test(guide), 'fetch found')
     assert.ok(!/XMLHttpRequest|sendBeacon|FormData|\.upload\(|supabase/i.test(guide), 'network/db reference found')
@@ -150,6 +160,7 @@ describe('wiring', () => {
   test('the dashboard marks the spots the pet visits', () => {
     const dash = read('src/pages/DashboardPage.jsx')
     for (const id of ['points', 'streak', 'quests', 'care', 'evolution', 'shop']) assert.ok(dash.includes(`data-pet-spot="${id}"`), id)
+    assert.ok(read('src/components/TaskList.jsx').includes('data-pet-spot="quest-form"'), 'quest form is a spot')
     assert.ok(dash.includes('home />'), 'PetRoom marked as the pet home')
   })
   test('the photo-proof dialog keeps the pet away', () => {
