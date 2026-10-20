@@ -439,3 +439,21 @@ select.input-field option { background: #13133a; color: #e2e2ff; }
 .theme-light ::-webkit-scrollbar-track { background: transparent; }
 .theme-light ::-webkit-scrollbar-thumb { background: #CBD5D0; }
 .theme-light ::-webkit-scrollbar-thumb:hover { background: #98A2B3; }
+
+/* Roaming companion: the spot it is visiting lights up, and it leaves/arrives in a puff. */
+.pet-spot-glow { outline: 3px solid #3F8580; outline-offset: 3px; border-radius: 16px; animation: pet-glow 1.2s ease-in-out infinite; }
+@keyframes pet-glow { 50% { outline-color: rgba(63, 133, 128, 0.3); } }
+.pet-poof { position: absolute; width: 0; height: 0; }
+.pet-poof::before {
+  content: ''; position: absolute; left: -32px; top: -64px; width: 64px; height: 64px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.95) 0 30%, rgba(228,239,238,0.9) 55%, rgba(63,133,128,0) 72%);
+  box-shadow: 0 0 0 2px rgba(63,133,128,0.25);
+  animation: pet-poof 0.7s ease-out forwards;
+}
+@keyframes pet-poof { from { transform: scale(0.3); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+.pet-heart { position: absolute; left: 50%; top: 0; font-size: 18px; pointer-events: none; animation: pet-heart 1s ease-out forwards; }
+@keyframes pet-heart { from { transform: translate(-50%, 0); opacity: 1; } to { transform: translate(-50%, -40px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .pet-spot-glow { animation: none; }
+  .pet-poof, .pet-heart { display: none; }
+}

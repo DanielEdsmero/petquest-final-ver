@@ -46,6 +46,17 @@ Checked in the browser at 1440px and 375px: landing (no sideways scroll, nothing
 - All accounts are testers (no real participants yet), per Daniel.
 - Work on `main` from now on; `mobile-expo-migration` is behind main by the merge + 3 small commits.
 
+## Pet companion + first-login tour (2026-10-20, branch claude/laughing-tesla-hhbcqp, not merged)
+- Concept page (research + mock-ups): https://claude.ai/artifact/1h4LrcsdnFVUrtvyVSmFC5. Website first; the phone app is not published, so it is not part of this.
+- `src/components/RoamingPet.jsx`: fixed overlay above the app (dashboard, accessories, leaderboard only). The pet says it is leaving, poofs out of its room
+  (`PetRoom` `home` prop hides the room's own pet while away), walks to elements marked `data-pet-spot="<id>"`, lights them up, speaks, then walks home.
+  Auto-walks every 40-80 s; "Let <pet> out" button, "Do not disturb" (stored in this browser), reduced-motion = no walking. Stays home while `[data-pet-quiet]`/`[role=dialog]` is on screen (VerificationModal has it).
+- `src/components/PetGuide.jsx`: five-step tour on first dashboard visit (hello, quests, care, practice selfie, done). The pet walks to the real quest card and care rings.
+  Selfie is PRACTICE ONLY: camera on click, memory only, tracks stopped, never uploaded/saved (a test greps the file for network/storage use). Done flag is per account **per browser** (`pq_guide_done:<id>`, localStorage), so no migration; a new device shows the tour again. "Replay the tour" on the dashboard.
+- Pure logic in `src/data/petCompanion.js`, state in `src/context/CompanionContext.jsx`. Lines the pet says live in `lineForSpot`. New spots: add `data-pet-spot` + a case there.
+- Older pet stages (no walk frames) slide their evolution art, same as `PetRoom`. No points are awarded for the selfie (no backend change).
+- Checked in a browser with Supabase stubbed (tour on 1280px and 375px, fake camera, walk, DND, reduced motion, accessories dock). NOT checked: real login, the 40-80 s auto-walk firing, walking on accessories/leaderboard (only the dock pet), admin page (pet is hidden there by design).
+
 ## Restyle progress (2026-10-18, local, not committed)
 - **Dashboard done** (approved layout A): `.theme-light` scope in `src/index.css` re-points the dark tokens; pages opt in with
   `className="theme-light ... relative z-10"`. Dashboard grid = `.dash-layout` (phone: pet → quests → care → evolution → shop).

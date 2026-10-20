@@ -127,6 +127,7 @@ export default function AccessoriesPage() {
       <div className="relative max-w-6xl mx-auto px-4 md:px-6 py-6 space-y-6">
         {/* Room banner: the pet wearing what's equipped */}
         <motion.section
+          data-pet-spot="shelf"
           className="glass-card p-3 flex flex-col md:flex-row md:items-center gap-4"
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
         >

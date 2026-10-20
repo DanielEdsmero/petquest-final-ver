@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import useReducedMotion from '../hooks/useReducedMotion'
 import PetSprite from './PetSprite'
+import { useCompanion } from '../context/CompanionContext'
 // The walker's brain is the phone app's pure model, so habits (bed, food bowl,
 // moods) are written once and both clients behave the same.
 import {
@@ -22,8 +23,11 @@ const depthScale = y => 0.7 + 0.3 * Math.min(1, Math.max(0, (y - 0.6) / 0.3))
  * their sprite-sheet frames; older stages have no walk frames yet, so their
  * evolution art moves around instead.
  */
-export default function PetRoom({ pet, level = 1, stats, careAction = null, accessories = [], className = '', style }) {
+export default function PetRoom({ pet, level = 1, stats, careAction = null, accessories = [], home: isHome = false, className = '', style }) {
   const reduceMotion = useReducedMotion()
+  // While the roaming pet is out walking the page, its room is empty.
+  const { away } = useCompanion()
+  const out = isHome && away
   const petId = pet?.id
   const homeId = HOME_FOR_PET[petId] ?? FALLBACK_HOME
   const home = PET_HOMES[homeId]
@@ -94,6 +98,7 @@ export default function PetRoom({ pet, level = 1, stats, careAction = null, acce
   return (
     <div
       role="img"
+      data-pet-home={isHome ? '' : undefined}
       aria-label={`${pet?.name ?? 'Your companion'} in the ${home.displayName}${accessories.length ? `, wearing ${accessories.map(a => a.name).join(', ')}` : ''}`}
       className={`relative overflow-hidden ${className}`}
       style={{
@@ -104,7 +109,9 @@ export default function PetRoom({ pet, level = 1, stats, careAction = null, acce
     >
       <div
         className="absolute"
+        data-pet-sprite={isHome ? '' : undefined}
         style={{
+          visibility: out ? 'hidden' : 'visible',
           left: `${m.at.x * 100}%`, top: `${m.at.y * 100}%`, width: '20%',
           transform: `translate(-50%, -100%) scale(${scale})`, transformOrigin: 'bottom center',
           transition: `left ${moveMs}ms linear, top ${moveMs}ms linear, transform ${moveMs}ms linear`,

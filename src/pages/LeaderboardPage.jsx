@@ -144,7 +144,7 @@ export default function LeaderboardPage() {
         )}
 
         {/* Board selector */}
-        <div className="flex gap-2">
+        <div className="flex gap-2" data-pet-spot="podium">
           {Object.entries(BOARDS).map(([key, b]) => (
             <button key={key} onClick={() => setBoard(key)} aria-pressed={board === key}
               className="flex-1 min-h-[44px] rounded-xl text-sm font-bold" style={chip(board === key)}>

@@ -14,6 +14,9 @@ const AccessoriesPage    = lazy(() => import('./pages/AccessoriesPage'))
 const LeaderboardPage    = lazy(() => import('./pages/LeaderboardPage'))
 const AdminPage          = lazy(() => import('./pages/AdminPage'))
 import Notifications      from './components/Notifications'
+import RoamingPet         from './components/RoamingPet'
+import PetGuide           from './components/PetGuide'
+import { CompanionProvider } from './context/CompanionContext'
 
 function AppRoutes() {
   const { profile, authReady, signingIn } = useGame()
@@ -130,6 +133,9 @@ function AppRoutes() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes></Suspense>}
 
+      {/* The companion roams over signed-in pages once the account has been revealed. */}
+      {loggedIn && hasPet && hasMode && !gated && <><RoamingPet /><PetGuide /></>}
+
       {/* The account-loading screen, over the top. Same element position in
           both branches above, so it is one continuous instance from boot
           through to the reveal — it never remounts and never restarts. */}
@@ -151,7 +157,9 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <GameProvider>
-          <AppRoutes />
+          <CompanionProvider>
+            <AppRoutes />
+          </CompanionProvider>
         </GameProvider>
       </BrowserRouter>
     </ErrorBoundary>

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { LogOut, Sparkles, Star, ShoppingBag, Droplets, Heart, Utensils, Shield, Settings, Trophy, Scroll, CheckCircle2, Lightbulb } from 'lucide-react'
 import { useGame, DIFF_POINTS } from '../context/GameContext'
+import { useCompanion } from '../context/CompanionContext'
+import { isGuideDone } from '../data/petCompanion'
 
 const MODE_META = {
   fitness:  { emoji: '💪', label: 'Fitness' },
@@ -136,6 +138,20 @@ export default function DashboardPage() {
   const isAdmin = profile?.role === 'admin'
   const navigate = useNavigate()
   const [actionAnim, setActionAnim] = useState(null)
+  const companion = useCompanion()
+  const reducedMotion = useReducedMotion()
+
+  /* A student's first visit opens the pet's quick tour once; "Replay the tour" reopens it. */
+  useEffect(() => {
+    if (!profile?.id || !selectedPet) return
+    let store = null
+    try { store = window.localStorage } catch { /* blocked storage: skip the auto-open */ return }
+    if (!isGuideDone(store, profile.id)) {
+      const id = setTimeout(() => companion.openGuide(), 600)
+      return () => clearTimeout(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id, selectedPet?.id])
 
   /* Sanity log: confirm the right evolution sprite resolves for this user's pet.
      Remove once the sprites are visually confirmed. */
@@ -217,8 +233,8 @@ export default function DashboardPage() {
         {/* Right: points + user + logout */}
         <div className="flex items-center gap-1 sm:gap-3">
           <ConnectionStatus connection={connection} pendingCount={pendingCount} />
-          <StreakCounter streak={currentStreak} longest={longestStreak} />
-          <PointsDisplay points={points} />
+          <div data-pet-spot="streak"><StreakCounter streak={currentStreak} longest={longestStreak} /></div>
+          <div data-pet-spot="points"><PointsDisplay points={points} /></div>
 
           <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: MIST }}>
             <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
@@ -314,7 +330,7 @@ export default function DashboardPage() {
         <div className="dash-layout">
           {/* Pet in its home */}
           <motion.section style={{ gridArea: 'room' }} className="glass-card p-3 self-start" {...reveal(0.05)}>
-            <PetRoom pet={selectedPet} level={petLevel} stats={petStats} careAction={actionAnim} accessories={equipped} />
+            <PetRoom pet={selectedPet} level={petLevel} stats={petStats} careAction={actionAnim} accessories={equipped} home />
             <div className="flex items-center justify-between gap-2 mt-3 px-1 flex-wrap">
               <div className="min-w-0">
                 <h2 className="font-nunito font-extrabold text-xl leading-tight" style={{ color: INK }}>
@@ -327,6 +343,24 @@ export default function DashboardPage() {
                 <Sparkles size={11} />
                 {selectedPet?.trait}
               </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 mt-3 px-1">
+              {!reducedMotion && (
+                <button type="button" onClick={() => companion.walk()} disabled={companion.away || companion.dnd}
+                  className="tap-target px-3 rounded-xl text-xs font-nunito font-bold"
+                  style={{ ...NAV_BTN, opacity: (companion.away || companion.dnd) ? 0.5 : 1 }}>
+                  {companion.away ? `${selectedPet?.name} is out` : `Let ${selectedPet?.name} out`}
+                </button>
+              )}
+              <button type="button" onClick={() => companion.setDnd(!companion.dnd)} aria-pressed={companion.dnd}
+                className="tap-target px-3 rounded-xl text-xs font-nunito font-bold"
+                style={companion.dnd ? { background: TEAL_TINT, border: `1px solid ${TEAL}`, color: TEAL_DEEP } : NAV_BTN}>
+                Do not disturb
+              </button>
+              <button type="button" onClick={() => companion.openGuide()}
+                className="tap-target px-2 text-xs font-nunito font-bold underline" style={{ color: TEAL_DEEP }}>
+                Replay the tour
+              </button>
             </div>
             {equipped.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-2 px-1">
@@ -372,7 +406,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Quest log */}
-            <div className="glass-card p-5">
+            <div className="glass-card p-5" data-pet-spot="quests">
               <div className="flex items-center justify-between gap-2 mb-5 flex-wrap">
                 <h3 className="font-nunito font-extrabold text-lg flex items-center gap-2" style={{ color: INK }}>
                   <Star size={16} style={{ color: APRICOT, fill: APRICOT }} />
@@ -401,7 +435,7 @@ export default function DashboardPage() {
           </motion.section>
 
           {/* Stats + care */}
-          <motion.section style={{ gridArea: 'care' }} className="glass-card p-5 self-start" {...reveal(0.15)}>
+          <motion.section style={{ gridArea: 'care' }} data-pet-spot="care" className="glass-card p-5 self-start" {...reveal(0.15)}>
             <h3 className="font-nunito font-bold text-sm mb-3" style={{ color: INK }}>How {selectedPet?.name} is doing</h3>
             <div className="flex justify-around mb-4">
               <StatRing label="Hunger" value={petStats.hunger} color={APRICOT} />
@@ -421,7 +455,7 @@ export default function DashboardPage() {
           </motion.section>
 
           {/* Evolution */}
-          <motion.section style={{ gridArea: 'evo' }} className="glass-card p-5 self-start" {...reveal(0.2)}>
+          <motion.section style={{ gridArea: 'evo' }} data-pet-spot="evolution" className="glass-card p-5 self-start" {...reveal(0.2)}>
             <h3 className="font-nunito font-bold text-sm mb-3" style={{ color: INK }}>Evolution</h3>
             <EvolutionBar totalEarned={totalPointsEarned} petName={selectedPet?.name} />
           </motion.section>
@@ -429,6 +463,7 @@ export default function DashboardPage() {
           {/* Accessories shortcut */}
           <motion.button
             style={{ gridArea: 'shop' }}
+            data-pet-spot="shop"
             className="w-full glass-card p-4 flex items-center justify-between self-start cursor-pointer"
             onClick={() => navigate('/accessories')}
             whileHover={{ borderColor: TEAL }}
