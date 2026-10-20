@@ -1,0 +1,12 @@
+{
+  "extraKnownMarketplaces": {
+    "superpowers-dev": { "source": { "source": "github", "repo": "obra/superpowers" } },
+    "ui-ux-pro-max-skill": { "source": { "source": "github", "repo": "nextlevelbuilder/ui-ux-pro-max-skill" } },
+    "ponytail": { "source": { "source": "github", "repo": "dietrichgebert/ponytail" } }
+  },
+  "enabledPlugins": {
+    "superpowers@superpowers-dev": true,
+    "ui-ux-pro-max@ui-ux-pro-max-skill": true,
+    "ponytail@ponytail": true
+  }
+}
